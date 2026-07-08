@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <EXT_CUSTOM_SET>
+    <EXT_CUSTOM_OBJECT NAME="Partner Mapping" EXT_TYPE="Partner" TARGET_NAME="Enterprise Plan" />
+  </EXT_CUSTOM_SET>
+</DATA_IMPORT>

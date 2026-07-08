@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SAP IM Config Graph Explorer</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>SAP IM Config Graph Explorer</h1>
+    <div id="status" class="status">Ready</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel controls">
+      <h2>Files</h2>
+      <form id="upload-form">
+        <label class="file-picker">
+          <span>XML files</span>
+          <input id="xml-files" name="files" type="file" accept=".xml,application/xml,text/xml" multiple>
+        </label>
+        <label>
+          <span>HTML variant</span>
+          <select id="variant" name="variant">
+            <option value="auto">Auto</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+          </select>
+        </label>
+        <div class="button-row">
+          <button type="button" id="html-button">Generate HTML</button>
+          <button type="button" id="graph-button">Generate Graph</button>
+          <button type="button" id="export-button">Export JSON</button>
+        </div>
+      </form>
+
+      <h2>Filters</h2>
+      <label>
+        <span>Search</span>
+        <input id="search" type="search" placeholder="Object name">
+      </label>
+      <label>
+        <span>Object type</span>
+        <select id="type-filter">
+          <option value="">All types</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="workspace">
+      <div class="tabs">
+        <button class="tab active" data-view="graph-view">Graph</button>
+        <button class="tab" data-view="html-view">HTML</button>
+      </div>
+      <div id="graph-view" class="view active">
+        <div id="graph"></div>
+      </div>
+      <div id="html-view" class="view">
+        <div class="html-actions">
+          <a id="html-download" download="sap-im-plan.html">Download HTML</a>
+        </div>
+        <iframe id="html-preview" title="Generated HTML preview"></iframe>
+      </div>
+    </section>
+
+    <aside class="panel details">
+      <h2>Details</h2>
+      <dl id="node-summary">
+        <dt>Selection</dt>
+        <dd>Select a graph item</dd>
+      </dl>
+      <pre id="raw-xml"></pre>
+    </aside>
+  </main>
+
+  <script src="/static/vendor/cytoscape.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

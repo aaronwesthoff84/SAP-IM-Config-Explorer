@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <FORMULA_SET>
+    <FORMULA ID="DUP-1" NAME="Duplicate Formula A" RETURN_TYPE="Number" />
+    <FORMULA ID="DUP-1" NAME="Duplicate Formula B" RETURN_TYPE="Number" />
+  </FORMULA_SET>
+</DATA_IMPORT>
