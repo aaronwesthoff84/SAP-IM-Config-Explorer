@@ -52,9 +52,19 @@ def test_graph_builder_returns_valid_nodes_and_links():
     graph = GraphBuilder().build_from_paths([FIXTURES / "minimal_plan.xml"]).to_dict()
 
     labels = {node["label"] for node in graph["nodes"]}
+    type_by_label = {node["label"]: node["type"] for node in graph["nodes"]}
     relationships = {link["relationship"] for link in graph["links"]}
 
-    assert {"Enterprise Plan", "Credit Rule", "Eligibility Formula", "Rate Table"} <= labels
+    assert {
+        "Enterprise Plan",
+        "Core Component",
+        "Credit Rule",
+        "Eligibility Formula",
+        "Rate Table",
+        "Revenue Credit",
+    } <= labels
+    assert type_by_label["Core Component"] == "PlanComponent"
+    assert type_by_label["Revenue Credit"] == "CreditType"
     assert "belongs_to_plan" in relationships
     assert "uses_formula" in relationships
     assert "uses_lookup" in relationships
@@ -64,13 +74,13 @@ def test_graph_builder_returns_valid_nodes_and_links():
 
 def test_multiple_xml_files_merge_and_preserve_source_file():
     graph = GraphBuilder().build_from_paths(
-        [FIXTURES / "minimal_plan.xml", FIXTURES / "unknown_object.xml"]
+        [FIXTURES / "minimal_plan.xml", FIXTURES / "duplicate_ids.xml"]
     )
 
     source_files = {node.sourceFile for node in graph.nodes}
 
-    assert {"minimal_plan.xml", "unknown_object.xml"} <= source_files
-    assert any(node.label == "Partner Mapping" for node in graph.nodes)
+    assert {"minimal_plan.xml", "duplicate_ids.xml"} <= source_files
+    assert any(node.label == "Duplicate Formula A" for node in graph.nodes)
 
 
 def test_malformed_empty_and_unsupported_files_raise_useful_errors(tmp_path):
@@ -89,12 +99,45 @@ def test_malformed_empty_and_unsupported_files_raise_useful_errors(tmp_path):
         load_xml_file(unsupported)
 
 
-def test_unknown_object_types_become_other_nodes():
+def test_unknown_object_types_are_ignored():
     graph = GraphBuilder().build_from_paths([FIXTURES / "unknown_object.xml"])
 
-    partner = next(node for node in graph.nodes if node.label == "Partner Mapping")
+    assert graph.nodes == []
+    assert graph.links == []
 
-    assert partner.type == "Other"
+
+def test_formula_logic_elements_do_not_become_graph_nodes(tmp_path):
+    source = tmp_path / "formula_logic.xml"
+    source.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <FORMULA_SET>
+    <FORMULA NAME="Commission Gate" RETURN_TYPE="Boolean">
+      <EXPRESSION>
+        <FUNCTION ID="ifThenElse">
+          <PARAMETER_LIST>
+            <BOOLEAN VALUE="true" />
+            <FUNCTION ID="isNull">
+              <VARIABLE_REF NAME="Gate Variable" />
+            </FUNCTION>
+            <STRING VALUE="approved" />
+          </PARAMETER_LIST>
+        </FUNCTION>
+      </EXPRESSION>
+    </FORMULA>
+  </FORMULA_SET>
+  <VARIABLE_SET>
+    <VARIABLE NAME="Gate Variable" VARIABLE_TYPE="String" />
+  </VARIABLE_SET>
+</DATA_IMPORT>
+""",
+        encoding="utf-8",
+    )
+
+    graph = GraphBuilder().build_from_paths([source])
+
+    assert {node.label for node in graph.nodes} == {"Commission Gate", "Gate Variable"}
+    assert {node.type for node in graph.nodes} == {"Formula", "Variable"}
 
 
 def test_exported_graph_json_matches_expected_schema():

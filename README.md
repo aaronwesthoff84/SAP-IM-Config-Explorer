@@ -1,6 +1,6 @@
 # SAP IM Config Graph Explorer
 
-SAP IM Config Graph Explorer is a local-first tool for reviewing SAP Incentive Management XML configuration exports. It keeps the existing XML-to-HTML conversion workflow and adds a browser-based dependency graph for exploring plans, rules, formulas, lookup tables, classifiers, processing units, pipelines, event types, credit types, deposit types, calendars, periods, custom objects, reports, integrations, and other named configuration objects.
+SAP IM Config Graph Explorer is a local-first tool for reviewing SAP Incentive Management XML configuration exports. It keeps the existing XML-to-HTML conversion workflow and adds a browser-based dependency graph for exploring fixed values, formulas, lookup tables, quotas, rate tables, territories, variables, rules, plans, plan components, event types, credit types, earning codes, earning groups, business units, processing units, and calendars.
 
 The application runs on your machine. It does not require cloud services or runtime CDN assets.
 
@@ -61,7 +61,7 @@ The local app also has a `Generate HTML` action. Select an XML file, choose `Aut
     {
       "id": "string",
       "label": "string",
-      "type": "Rule | Formula | Classifier | LookupTable | Plan | Pipeline | Stage | EventType | CreditType | DepositType | Calendar | Period | CustomObject | Report | Integration | ProcessingUnit | Other",
+      "type": "FixedValue | Formula | LookupTable | Quota | RateTable | Territory | Variable | Rule | Plan | PlanComponent | EventType | CreditType | EarningCode | EarningGroup | BusinessUnit | ProcessingUnit | Calendar",
       "sourceFile": "string",
       "xmlPath": "string",
       "rawXml": "string",
@@ -108,7 +108,7 @@ Duplicate source IDs are kept as separate graph nodes with stable generated IDs.
 3. Oracle vs HANA XML export comparison.
 4. Impact analysis for upstream and downstream dependencies.
 5. Orphaned object detection.
-6. Unused rule, formula, and classifier detection.
+6. Unused rule, formula, and territory detection.
 7. Duplicate object detection.
 8. Broken reference detection.
 9. Migration risk scoring.

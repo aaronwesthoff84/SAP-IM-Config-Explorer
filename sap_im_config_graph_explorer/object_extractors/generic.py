@@ -8,26 +8,46 @@ from sap_im_config_graph_explorer.xml_loader import XmlDocument
 
 
 KNOWN_TAG_TYPES = {
-    "PLAN": "Plan",
-    "RULE": "Rule",
+    "FIXED_VALUE": "FixedValue",
     "FORMULA": "Formula",
+    "MDLT": "LookupTable",
     "MD_LOOKUP_TABLE": "LookupTable",
     "LOOKUP_TABLE": "LookupTable",
-    "TERRITORY": "Classifier",
-    "CLASSIFIER": "Classifier",
-    "PIPELINE": "Pipeline",
-    "STAGE": "Stage",
-    "PIPELINE_STAGE": "Stage",
+    "LOOKUPTABLE": "LookupTable",
+    "QUOTA": "Quota",
+    "RATE_TABLE": "RateTable",
+    "RATETABLE": "RateTable",
+    "TERRITORY": "Territory",
+    "VARIABLE": "Variable",
+    "RULE": "Rule",
+    "PLAN": "Plan",
+    "PLAN_COMPONENT": "PlanComponent",
+    "PLANCOMPONENT": "PlanComponent",
     "EVENT_TYPE": "EventType",
     "CREDIT_TYPE": "CreditType",
-    "DEPOSIT_TYPE": "DepositType",
-    "CALENDAR": "Calendar",
-    "PERIOD": "Period",
-    "REPORT": "Report",
-    "INTEGRATION": "Integration",
-    "INTEGRATION_MAPPING": "Integration",
+    "EARNING_CODE": "EarningCode",
+    "EARNINGCODE": "EarningCode",
+    "EARNING_GROUP": "EarningGroup",
+    "EARNINGGROUP": "EarningGroup",
+    "BUSINESS_UNIT": "BusinessUnit",
+    "BUSINESSUNIT": "BusinessUnit",
     "PROCESSING_UNIT": "ProcessingUnit",
-    "VARIABLE": "CustomObject",
+    "PROCESSINGUNIT": "ProcessingUnit",
+    "CALENDAR": "Calendar",
+}
+
+TEXT_LABEL_TAGS = {
+    "EVENT_TYPE",
+    "CREDIT_TYPE",
+    "EARNING_CODE",
+    "EARNINGCODE",
+    "EARNING_GROUP",
+    "EARNINGGROUP",
+    "BUSINESS_UNIT",
+    "BUSINESSUNIT",
+    "PROCESSING_UNIT",
+    "PROCESSINGUNIT",
+    "CALENDAR",
 }
 
 REFERENCE_TAG_PATTERN = re.compile(r"(^|_)REF(S)?$")
@@ -86,45 +106,47 @@ def infer_node_type(element: ET.Element) -> str | None:
         return None
     if tag in KNOWN_TAG_TYPES:
         return KNOWN_TAG_TYPES[tag]
-    object_type = (
-        element.get("OBJECT_TYPE")
-        or element.get("TYPE")
-        or element.get("CLASS")
-        or element.get("EXT_TYPE")
-        or ""
-    ).upper()
-    if "PLAN" in object_type:
-        return "Plan"
-    if "RULE" in object_type:
-        return "Rule"
-    if "FORMULA" in object_type:
-        return "Formula"
-    if "LOOKUP" in object_type or "MDLT" in object_type:
+    return infer_type_from_object_hint(element.get("OBJECT_TYPE") or element.get("EXT_TYPE") or "")
+
+
+def infer_type_from_object_hint(value: str) -> str | None:
+    hint = re.sub(r"[^A-Z0-9]+", "_", value.upper()).strip("_")
+    if not hint:
+        return None
+    if "PLAN_COMPONENT" in hint or "PLANCOMPONENT" in hint:
+        return "PlanComponent"
+    if "FIXED_VALUE" in hint or "FIXEDVALUE" in hint:
+        return "FixedValue"
+    if "RATE_TABLE" in hint or "RATETABLE" in hint:
+        return "RateTable"
+    if "LOOKUP" in hint or "MDLT" in hint:
         return "LookupTable"
-    if "CLASSIFIER" in object_type or "TERRITORY" in object_type:
-        return "Classifier"
-    if "PIPELINE" in object_type:
-        return "Pipeline"
-    if "STAGE" in object_type:
-        return "Stage"
-    if "EVENT" in object_type:
-        return "EventType"
-    if "CREDIT" in object_type:
-        return "CreditType"
-    if "DEPOSIT" in object_type:
-        return "DepositType"
-    if "CALENDAR" in object_type:
-        return "Calendar"
-    if "PERIOD" in object_type:
-        return "Period"
-    if "REPORT" in object_type:
-        return "Report"
-    if "INTEGRATION" in object_type or "MAPPING" in object_type:
-        return "Integration"
-    if "PROCESSING" in object_type:
+    if "EARNING_CODE" in hint or "EARNINGCODE" in hint:
+        return "EarningCode"
+    if "EARNING_GROUP" in hint or "EARNINGGROUP" in hint:
+        return "EarningGroup"
+    if "BUSINESS_UNIT" in hint or "BUSINESSUNIT" in hint:
+        return "BusinessUnit"
+    if "PROCESSING_UNIT" in hint or "PROCESSINGUNIT" in hint:
         return "ProcessingUnit"
-    if has_identifier(element):
-        return "Other"
+    if "EVENT_TYPE" in hint or "EVENTTYPE" in hint:
+        return "EventType"
+    if "CREDIT_TYPE" in hint or "CREDITTYPE" in hint:
+        return "CreditType"
+    if "TERRITORY" in hint:
+        return "Territory"
+    if "VARIABLE" in hint:
+        return "Variable"
+    if "QUOTA" in hint:
+        return "Quota"
+    if "CALENDAR" in hint:
+        return "Calendar"
+    if "FORMULA" in hint:
+        return "Formula"
+    if "RULE" in hint:
+        return "Rule"
+    if "PLAN" in hint:
+        return "Plan"
     return None
 
 
@@ -133,15 +155,9 @@ def infer_label(element: ET.Element) -> str:
         value = element.get(attr)
         if value:
             return value.strip()
-    if element.tag.upper() in {"CREDIT_TYPE", "DEPOSIT_TYPE", "EVENT_TYPE", "PERIOD"}:
+    if element.tag.upper() in TEXT_LABEL_TAGS:
         return (element.text or "").strip()
     return ""
-
-
-def has_identifier(element: ET.Element) -> bool:
-    if any(element.get(attr) for attr in ("NAME", "DISPLAY_NAME", "ID", "OBJECT_ID", "CODE")):
-        return True
-    return any(key.endswith("_NAME") or key.endswith("_ID") for key in element.attrib)
 
 
 def is_reference_only_tag(tag: str) -> bool:

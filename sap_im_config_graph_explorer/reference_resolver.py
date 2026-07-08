@@ -10,22 +10,38 @@ from sap_im_config_graph_explorer.xml_loader import XmlDocument
 REFERENCE_ATTRS = {
     "NAME",
     "PLAN_NAME",
+    "PLANCOMPONENT_NAME",
+    "PLAN_COMPONENT_NAME",
     "OWNER_NAME",
     "TARGET_NAME",
     "SOURCE_NAME",
+    "FIXED_VALUE_NAME",
     "FORMULA_NAME",
     "RULE_NAME",
     "LOOKUP_TABLE_NAME",
     "MDLT_NAME",
-    "CLASSIFIER_NAME",
+    "QUOTA_NAME",
+    "RATE_TABLE_NAME",
+    "RATETABLE_NAME",
     "TERRITORY_NAME",
+    "VARIABLE_NAME",
     "EVENT_TYPE_NAME",
     "CREDIT_TYPE_NAME",
-    "DEPOSIT_TYPE_NAME",
+    "EARNING_CODE_NAME",
+    "EARNING_GROUP_NAME",
+    "BUSINESS_UNIT_NAME",
+    "PROCESSING_UNIT_NAME",
     "CALENDAR_NAME",
-    "PERIOD_NAME",
-    "REPORT_NAME",
-    "INTEGRATION_NAME",
+}
+
+TEXT_REFERENCE_TAGS = {
+    "EVENT_TYPE",
+    "CREDIT_TYPE",
+    "EARNING_CODE",
+    "EARNING_GROUP",
+    "BUSINESS_UNIT",
+    "PROCESSING_UNIT",
+    "CALENDAR",
 }
 
 
@@ -144,7 +160,7 @@ class ReferenceResolver:
                     continue
                 refs.append((value, upper_attr, f"attribute:{attr}"))
         text = (element.text or "").strip()
-        if text and tag in {"CREDIT_TYPE", "DEPOSIT_TYPE", "EVENT_TYPE"}:
+        if text and tag in TEXT_REFERENCE_TAGS:
             refs.append((text, tag, f"text:{element.tag}"))
         return refs
 
@@ -187,57 +203,75 @@ def normalize_ref(value: str) -> str:
 
 def preferred_type_for_hint(hint: str) -> str | None:
     hint = hint.upper()
+    if "COMPONENT" in hint:
+        return "PlanComponent"
+    if "FIXED" in hint:
+        return "FixedValue"
     if "FORMULA" in hint:
         return "Formula"
+    if "RATE_TABLE" in hint or "RATETABLE" in hint:
+        return "RateTable"
     if "MDLT" in hint or "LOOKUP" in hint:
         return "LookupTable"
-    if "CLASSIFIER" in hint or "TERRITORY" in hint:
-        return "Classifier"
+    if "QUOTA" in hint:
+        return "Quota"
+    if "TERRITORY" in hint or "CLASSIFIER" in hint:
+        return "Territory"
+    if "VARIABLE" in hint:
+        return "Variable"
     if "PLAN" in hint:
         return "Plan"
-    if "PIPELINE" in hint:
-        return "Pipeline"
-    if "STAGE" in hint:
-        return "Stage"
     if "EVENT" in hint:
         return "EventType"
     if "CREDIT" in hint:
         return "CreditType"
-    if "DEPOSIT" in hint:
-        return "DepositType"
-    if "PERIOD" in hint:
-        return "Period"
-    if "REPORT" in hint:
-        return "Report"
-    if "INTEGRATION" in hint:
-        return "Integration"
+    if "EARNING_CODE" in hint or "EARNINGCODE" in hint:
+        return "EarningCode"
+    if "EARNING_GROUP" in hint or "EARNINGGROUP" in hint:
+        return "EarningGroup"
+    if "BUSINESS" in hint:
+        return "BusinessUnit"
+    if "PROCESSING" in hint:
+        return "ProcessingUnit"
+    if "CALENDAR" in hint:
+        return "Calendar"
     return None
 
 
 def relationship_for_hint(hint: str, target_type: str) -> str:
     hint = hint.upper()
+    if target_type == "FixedValue" or "FIXED" in hint:
+        return "uses_fixed_value"
     if target_type == "Formula" or "FORMULA" in hint:
         return "uses_formula"
+    if target_type == "RateTable" or "RATE_TABLE" in hint or "RATETABLE" in hint:
+        return "uses_rate_table"
     if target_type == "LookupTable" or "MDLT" in hint or "LOOKUP" in hint:
         return "uses_lookup"
-    if target_type == "Classifier" or "CLASSIFIER" in hint or "TERRITORY" in hint:
+    if target_type == "Quota" or "QUOTA" in hint:
+        return "uses_quota"
+    if target_type == "Territory" or "TERRITORY" in hint:
+        return "uses_territory"
+    if "CLASSIFIER" in hint:
         return "uses_classifier"
+    if target_type == "Variable" or "VARIABLE" in hint:
+        return "uses_variable"
+    if target_type == "PlanComponent" or "COMPONENT" in hint:
+        return "belongs_to_plan_component"
     if target_type == "Plan" or "PLAN" in hint:
         return "belongs_to_plan"
-    if target_type in {"Pipeline", "Stage"} or "PIPELINE" in hint or "STAGE" in hint:
-        return "runs_in_pipeline"
     if target_type == "EventType" or "EVENT" in hint:
         return "uses_event_type"
     if target_type == "CreditType" or "CREDIT" in hint:
         return "outputs_credit_type"
-    if target_type == "DepositType" or "DEPOSIT" in hint:
-        return "feeds_deposit"
-    if target_type == "Period" or "PERIOD" in hint:
-        return "depends_on_period"
-    if target_type == "CustomObject":
-        return "references_custom_object"
-    if target_type == "Report" or "REPORT" in hint:
-        return "references_report"
-    if target_type == "Integration" or "INTEGRATION" in hint:
-        return "references_integration"
+    if target_type == "EarningCode" or "EARNING_CODE" in hint or "EARNINGCODE" in hint:
+        return "uses_earning_code"
+    if target_type == "EarningGroup" or "EARNING_GROUP" in hint or "EARNINGGROUP" in hint:
+        return "uses_earning_group"
+    if target_type == "BusinessUnit" or "BUSINESS" in hint:
+        return "uses_business_unit"
+    if target_type == "ProcessingUnit" or "PROCESSING" in hint:
+        return "uses_processing_unit"
+    if target_type == "Calendar" or "CALENDAR" in hint:
+        return "uses_calendar"
     return "unknown_reference"
