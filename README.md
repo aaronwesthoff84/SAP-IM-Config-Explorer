@@ -1,41 +1,38 @@
-# SAP IM Config Graph Explorer
+# SAP Incentive Management Config Graph Explorer
 
-SAP IM Config Graph Explorer is a local-first tool for reviewing SAP Incentive Management XML configuration exports. It keeps the existing XML-to-HTML conversion workflow and adds a browser-based dependency graph for exploring fixed values, formulas, lookup tables, quotas, rate tables, territories, variables, rules, plans, plan components, event types, credit types, earning codes, earning groups, business units, processing units, and calendars.
+SAP Incentive Management Config Graph Explorer is a local-first tool for reviewing XML configuration exports. It preserves the existing XML-to-HTML conversion workflow and adds a browser-based dependency graph.
 
-The application runs on your machine. It does not require cloud services or runtime CDN assets.
+The application runs entirely on the workstation. It does not require cloud services or runtime CDN assets.
 
 ## Install
 
 Use PowerShell from this project directory:
 
 ```powershell
-python -m pip install -r requirements.txt
-```
-
-For tests:
-
-```powershell
-python -m pip install -r requirements-dev.txt
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
 ```
 
 ## Run The Local App
 
 ```powershell
-python -m uvicorn sap_im_config_graph_explorer.app:app --reload
+.\.venv\Scripts\python -m uvicorn sap_im_config_graph_explorer.app:app --reload
 ```
 
-Open:
+Open `http://127.0.0.1:8000`.
 
-```text
-http://127.0.0.1:8000
+To choose another port:
+
+```powershell
+.\.venv\Scripts\python -m uvicorn sap_im_config_graph_explorer.app:app --reload --port 8080
 ```
 
 ## Use The XML-To-HTML Converter
 
-The legacy command still works:
+The legacy command remains supported:
 
 ```powershell
-python sap_im_transformer.py input.xml output.html --variant=A
+.\.venv\Scripts\python sap_im_transformer.py input.xml output.html --variant=A
 ```
 
 If `output.html` is omitted, the converter writes beside the XML input using the same base name.
@@ -47,38 +44,118 @@ The local app also has a `Generate HTML` action. Select an XML file, choose `Aut
 1. Select one or more `.xml` export files.
 2. Click `Generate Graph`.
 3. Pan and zoom the graph area.
-4. Search by object name.
-5. Filter by object type.
-6. Click a node to view its source file, XML path, metadata, and raw XML snippet.
-7. Hover or click an edge to inspect the relationship.
-8. Click `Export JSON` to download the current graph data.
+4. Search by object name or filter by object type.
+5. Click a node to view its source file, XML path, metadata, and bounded raw XML.
+6. Hover or click an edge to inspect its relationship.
+7. Click `Export JSON` to download the current graph data.
 
-## Graph JSON Schema
+## Strict Graph Node Allowlist
+
+Only these object categories can become graph nodes:
+
+- Fixed Value
+- Formula
+- Lookup Table
+- Quota
+- Rate Table
+- Territory
+- Variable
+- Rule
+- Plan
+- Plan Component
+- Event Type
+- Credit Type
+- Earning Code
+- Earning Group
+- Business Unit
+- Processing Unit
+- Calendar
+
+The default graph builder uses ordered, object-specific extractors. Formula and Rule internals such as `FUNCTION`, `PARAMETER_LIST`, conditions, actions, and literals remain metadata or reference evidence and never become graph nodes. A caller can provide a custom `ExtractorRegistry`, but `NodeFactory` still rejects node types outside the allowlist.
+
+## Dependency And Containment Direction
+
+Dependency links point from the dependent object to the object it uses. For example, a Rule that uses a Formula produces `Rule -> Formula` with `uses_formula`.
+
+Containment links point from the child to its owner:
+
+- Plan Component to Plan: `belongs_to_plan`
+- Rule to Plan Component: `belongs_to_plan_component`
+
+Reference resolution is scoped to a snapshot. A name in a production snapshot cannot satisfy a reference in a non-production snapshot.
+
+## Graph JSON Contract
+
+The current schema version is `1.0`:
 
 ```json
 {
+  "schemaVersion": "1.0",
+  "snapshots": [
+    {
+      "id": "configuration",
+      "role": "configuration | non_production | production",
+      "sourceFiles": ["export.xml"]
+    }
+  ],
   "nodes": [
     {
-      "id": "string",
-      "label": "string",
-      "type": "FixedValue | Formula | LookupTable | Quota | RateTable | Territory | Variable | Rule | Plan | PlanComponent | EventType | CreditType | EarningCode | EarningGroup | BusinessUnit | ProcessingUnit | Calendar",
-      "sourceFile": "string",
-      "xmlPath": "string",
-      "rawXml": "string",
+      "id": "node-instance-id",
+      "canonicalKey": "formula:eligibility",
+      "snapshotId": "configuration",
+      "label": "Eligibility",
+      "type": "Formula",
+      "sourceFile": "export.xml",
+      "xmlPath": "/DATA_IMPORT[1]/FORMULA_SET[1]/FORMULA[1]",
+      "rawXml": "<FORMULA ... />",
       "metadata": {}
     }
   ],
   "links": [
     {
-      "source": "string",
-      "target": "string",
-      "relationship": "uses_formula | uses_lookup | uses_classifier | belongs_to_plan | runs_in_pipeline | uses_event_type | outputs_credit_type | feeds_deposit | depends_on_period | references_custom_object | references_report | references_integration | parent_child | unknown_reference",
+      "id": "link-stable-id",
+      "source": "dependent-node-id",
+      "target": "dependency-node-id",
+      "relationship": "uses_formula",
       "confidence": "high | medium | low",
       "metadata": {}
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding-stable-id",
+      "code": "missing_reference | ambiguous_reference",
+      "severity": "error | warning | info",
+      "snapshotId": "configuration",
+      "nodeIds": ["source-node-id"],
+      "message": "Missing Variable reference: Gate",
+      "details": {}
     }
   ]
 }
 ```
+
+Allowed node type values are:
+
+```text
+FixedValue, Formula, LookupTable, Quota, RateTable, Territory, Variable,
+Rule, Plan, PlanComponent, EventType, CreditType, EarningCode, EarningGroup,
+BusinessUnit, ProcessingUnit, Calendar
+```
+
+Allowed relationship values are:
+
+```text
+uses_fixed_value, uses_formula, uses_lookup, uses_quota, uses_rate_table,
+uses_classifier, uses_territory, uses_variable, uses_rule, belongs_to_plan,
+belongs_to_plan_component, runs_in_pipeline, uses_event_type,
+outputs_credit_type, uses_earning_code, uses_earning_group,
+uses_business_unit, uses_processing_unit, uses_calendar, feeds_deposit,
+depends_on_period, references_custom_object, references_report,
+references_integration, parent_child, unknown_reference
+```
+
+Missing and ambiguous references are emitted as structured findings. They do not create placeholder graph nodes or links with non-node endpoints.
 
 ## Error Handling
 
@@ -88,23 +165,22 @@ The app reports useful local errors for:
 - empty XML files
 - unsupported file types
 - graph generation failures
-- unresolved references
-- duplicate object IDs
+- duplicate snapshot IDs
+- unsupported graph node or relationship types
 
-Duplicate source IDs are kept as separate graph nodes with stable generated IDs. Duplicate details are recorded in node metadata.
+Duplicate source IDs remain separate node instances with stable generated IDs. Duplicate details are recorded in node metadata, and references to non-unique targets become ambiguity findings.
 
 ## Known Limitations
 
-- Relationship inference is generic and conservative because real SAP Incentive Management export shapes vary.
-- Some unresolved references are emitted as low-confidence `unknown_reference` links.
-- The first graph renderer is a local Cytoscape-compatible 2D renderer focused on MVP interaction, not advanced layout quality.
-- Large-file performance has not been optimized yet.
-- More object-specific extractors should be added as real export examples are collected.
+- Real SAP Incentive Management export shapes vary, so additional exact aliases may be added as representative exports are collected.
+- The first graph renderer is a local Cytoscape-compatible 2D renderer focused on core interaction rather than advanced layout quality.
+- Large-file performance has not yet been optimized.
+- Validation beyond missing and ambiguous reference resolution remains future work.
 
 ## Future Roadmap
 
-1. 3D graph mode using `react-force-graph-3d` or `3d-force-graph`.
-2. DEV vs QA XML comparison.
+1. Locally vendored 3D graph mode.
+2. Non-production vs production XML comparison.
 3. Oracle vs HANA XML export comparison.
 4. Impact analysis for upstream and downstream dependencies.
 5. Orphaned object detection.
@@ -112,22 +188,22 @@ Duplicate source IDs are kept as separate graph nodes with stable generated IDs.
 7. Duplicate object detection.
 8. Broken reference detection.
 9. Migration risk scoring.
-10. AI-generated summaries of selected config objects.
+10. Local-first AI-generated summaries of selected configuration objects, with optional online providers later.
 11. AI-generated documentation from XML exports.
 12. HTML documentation generator with graph screenshots.
 13. Export to CSV, Markdown, and GraphML.
-14. Optional Neo4j export.
+14. Offline Neo4j CSV/Cypher export bundle.
 15. Pipeline execution flow view.
 16. Rule lineage view.
 17. Search by object type, file, relationship, and confidence.
-18. Saved graph sessions.
+18. Saved graph session ZIP containing `session.json` and `graph.png`.
 19. Large-file performance improvements.
-20. Support for custom SAP Incentive Management object-specific extractors as more real export examples are collected.
 
 ## Development Checks
 
 ```powershell
-python -m pytest -v
-python sap_im_transformer.py tests\fixtures\minimal_plan.xml tests\fixtures\minimal_plan.html
-python -m uvicorn sap_im_config_graph_explorer.app:app --reload
+$env:PYTHONDONTWRITEBYTECODE='1'
+.\.venv\Scripts\python -m pytest -q -p no:cacheprovider
+.\.venv\Scripts\python sap_im_transformer.py tests\fixtures\minimal_plan.xml "$env:TEMP\minimal-plan-acceptance.html" --variant=A
+.\.venv\Scripts\python -m uvicorn sap_im_config_graph_explorer.app:app --reload
 ```
