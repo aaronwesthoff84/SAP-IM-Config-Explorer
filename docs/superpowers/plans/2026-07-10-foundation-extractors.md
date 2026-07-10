@@ -178,6 +178,7 @@ git commit -m "build: make Python environment reproducible"
 **Files:**
 - Create: `tests/test_models.py`
 - Modify: `sap_im_config_graph_explorer/models.py`
+- Modify: `tests/test_converter_and_graph.py`
 
 **Interfaces:**
 - Consumes: existing `NODE_TYPES`, `RELATIONSHIP_TYPES`, `GraphNode`, `GraphLink`, `GraphDocument`.
@@ -250,29 +251,18 @@ Add these public contracts to `models.py` and update every `to_dict()` to includ
 GRAPH_SCHEMA_VERSION = "1.0"
 SNAPSHOT_ROLES = {"configuration", "non_production", "production"}
 FINDING_SEVERITIES = {"error", "warning", "info"}
+
+# Task 7 removes legacy relationships that cannot survive the
+# object-specific resolver migration.
 RELATIONSHIP_TYPES = {
-    "uses_fixed_value",
-    "uses_formula",
-    "uses_lookup",
-    "uses_quota",
-    "uses_rate_table",
-    "uses_classifier",
-    "uses_territory",
-    "uses_variable",
-    "uses_rule",
-    "belongs_to_plan",
-    "belongs_to_plan_component",
-    "runs_in_pipeline",
-    "uses_event_type",
-    "outputs_credit_type",
-    "uses_earning_code",
-    "uses_earning_group",
-    "uses_business_unit",
-    "uses_processing_unit",
-    "uses_calendar",
-    "feeds_deposit",
-    "depends_on_period",
-    "unknown_reference",
+    "uses_fixed_value", "uses_formula", "uses_lookup", "uses_quota",
+    "uses_rate_table", "uses_classifier", "uses_territory", "uses_variable",
+    "uses_rule", "belongs_to_plan", "belongs_to_plan_component",
+    "runs_in_pipeline", "uses_event_type", "outputs_credit_type",
+    "uses_earning_code", "uses_earning_group", "uses_business_unit",
+    "uses_processing_unit", "uses_calendar", "feeds_deposit",
+    "depends_on_period", "references_custom_object", "references_report",
+    "references_integration", "parent_child", "unknown_reference",
 }
 
 
@@ -293,13 +283,13 @@ class Snapshot:
 @dataclass
 class GraphNode:
     id: str
-    canonicalKey: str
-    snapshotId: str
     label: str
     type: str
     sourceFile: str
     xmlPath: str
     rawXml: str
+    canonicalKey: str = ""
+    snapshotId: str = "configuration"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -309,12 +299,12 @@ class GraphNode:
 
 @dataclass(frozen=True)
 class GraphLink:
-    id: str
     source: str
     target: str
     relationship: str
     confidence: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    id: str = ""
 
     def __post_init__(self) -> None:
         if self.relationship not in RELATIONSHIP_TYPES:
@@ -349,16 +339,24 @@ class GraphDocument:
 
 `GraphNode.to_dict()` must emit `id`, `canonicalKey`, `snapshotId`, `label`, `type`, `sourceFile`, `xmlPath`, `rawXml`, `metadata`. `GraphLink.to_dict()` must emit `id`, `source`, `target`, `relationship`, `confidence`, `metadata`. `ValidationFinding.to_dict()` must emit all seven fields and convert `nodeIds` to a JSON list. `GraphDocument.to_dict()` must emit `schemaVersion`, `snapshots`, `nodes`, `links`, `findings`.
 
+The empty `canonicalKey`/link `id` and default `snapshotId` preserve existing GenericObjectExtractor/ReferenceResolver call sites only until Task 7. Update `test_exported_graph_json_matches_expected_schema` now to assert the five top-level graph keys, the nine node keys, and the six link keys. Task 7 replaces every temporary default with real values before Phase 1 acceptance.
+
 - [ ] **Step 4: Run model tests and verify GREEN**
 
 Run: `.\.venv\Scripts\python -m pytest tests\test_models.py -q -p no:cacheprovider`
 
 Expected: `1 passed`.
 
-- [ ] **Step 5: Commit the contract**
+- [ ] **Step 5: Verify the complete suite remains GREEN during migration**
+
+Run: `.\.venv\Scripts\python -m pytest -q -p no:cacheprovider`
+
+Expected: all tests pass; the known Starlette deprecation warning may remain recorded as a pre-existing Minor finding.
+
+- [ ] **Step 6: Commit the contract**
 
 ```powershell
-git add sap_im_config_graph_explorer/models.py tests/test_models.py
+git add sap_im_config_graph_explorer/models.py tests/test_models.py tests/test_converter_and_graph.py
 git commit -m "feat: version the graph data contract"
 ```
 
