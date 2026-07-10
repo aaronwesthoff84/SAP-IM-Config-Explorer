@@ -39,7 +39,11 @@ def test_resolver_emits_real_stable_links_for_explicit_candidates():
         sum(link.relationship == "belongs_to_plan_component" for link in graph.links)
         == 1
     )
-    assert graph.findings == []
+    assert not {
+        finding.code
+        for finding in graph.findings
+        if finding.code in {"missing_reference", "ambiguous_reference"}
+    }
 
 
 def test_missing_and_ambiguous_references_become_findings_not_links():
@@ -47,9 +51,8 @@ def test_missing_and_ambiguous_references_become_findings_not_links():
         [FIXTURES / "reference_resolution.xml"]
     )
 
-    assert {finding.code for finding in graph.findings} == {
-        "missing_reference",
-        "ambiguous_reference",
+    assert {"missing_reference", "ambiguous_reference"} <= {
+        finding.code for finding in graph.findings
     }
     assert all(finding.id.startswith("finding-") for finding in graph.findings)
     assert graph.links == []
@@ -70,7 +73,11 @@ def test_reference_resolution_is_scoped_to_each_snapshot():
 
     assert [snapshot.id for snapshot in graph.snapshots] == ["non-prod", "prod"]
     assert len(graph.links) == 2
-    assert graph.findings == []
+    assert not {
+        finding.code
+        for finding in graph.findings
+        if finding.code in {"missing_reference", "ambiguous_reference"}
+    }
     assert all(
         node_by_id[link.source].snapshotId == node_by_id[link.target].snapshotId
         for link in graph.links

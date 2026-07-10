@@ -43,8 +43,13 @@ def test_graph_endpoint_accepts_multiple_uploads():
         }
     ]
     assert payload["findings"]
-    assert {finding["code"] for finding in payload["findings"]} == {
-        "ambiguous_reference"
+    finding_codes = {finding["code"] for finding in payload["findings"]}
+    assert "ambiguous_reference" in finding_codes
+    assert finding_codes <= {
+        "ambiguous_reference",
+        "duplicate_object",
+        "unused_object",
+        "orphaned_object",
     }
 
 

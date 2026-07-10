@@ -12,6 +12,7 @@ from sap_im_config_graph_explorer.object_extractors import (
     default_registry,
 )
 from sap_im_config_graph_explorer.reference_resolver import ReferenceResolver
+from sap_im_config_graph_explorer.validation import ValidationEngine
 from sap_im_config_graph_explorer.xml_loader import (
     XmlDocument,
     load_xml_file,
@@ -33,9 +34,14 @@ class _SnapshotDocuments:
 
 
 class GraphBuilder:
-    def __init__(self, registry: ExtractorRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: ExtractorRegistry | None = None,
+        validation_engine: ValidationEngine | None = None,
+    ) -> None:
         self.registry = registry if registry is not None else default_registry()
         self.node_factory = NodeFactory()
+        self.validation_engine = validation_engine or ValidationEngine()
 
     def build_from_paths(
         self,
@@ -115,9 +121,14 @@ class GraphBuilder:
             references=references,
             node_id_by_element=self.node_factory.node_id_by_element,
         ).resolve()
+        findings = self.validation_engine.validate(
+            nodes,
+            resolution.links,
+            resolution.findings,
+        )
         return GraphDocument(
             snapshots=[bundle.snapshot for bundle in bundles],
             nodes=nodes,
             links=resolution.links,
-            findings=resolution.findings,
+            findings=findings,
         )
