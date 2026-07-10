@@ -144,13 +144,24 @@ def test_exported_graph_json_matches_expected_schema():
     graph = GraphBuilder().build_from_paths([FIXTURES / "minimal_plan.xml"]).to_dict()
     reloaded = json.loads(json.dumps(graph))
 
-    assert set(reloaded) == {"nodes", "links"}
+    assert set(reloaded) == {"schemaVersion", "snapshots", "nodes", "links", "findings"}
     assert all(
-        set(node) == {"id", "label", "type", "sourceFile", "xmlPath", "rawXml", "metadata"}
+        set(node)
+        == {
+            "id",
+            "canonicalKey",
+            "snapshotId",
+            "label",
+            "type",
+            "sourceFile",
+            "xmlPath",
+            "rawXml",
+            "metadata",
+        }
         for node in reloaded["nodes"]
     )
     assert all(
-        set(link) == {"source", "target", "relationship", "confidence", "metadata"}
+        set(link) == {"id", "source", "target", "relationship", "confidence", "metadata"}
         for link in reloaded["links"]
     )
 
