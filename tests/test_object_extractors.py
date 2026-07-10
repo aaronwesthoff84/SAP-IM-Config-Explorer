@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -15,9 +16,32 @@ from sap_im_config_graph_explorer.object_extractors.common import (
     normalized_dates,
     trim_raw_xml,
 )
+from sap_im_config_graph_explorer.object_extractors.auxiliary import (
+    AUXILIARY_EXTRACTORS,
+)
 from sap_im_config_graph_explorer.object_extractors.node_factory import NodeFactory
+from sap_im_config_graph_explorer.object_extractors.primary import PRIMARY_EXTRACTORS
 from sap_im_config_graph_explorer.object_extractors.registry import ExtractorRegistry
-from sap_im_config_graph_explorer.xml_loader import load_xml_text
+from sap_im_config_graph_explorer.xml_loader import load_xml_file, load_xml_text
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+EXPECTED = {
+    "Fixed": "FixedValue",
+    "Lookup": "LookupTable",
+    "Quota": "Quota",
+    "Rate": "RateTable",
+    "Territory": "Territory",
+    "Variable": "Variable",
+    "Event": "EventType",
+    "Credit": "CreditType",
+    "Earning Code": "EarningCode",
+    "Earning Group": "EarningGroup",
+    "Business": "BusinessUnit",
+    "Processing": "ProcessingUnit",
+    "Calendar": "Calendar",
+}
 
 
 @dataclass
@@ -29,6 +53,118 @@ class FormulaTestExtractor:
         return ExtractionBatch(
             objects=[ObjectCandidate(element, "Formula", element.get("NAME", ""))]
         )
+
+
+def test_primary_and_auxiliary_extractors_emit_expected_allowlisted_types():
+    document = load_xml_file(FIXTURES / "extractor_families.xml")
+    context = ExtractionContext("configuration", "configuration", document)
+    batch = ExtractorRegistry(PRIMARY_EXTRACTORS + AUXILIARY_EXTRACTORS).extract(context)
+    nodes = NodeFactory().build(batch.objects, context)
+    assert {node.label: node.type for node in nodes} == EXPECTED
+    assert all(node.metadata.get("tag") for node in nodes)
+
+
+@pytest.mark.parametrize(
+    ("tag", "node_type"),
+    [
+        ("FIXED_VALUE", "FixedValue"),
+        ("MDLT", "LookupTable"),
+        ("MD_LOOKUP_TABLE", "LookupTable"),
+        ("LOOKUP_TABLE", "LookupTable"),
+        ("LOOKUPTABLE", "LookupTable"),
+        ("QUOTA", "Quota"),
+        ("RATE_TABLE", "RateTable"),
+        ("RATETABLE", "RateTable"),
+        ("TERRITORY", "Territory"),
+        ("VARIABLE", "Variable"),
+    ],
+)
+def test_primary_extractors_recognize_exact_aliases(tag: str, node_type: str):
+    document = load_xml_text(
+        f'<DATA_IMPORT><{tag} NAME="Object"/></DATA_IMPORT>', "aliases.xml"
+    )
+    context = ExtractionContext("configuration", "configuration", document)
+
+    batch = ExtractorRegistry(PRIMARY_EXTRACTORS).extract(context)
+
+    assert [(candidate.label, candidate.node_type) for candidate in batch.objects] == [
+        ("Object", node_type)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("tag", "node_type"),
+    [
+        ("EVENT_TYPE", "EventType"),
+        ("EVENTTYPE", "EventType"),
+        ("CREDIT_TYPE", "CreditType"),
+        ("CREDITTYPE", "CreditType"),
+        ("EARNING_CODE", "EarningCode"),
+        ("EARNINGCODE", "EarningCode"),
+        ("EARNING_GROUP", "EarningGroup"),
+        ("EARNINGGROUP", "EarningGroup"),
+        ("BUSINESS_UNIT", "BusinessUnit"),
+        ("BUSINESSUNIT", "BusinessUnit"),
+        ("PROCESSING_UNIT", "ProcessingUnit"),
+        ("PROCESSINGUNIT", "ProcessingUnit"),
+        ("CALENDAR", "Calendar"),
+    ],
+)
+def test_auxiliary_extractors_recognize_underscore_and_compact_aliases(
+    tag: str, node_type: str
+):
+    document = load_xml_text(
+        f"<DATA_IMPORT><{tag}>Object</{tag}></DATA_IMPORT>", "aliases.xml"
+    )
+    context = ExtractionContext("configuration", "configuration", document)
+
+    batch = ExtractorRegistry(AUXILIARY_EXTRACTORS).extract(context)
+
+    assert [(candidate.label, candidate.node_type) for candidate in batch.objects] == [
+        ("Object", node_type)
+    ]
+
+
+def test_definition_extractors_ignore_references_and_primary_text_only_elements():
+    document = load_xml_text(
+        """<DATA_IMPORT>
+        <FIXED_VALUE_REF NAME="Fixed reference"/>
+        <EVENT_TYPE_REF NAME="Event reference"/>
+        <FIXED_VALUE>Text is not a primary definition label</FIXED_VALUE>
+        <EVENT_TYPE>Text event definition</EVENT_TYPE>
+        </DATA_IMPORT>""",
+        "definitions.xml",
+    )
+    context = ExtractionContext("configuration", "configuration", document)
+
+    batch = ExtractorRegistry(PRIMARY_EXTRACTORS + AUXILIARY_EXTRACTORS).extract(context)
+
+    assert [(candidate.label, candidate.node_type) for candidate in batch.objects] == [
+        ("Text event definition", "EventType")
+    ]
+
+
+def test_family_extractors_normalize_dates_and_leave_nested_xml_to_node_factory():
+    document = load_xml_text(
+        """<DATA_IMPORT><FIXED_VALUE ID="FV-1" NAME="Fixed" STATUS="ACTIVE"
+        EFFECTIVE_START_DATE=" 2026-01-01 " EFFECTIVE_END_DATE=" 2200-01-01 ">
+        <EXPRESSION><ACTION SECRET="nested"/></EXPRESSION>
+        </FIXED_VALUE></DATA_IMPORT>""",
+        "metadata.xml",
+    )
+    context = ExtractionContext("configuration", "configuration", document)
+
+    batch = ExtractorRegistry(PRIMARY_EXTRACTORS).extract(context)
+    candidate = batch.objects[0]
+    node = NodeFactory().build(batch.objects, context)[0]
+
+    assert candidate.metadata == {
+        "effectiveStartDate": "2026-01-01",
+        "effectiveEndDate": "2200-01-01",
+    }
+    assert node.metadata["attributes"]["STATUS"] == "ACTIVE"
+    assert "EXPRESSION" not in candidate.metadata
+    assert "<EXPRESSION>" in node.rawXml
 
 
 def test_registry_dispatches_and_node_factory_enforces_allowlist_and_identity():
