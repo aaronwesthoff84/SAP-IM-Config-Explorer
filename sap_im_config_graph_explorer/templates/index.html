@@ -17,8 +17,16 @@
       <h2>Files</h2>
       <form id="upload-form">
         <label class="file-picker">
-          <span>XML files</span>
+          <span>Graph XML files</span>
           <input id="xml-files" name="files" type="file" accept=".xml,application/xml,text/xml" multiple>
+        </label>
+        <label class="file-picker">
+          <span>Before XML</span>
+          <input id="before-html-file" type="file" accept=".xml,application/xml,text/xml">
+        </label>
+        <label class="file-picker">
+          <span>After XML</span>
+          <input id="after-html-file" type="file" accept=".xml,application/xml,text/xml">
         </label>
         <label>
           <span>HTML variant</span>
@@ -29,7 +37,7 @@
           </select>
         </label>
         <div class="button-row">
-          <button type="button" id="html-button">Generate HTML</button>
+          <button type="button" id="html-button">Generate HTML Comparison</button>
           <button type="button" id="graph-button">Generate Graph</button>
           <button type="button" id="export-button">Export JSON</button>
         </div>
@@ -51,8 +59,8 @@
     <section class="workspace">
       <div class="tabs">
         <button class="tab active" data-view="graph-view">Graph</button>
-        <button class="tab" data-view="before-html-view">Before Change HTML</button>
-        <button class="tab" data-view="after-html-view">After Change HTML</button>
+        <button class="tab" data-view="before-html-view">Before XML HTML</button>
+        <button class="tab" data-view="after-html-view">After XML HTML</button>
         <button class="tab" data-view="development-baseline-html-view">Development Baseline HTML</button>
         <button class="tab" data-view="development-candidate-html-view">Development Candidate HTML</button>
       </div>
@@ -61,15 +69,15 @@
       </div>
       <div id="before-html-view" class="view">
         <div class="html-actions">
-          <a id="before-html-download" download="sap-im-plan-before.html" hidden>Download Before Change HTML</a>
-          <span id="before-html-meta" class="html-meta">No comparison baseline has been saved.</span>
+          <a id="before-html-download" download="sap-im-plan-before-xml.html" hidden>Download Before XML HTML</a>
+          <span id="before-html-meta" class="html-meta">Select a Before XML file and generate the comparison.</span>
         </div>
         <iframe id="before-html-preview" title="Before change HTML preview"></iframe>
       </div>
       <div id="after-html-view" class="view">
         <div class="html-actions">
-          <a id="after-html-download" download="sap-im-plan-after.html" hidden>Download After Change HTML</a>
-          <span id="after-html-meta" class="html-meta">Generate HTML to create the current output.</span>
+          <a id="after-html-download" download="sap-im-plan-after-xml.html" hidden>Download After XML HTML</a>
+          <span id="after-html-meta" class="html-meta">Select an After XML file and generate the comparison.</span>
         </div>
         <iframe id="after-html-preview" title="After change HTML preview"></iframe>
       </div>

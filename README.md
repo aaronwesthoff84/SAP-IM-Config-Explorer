@@ -37,9 +37,9 @@ The legacy command remains supported:
 
 If `output.html` is omitted, the converter writes beside the XML input using the same base name.
 
-The local app also has a `Generate HTML` action. Select an XML file, choose `Auto`, `A`, or `B`, then generate and preview the HTML output in the browser.
+The local app has a `Generate HTML Comparison` action. Select a **Before XML** file and an **After XML** file, choose `Auto`, `A`, or `B`, then generate and preview each HTML output in the browser. The XML filenames do not affect the comparison: the Before XML output is shown under **Before XML HTML**, and the After XML output is shown under **After XML HTML**.
 
-For visual regression testing, the app keeps a local browser baseline for the same XML file and variant. Generate the current output once. After a code update, generate that same XML again: the prior output appears under **Before Change HTML** and the new one under **After Change HTML**. Each output has its own download link. The comparison remains on the workstation in browser storage; download either file if it must survive browser-storage cleanup or use in another browser.
+Each XML comparison has its own download link. The two selected outputs remain on the workstation in browser storage; download either file if it must survive browser-storage cleanup or use in another browser.
 
 While the converter is under active development, the app also includes **Development Baseline HTML** and **Development Candidate HTML** tabs. These are separate from the browser comparison above. They display version-controlled snapshots generated from `tests/fixtures/html_sorting_comparison.xml`, so a converter-logic change can be reviewed without uploading a file. Before changing converter code, capture the baseline; after the change, capture the candidate:
 

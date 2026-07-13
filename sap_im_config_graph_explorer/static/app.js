@@ -5,9 +5,11 @@ const state = {
   htmlDownloadUrls: { before: "", after: "" },
 };
 
-const HTML_COMPARISON_STORAGE_KEY = "sap-im-html-comparison-v1";
+const HTML_COMPARISON_STORAGE_KEY = "sap-im-html-comparison-v2";
 const statusEl = document.getElementById("status");
 const fileInput = document.getElementById("xml-files");
+const beforeHtmlInput = document.getElementById("before-html-file");
+const afterHtmlInput = document.getElementById("after-html-file");
 const graphEl = document.getElementById("graph");
 const typeFilter = document.getElementById("type-filter");
 const searchInput = document.getElementById("search");
@@ -49,42 +51,48 @@ async function generateGraph() {
 }
 
 async function generateHtml() {
-  const file = fileInput.files[0];
-  if (!file) return setStatus("Select an XML file.");
+  const beforeFile = beforeHtmlInput.files[0];
+  const afterFile = afterHtmlInput.files[0];
+  if (!beforeFile || !afterFile) {
+    return setStatus("Select both a Before XML file and an After XML file.");
+  }
   const variant = document.getElementById("variant").value;
+  setStatus("Generating HTML comparison...");
+  let before;
+  let after;
+  try {
+    [before, after] = await Promise.all([
+      convertHtml(beforeFile, variant),
+      convertHtml(afterFile, variant),
+    ]);
+  } catch (error) {
+    return setStatus(error.message || "HTML comparison generation failed.");
+  }
+  state.html.before = before;
+  state.html.after = after;
+  const persisted = saveHtmlComparison();
+  renderHtmlComparison();
+  document.querySelector('[data-view="after-html-view"]').click();
+  setStatus(
+    `Generated HTML comparison: ${before.inputName} and ${after.inputName}.${persisted ? "" : " Browser storage could not retain the comparison after this page closes."}`
+  );
+}
+
+async function convertHtml(file, variant) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("variant", variant);
-  setStatus("Generating HTML...");
   const response = await fetch("/api/convert/html", { method: "POST", body: formData });
   const payload = await response.json();
-  if (!response.ok || !payload.ok) return setStatus(payload.error || "HTML generation failed.");
-  const previousAfter = state.html.after;
-  const after = {
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error || `Unable to generate HTML for ${file.name}.`);
+  }
+  return {
     html: payload.html,
     inputName: file.name,
     outputFile: payload.outputFile,
     variant,
   };
-  const savedBaseline = previousAfter && sameHtmlSource(previousAfter, after);
-  state.html.before = savedBaseline ? previousAfter : null;
-  state.html.after = after;
-  const persisted = saveHtmlComparison();
-  renderHtmlComparison();
-  document.querySelector('[data-view="after-html-view"]').click();
-  if (savedBaseline) {
-    setStatus(
-      `Generated ${payload.outputFile}. The prior output is available under Before Change HTML.${persisted ? "" : " Browser storage could not retain the comparison after this page closes."}`
-    );
-  } else {
-    setStatus(
-      `Generated ${payload.outputFile}. Generate again with the same XML after a change to create a before-and-after comparison.${persisted ? "" : " Browser storage could not retain this baseline after this page closes."}`
-    );
-  }
-}
-
-function sameHtmlSource(before, after) {
-  return before.inputName === after.inputName && before.variant === after.variant;
 }
 
 function isHtmlOutput(value) {
@@ -128,14 +136,14 @@ function renderHtmlOutput(kind) {
   const preview = document.getElementById(`${kind}-html-preview`);
   const download = document.getElementById(`${kind}-html-download`);
   const meta = document.getElementById(`${kind}-html-meta`);
-  const displayName = kind === "before" ? "Before Change HTML" : "After Change HTML";
+  const displayName = kind === "before" ? "Before XML HTML" : "After XML HTML";
 
   if (!output) {
     preview.srcdoc = emptyHtmlOutputMessage(kind);
     download.hidden = true;
     meta.textContent = kind === "before"
-      ? "No comparison baseline has been saved."
-      : "Generate HTML to create the current output.";
+      ? "Select a Before XML file and generate the comparison."
+      : "Select an After XML file and generate the comparison.";
     return;
   }
 
@@ -156,13 +164,13 @@ function renderHtmlOutput(kind) {
 function comparisonOutputName(outputFile, kind) {
   const dot = outputFile.lastIndexOf(".");
   const stem = dot > 0 ? outputFile.slice(0, dot) : outputFile;
-  return `${stem}-${kind}-change.html`;
+  return `${stem}-${kind}-xml.html`;
 }
 
 function emptyHtmlOutputMessage(kind) {
   const message = kind === "before"
-    ? "No before-change HTML is available yet. Generate HTML once to establish a baseline, then generate the same XML again after an update."
-    : "Generate HTML to create the after-change output.";
+    ? "Select a Before XML file and an After XML file, then generate the HTML comparison."
+    : "Select a Before XML file and an After XML file, then generate the HTML comparison.";
   return `<p style="font-family:Arial,Helvetica,sans-serif;margin:24px;color:#4c5a67">${message}</p>`;
 }
 
