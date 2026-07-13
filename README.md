@@ -162,7 +162,7 @@ Missing and ambiguous references are emitted as structured findings. They do not
 Graph construction runs a deterministic validation pass after reference resolution:
 
 - `missing_reference` and `ambiguous_reference` are error-level broken-reference findings from resolution.
-- `duplicate_object` is a warning when a canonical object identity repeats within one snapshot.
+- `duplicate_object` is an error when a canonical object identity repeats within one snapshot.
 - `unused_object` is a warning when an object has no inbound semantic dependency. Plan is an explicit root exemption; containment alone does not establish semantic use.
 - `orphaned_object` is a warning when an object has no inbound or outbound graph relationship of any kind.
 

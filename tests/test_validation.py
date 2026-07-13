@@ -42,7 +42,7 @@ def test_duplicate_detector_is_snapshot_scoped_and_reports_every_duplicate_insta
     duplicates = [finding for finding in findings if finding.code == "duplicate_object"]
 
     assert len(duplicates) == 1
-    assert duplicates[0].severity == "warning"
+    assert duplicates[0].severity == "error"
     assert duplicates[0].snapshotId == "configuration"
     assert duplicates[0].nodeIds == ("formula-a", "formula-b")
     assert duplicates[0].details == {
