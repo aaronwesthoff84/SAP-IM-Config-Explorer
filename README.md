@@ -1,6 +1,6 @@
-# SAP Incentive Management Config Graph Explorer
+# SAP IM Config Explorer
 
-SAP Incentive Management Config Graph Explorer is a local-first tool for reviewing XML configuration exports. It preserves the existing XML-to-HTML conversion workflow and adds a browser-based dependency graph.
+SAP IM Config Explorer is a local-first tool for reviewing XML configuration exports. It preserves the existing XML-to-HTML conversion workflow and adds a browser-based dependency graph.
 
 The application runs entirely on the workstation. It does not require cloud services or runtime CDN assets.
 

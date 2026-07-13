@@ -18,6 +18,16 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
+def test_index_uses_project_name():
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "<title>SAP IM Config Explorer</title>" in response.text
+    assert "<h1>SAP IM Config Explorer</h1>" in response.text
+
+
 def test_graph_endpoint_accepts_multiple_uploads():
     client = TestClient(app)
     xml = FIXTURE.read_bytes()

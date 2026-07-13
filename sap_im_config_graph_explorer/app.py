@@ -16,7 +16,7 @@ from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
-app = FastAPI(title="SAP IM Config Graph Explorer")
+app = FastAPI(title="SAP IM Config Explorer")
 app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
 
 

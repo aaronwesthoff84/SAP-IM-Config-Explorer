@@ -1,4 +1,4 @@
-"""SAP IM Config Graph Explorer package."""
+"""SAP IM Config Explorer package."""
 
 __all__ = ["__version__"]
 
