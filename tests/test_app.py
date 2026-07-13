@@ -28,6 +28,8 @@ def test_index_uses_project_name():
     assert "<title>SAP IM Config Explorer</title>" in response.text
     assert "<h1>SAP IM Config Explorer</h1>" in response.text
     assert 'id="validation-findings"' in response.text
+    assert 'data-view="before-html-view"' in response.text
+    assert 'data-view="after-html-view"' in response.text
 
 
 def test_graph_endpoint_accepts_multiple_uploads():

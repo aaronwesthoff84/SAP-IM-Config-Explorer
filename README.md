@@ -37,7 +37,9 @@ The legacy command remains supported:
 
 If `output.html` is omitted, the converter writes beside the XML input using the same base name.
 
-The local app also has a `Generate HTML` action. Select an XML file, choose `Auto`, `A`, or `B`, then generate and preview the HTML output in the browser. The generated HTML can be downloaded from the HTML tab.
+The local app also has a `Generate HTML` action. Select an XML file, choose `Auto`, `A`, or `B`, then generate and preview the HTML output in the browser.
+
+For visual regression testing, the app keeps a local browser baseline for the same XML file and variant. Generate the current output once. After a code update, generate that same XML again: the prior output appears under **Before Change HTML** and the new one under **After Change HTML**. Each output has its own download link. The comparison remains on the workstation in browser storage; download either file if it must survive browser-storage cleanup or use in another browser.
 
 ## Use The Graph Explorer
 
@@ -49,9 +51,19 @@ The local app also has a `Generate HTML` action. Select an XML file, choose `Aut
 6. Hover or click an edge to inspect its relationship.
 7. Click `Export JSON` to download the current graph data.
 
+## Current Graph Scope
+
+The current graph intentionally starts with the core plan hierarchy only:
+
+- Plan
+- Plan Component
+- Rule
+
+It shows `Rule -> Plan Component -> Plan` containment, so selecting a Rule also lists its associated plan components and plans in the details panel. References inside rules, including action instructions such as `Release Immediately`, do not create graph nodes or broken-reference findings in this view.
+
 ## Strict Graph Node Allowlist
 
-Only these object categories can become graph nodes:
+The graph model accepts only these approved object categories; no unknown XML element may become a graph node:
 
 - Fixed Value
 - Formula
@@ -71,7 +83,7 @@ Only these object categories can become graph nodes:
 - Processing Unit
 - Calendar
 
-The default graph builder uses ordered, object-specific extractors. Formula and Rule internals such as `FUNCTION`, `PARAMETER_LIST`, conditions, actions, and literals remain metadata or reference evidence and never become graph nodes. A caller can provide a custom `ExtractorRegistry`, but `NodeFactory` still rejects node types outside the allowlist.
+The default graph builder is stricter than this allowlist and emits only the three core types above. Formula and Rule internals such as `FUNCTION`, `PARAMETER_LIST`, conditions, actions, `RULE_ELEMENT_REF`, and literals remain metadata or reference evidence and never become graph nodes. A caller can provide a custom `ExtractorRegistry`, but `NodeFactory` still rejects node types outside the allowlist.
 
 ## Dependency And Containment Direction
 
@@ -161,9 +173,9 @@ Missing and ambiguous references are emitted as structured findings. They do not
 
 Graph construction runs a deterministic validation pass after reference resolution:
 
-- `missing_reference` and `ambiguous_reference` are error-level broken-reference findings from resolution.
+- `missing_reference` and `ambiguous_reference` are error-level broken-reference findings from resolution. In the current core graph, they apply only to missing or ambiguous Plan Component and Rule references.
 - `duplicate_object` is an error when a canonical object identity repeats within one snapshot.
-- `unused_object` is a warning when an object has no inbound semantic dependency. Plan is an explicit root exemption; containment alone does not establish semantic use.
+- `unused_object` is a warning when an object has no inbound semantic dependency or containment ownership. Plan is an explicit root exemption; a Rule or Plan Component attached to the core hierarchy is not unused.
 - `orphaned_object` is a warning when an object has no inbound or outbound graph relationship of any kind.
 
 Validation is snapshot-scoped. Findings identify the affected node IDs and include structured evidence for deterministic review and later migration analysis.

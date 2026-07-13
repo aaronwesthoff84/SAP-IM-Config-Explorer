@@ -1,5 +1,11 @@
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder
-from sap_im_config_graph_explorer.models import GraphLink, GraphNode, ValidationFinding
+from sap_im_config_graph_explorer.models import (
+    NODE_TYPES,
+    RELATIONSHIP_TYPES,
+    GraphLink,
+    GraphNode,
+    ValidationFinding,
+)
 from sap_im_config_graph_explorer.validation import ValidationEngine
 
 
@@ -72,7 +78,7 @@ def test_unused_and_orphaned_detectors_share_indexes_but_keep_distinct_meaning()
         finding.nodeIds[0] for finding in findings if finding.code == "orphaned_object"
     }
 
-    assert unused == {"component", "rule", "orphan"}
+    assert unused == {"orphan"}
     assert orphaned == {"orphan"}
     assert "plan" not in unused
     assert "formula" not in unused
@@ -111,5 +117,8 @@ def test_validation_findings_are_stable_and_graph_builder_runs_the_engine():
         finding.to_dict() for finding in second
     ]
 
-    graph = GraphBuilder().build_from_paths(["tests/fixtures/duplicate_ids.xml"])
+    graph = GraphBuilder(
+        node_types=NODE_TYPES,
+        relationship_types=RELATIONSHIP_TYPES,
+    ).build_from_paths(["tests/fixtures/duplicate_ids.xml"])
     assert any(finding.code == "duplicate_object" for finding in graph.findings)

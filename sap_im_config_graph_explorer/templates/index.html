@@ -51,16 +51,25 @@
     <section class="workspace">
       <div class="tabs">
         <button class="tab active" data-view="graph-view">Graph</button>
-        <button class="tab" data-view="html-view">HTML</button>
+        <button class="tab" data-view="before-html-view">Before Change HTML</button>
+        <button class="tab" data-view="after-html-view">After Change HTML</button>
       </div>
       <div id="graph-view" class="view active">
         <div id="graph"></div>
       </div>
-      <div id="html-view" class="view">
+      <div id="before-html-view" class="view">
         <div class="html-actions">
-          <a id="html-download" download="sap-im-plan.html">Download HTML</a>
+          <a id="before-html-download" download="sap-im-plan-before.html" hidden>Download Before Change HTML</a>
+          <span id="before-html-meta" class="html-meta">No comparison baseline has been saved.</span>
         </div>
-        <iframe id="html-preview" title="Generated HTML preview"></iframe>
+        <iframe id="before-html-preview" title="Before change HTML preview"></iframe>
+      </div>
+      <div id="after-html-view" class="view">
+        <div class="html-actions">
+          <a id="after-html-download" download="sap-im-plan-after.html" hidden>Download After Change HTML</a>
+          <span id="after-html-meta" class="html-meta">Generate HTML to create the current output.</span>
+        </div>
+        <iframe id="after-html-preview" title="After change HTML preview"></iframe>
       </div>
     </section>
 

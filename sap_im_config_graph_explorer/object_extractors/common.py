@@ -98,6 +98,8 @@ def normalize_hint(value: str) -> str:
 
 def expected_type_for_hint(hint: str) -> str | None:
     normalized = normalize_hint(hint)
+    if "RULE_ELEMENT" in normalized:
+        return None
     if "PLAN_COMPONENT" in normalized or "PLANCOMPONENT" in normalized:
         return "PlanComponent"
     if "COMPONENT" in normalized:

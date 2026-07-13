@@ -61,11 +61,7 @@ class _RuleExtractor:
                     metadata=metadata,
                 )
             ],
-            references=reference_candidates(
-                element,
-                context,
-                include_untyped=True,
-            ),
+            references=reference_candidates(element, context),
         )
 
 

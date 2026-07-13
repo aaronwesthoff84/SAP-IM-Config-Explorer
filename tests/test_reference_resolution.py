@@ -3,10 +3,18 @@ from pathlib import Path
 import pytest
 
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
+from sap_im_config_graph_explorer.models import NODE_TYPES, RELATIONSHIP_TYPES
 from sap_im_config_graph_explorer.object_extractors import default_registry
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def full_graph_builder() -> GraphBuilder:
+    return GraphBuilder(
+        node_types=NODE_TYPES,
+        relationship_types=RELATIONSHIP_TYPES,
+    )
 
 
 def test_default_registry_uses_domain_extractors_in_integration_order():
@@ -27,7 +35,7 @@ def test_default_registry_uses_domain_extractors_in_integration_order():
 
 
 def test_resolver_emits_real_stable_links_for_explicit_candidates():
-    graph = GraphBuilder().build_from_paths([FIXTURES / "minimal_plan.xml"])
+    graph = full_graph_builder().build_from_paths([FIXTURES / "minimal_plan.xml"])
     node_ids = {node.id for node in graph.nodes}
 
     assert all(link.source in node_ids and link.target in node_ids for link in graph.links)
@@ -47,7 +55,7 @@ def test_resolver_emits_real_stable_links_for_explicit_candidates():
 
 
 def test_missing_and_ambiguous_references_become_findings_not_links():
-    graph = GraphBuilder().build_from_paths(
+    graph = full_graph_builder().build_from_paths(
         [FIXTURES / "reference_resolution.xml"]
     )
 
@@ -63,7 +71,7 @@ def test_reference_resolution_is_scoped_to_each_snapshot():
     <FORMULA NAME="Uses Gate"><VARIABLE_REF NAME="Gate" /></FORMULA>
     <VARIABLE NAME="Gate" />
     </DATA_IMPORT>"""
-    graph = GraphBuilder().build_snapshots(
+    graph = full_graph_builder().build_snapshots(
         [
             SnapshotInput("non-prod", "non_production", [("np.xml", xml)]),
             SnapshotInput("prod", "production", [("prod.xml", xml)]),

@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from sap_im_config_graph_explorer.models import GraphDocument, GraphNode, Snapshot
+from sap_im_config_graph_explorer.models import (
+    NODE_TYPES,
+    RELATIONSHIP_TYPES,
+    GraphDocument,
+    GraphNode,
+    Snapshot,
+)
 from sap_im_config_graph_explorer.object_extractors import (
     ExtractionContext,
     ExtractorRegistry,
@@ -33,12 +40,36 @@ class _SnapshotDocuments:
     documents: list[XmlDocument]
 
 
+CORE_GRAPH_NODE_TYPES = frozenset({"Plan", "PlanComponent", "Rule"})
+CORE_GRAPH_RELATIONSHIP_TYPES = frozenset(
+    {"belongs_to_plan", "belongs_to_plan_component"}
+)
+
+
 class GraphBuilder:
+    """Build an allowlisted graph, scoped to the currently enabled topology."""
+
     def __init__(
         self,
         registry: ExtractorRegistry | None = None,
         validation_engine: ValidationEngine | None = None,
+        node_types: Iterable[str] = CORE_GRAPH_NODE_TYPES,
+        relationship_types: Iterable[str] = CORE_GRAPH_RELATIONSHIP_TYPES,
     ) -> None:
+        self.node_types = frozenset(node_types)
+        self.relationship_types = frozenset(relationship_types)
+        unsupported_node_types = self.node_types - NODE_TYPES
+        unsupported_relationship_types = self.relationship_types - RELATIONSHIP_TYPES
+        if unsupported_node_types:
+            raise ValueError(
+                "Unsupported graph node types: "
+                f"{', '.join(sorted(unsupported_node_types))}"
+            )
+        if unsupported_relationship_types:
+            raise ValueError(
+                "Unsupported graph relationship types: "
+                f"{', '.join(sorted(unsupported_relationship_types))}"
+            )
         self.registry = registry if registry is not None else default_registry()
         self.node_factory = NodeFactory()
         self.validation_engine = validation_engine or ValidationEngine()
@@ -112,8 +143,21 @@ class GraphBuilder:
                     document=document,
                 )
                 batch = self.registry.extract(context)
-                nodes.extend(self.node_factory.build(batch.objects, context))
-                references.extend(batch.references)
+                nodes.extend(
+                    self.node_factory.build(
+                        [
+                            candidate
+                            for candidate in batch.objects
+                            if candidate.node_type in self.node_types
+                        ],
+                        context,
+                    )
+                )
+                references.extend(
+                    reference
+                    for reference in batch.references
+                    if self._reference_is_in_scope(reference)
+                )
 
         self.node_factory.finalize(nodes)
         resolution = ReferenceResolver(
@@ -131,4 +175,10 @@ class GraphBuilder:
             nodes=nodes,
             links=resolution.links,
             findings=findings,
+        )
+
+    def _reference_is_in_scope(self, reference: ReferenceCandidate) -> bool:
+        return (
+            reference.expected_type in self.node_types
+            and reference.relationship in self.relationship_types
         )
