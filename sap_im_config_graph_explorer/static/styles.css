@@ -163,6 +163,56 @@ button.secondary {
   font-weight: 700;
 }
 
+.validation-findings {
+  border-bottom: 1px solid #d9e0e7;
+  margin: 0 -18px 18px;
+  max-height: 34vh;
+  overflow: auto;
+  padding: 0 18px 18px;
+}
+
+.findings-summary,
+.empty-findings {
+  color: #4c5a67;
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+
+.findings-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.finding {
+  background: #fff8e8;
+  border-left: 4px solid #b97800;
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.finding.error {
+  background: #fff1f0;
+  border-left-color: #b42318;
+}
+
+.finding-title {
+  color: #25313b;
+  display: block;
+  font-size: 12px;
+  margin-bottom: 3px;
+  text-transform: capitalize;
+}
+
+.finding-message {
+  color: #4c5a67;
+  font-size: 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 dl {
   margin: 0 0 16px;
 }

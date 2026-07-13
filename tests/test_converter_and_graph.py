@@ -24,6 +24,16 @@ def test_xml_to_html_conversion_still_emits_plan_summary():
     assert "<!DOCTYPE HTML>" in html
     assert "SAP Incentive Management Plan Summary" in html
     assert "Enterprise Plan" in html
+    assert html.index("Plans (1)") < html.index("Plan Components (1)")
+    assert html.index("Plan Components (1)") < html.index("Rules (1)")
+    assert html.index("Rules (1)") < html.index("Formulas (1)")
+    assert html.index("Formulas (1)") < html.index("Variables (0)")
+    assert html.index("Variables (0)") < html.index("Lookup Tables (1)")
+    assert html.index("Lookup Tables (1)") < html.index("Quotas (0)")
+    assert html.index("Quotas (0)") < html.index("Territories (0)")
+    assert html.index("Territories (0)") < html.index("Fixed Values (0)")
+    assert html.count('class="SummaryCell"') == 27
+    assert ">Copyright<" not in html
 
 
 def test_legacy_cli_still_accepts_old_argument_shape(tmp_path):

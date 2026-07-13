@@ -1,5 +1,5 @@
 const state = {
-  graph: { nodes: [], links: [] },
+  graph: { nodes: [], links: [], findings: [] },
   cy: null,
   html: "",
   htmlName: "sap-im-plan.html",
@@ -12,6 +12,7 @@ const typeFilter = document.getElementById("type-filter");
 const searchInput = document.getElementById("search");
 const rawXmlEl = document.getElementById("raw-xml");
 const summaryEl = document.getElementById("node-summary");
+const findingsEl = document.getElementById("validation-findings");
 
 document.getElementById("graph-button").addEventListener("click", generateGraph);
 document.getElementById("html-button").addEventListener("click", generateHtml);
@@ -39,8 +40,9 @@ async function generateGraph() {
   if (!response.ok) return setStatus(payload.error || "Graph generation failed.");
   state.graph = payload;
   populateTypeFilter(payload.nodes);
+  renderFindings(payload.findings || []);
   renderGraph();
-  setStatus(`${payload.nodes.length} nodes, ${payload.links.length} links`);
+  setStatus(graphStatus(payload));
 }
 
 async function generateHtml() {
@@ -147,6 +149,33 @@ function populateTypeFilter(nodes) {
     typeFilter.appendChild(option);
   });
   typeFilter.value = types.includes(selected) ? selected : "";
+}
+
+function renderFindings(findings) {
+  if (!findings.length) {
+    findingsEl.innerHTML = '<p class="empty-findings">No validation findings.</p>';
+    return;
+  }
+
+  const errorCount = findings.filter((finding) => finding.severity === "error").length;
+  const warningCount = findings.filter((finding) => finding.severity === "warning").length;
+  const summary = `${errorCount} error${errorCount === 1 ? "" : "s"}, ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
+  const items = findings.map((finding) => `
+    <li class="finding ${escapeHtml(finding.severity || "warning")}">
+      <strong class="finding-title">${escapeHtml(finding.code || "validation finding")}</strong>
+      <p class="finding-message">${escapeHtml(finding.message || "No message supplied.")}</p>
+    </li>
+  `).join("");
+
+  findingsEl.innerHTML = `<p class="findings-summary">${escapeHtml(summary)}</p><ul class="findings-list">${items}</ul>`;
+}
+
+function graphStatus(payload) {
+  const findings = payload.findings || [];
+  if (!findings.length) return `${payload.nodes.length} nodes, ${payload.links.length} links, no findings`;
+  const errorCount = findings.filter((finding) => finding.severity === "error").length;
+  const warningCount = findings.filter((finding) => finding.severity === "warning").length;
+  return `${payload.nodes.length} nodes, ${payload.links.length} links, ${errorCount} error${errorCount === 1 ? "" : "s"}, ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
 }
 
 function showNodeDetails(node) {

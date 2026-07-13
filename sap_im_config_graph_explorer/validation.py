@@ -91,7 +91,7 @@ class ValidationEngine:
                         *node_ids,
                     ),
                     code="duplicate_object",
-                    severity="warning",
+                    severity="error",
                     snapshotId=snapshot_id,
                     nodeIds=node_ids,
                     message=(

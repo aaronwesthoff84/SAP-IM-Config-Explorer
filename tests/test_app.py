@@ -7,6 +7,7 @@ from sap_im_config_graph_explorer.app import app
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "minimal_plan.xml"
+VALIDATION_FIXTURE = ROOT / "tests" / "fixtures" / "validation_findings.xml"
 
 
 def test_health_endpoint():
@@ -26,6 +27,7 @@ def test_index_uses_project_name():
     assert response.status_code == 200
     assert "<title>SAP IM Config Explorer</title>" in response.text
     assert "<h1>SAP IM Config Explorer</h1>" in response.text
+    assert 'id="validation-findings"' in response.text
 
 
 def test_graph_endpoint_accepts_multiple_uploads():
@@ -61,6 +63,28 @@ def test_graph_endpoint_accepts_multiple_uploads():
         "unused_object",
         "orphaned_object",
     }
+
+
+def test_graph_endpoint_exposes_duplicate_unused_and_orphaned_findings():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/graph",
+        files={
+            "files": (
+                "validation_findings.xml",
+                VALIDATION_FIXTURE.read_bytes(),
+                "application/xml",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    findings = response.json()["findings"]
+    finding_by_code = {finding["code"]: finding for finding in findings}
+    assert {"duplicate_object", "unused_object", "orphaned_object"} <= set(finding_by_code)
+    assert finding_by_code["duplicate_object"]["severity"] == "error"
+    assert finding_by_code["orphaned_object"]["message"] == "Orphaned Rule object: Unattached Rule"
 
 
 def test_html_endpoint_returns_generated_html():

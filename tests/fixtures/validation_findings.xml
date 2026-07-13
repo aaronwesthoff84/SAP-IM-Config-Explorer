@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <RULE_SET>
+    <RULE NAME="Duplicated Rule" TYPE="DIRECT_TRANSACTION_CREDIT" />
+    <RULE NAME="Duplicated Rule" TYPE="DIRECT_TRANSACTION_CREDIT" />
+    <RULE NAME="Unattached Rule" TYPE="DIRECT_TRANSACTION_CREDIT" />
+  </RULE_SET>
+</DATA_IMPORT>

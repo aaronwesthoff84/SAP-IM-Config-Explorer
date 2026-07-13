@@ -54,6 +54,18 @@ SECTION_ORDER = [
     ("formulas","Formulas","FORMULA_SET"), ("territories","Territories","TERRITORY_SET"),
     ("variables","Variables","VARIABLE_SET"),
 ]
+SUMMARY_ORDER = [
+    ("plans", "Plans"),
+    ("plancomponents", "Plan Components"),
+    ("rules", "Rules"),
+    ("formulas", "Formulas"),
+    ("variables", "Variables"),
+    ("mdlts", "Lookup Tables"),
+    ("quotas", "Quotas"),
+    ("territories", "Territories"),
+    ("fixedvalues", "Fixed Values"),
+]
+SUMMARY_COLUMN_COUNT = 3
 CSS = """
             <!--
             .Body   { background-color: #F3F3F6; margin: 20; link: #FF6600; alink: #FF9900; vlink: #FF6600; font-family: Arial,Helvetica,sans-serif; font-size: 9pt; font-weight: 300; color: #666677; text-decoration: none; }
@@ -66,7 +78,6 @@ CSS = """
             .Link          { font-family: Arial,Helvetica,sans-serif !important; font-size: 9pt; font-weight: 300; color: #0088BB; text-decoration: none; }
             .Link:hover    { color: #005588 !important; text-decoration: none; }
             .LabelCell        { font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #777777; font-weight: 300; padding: 6px 6px 1px 0px; vertical-align: top; text-align: right; }
-            .Copyright        { font-family: Arial,Helvetica,Sans-Serif; font-size: 7pt; color: #777777; font-weight: 300; padding: 6px 6px 1px 0px; vertical-align: top; text-align: center; }
             .Value    { font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #003399; font-weight: 300; padding: 6px 6px 4px 3px; vertical-align: top; }
             .ContentBox    {  background-color: #FFFFFF; border: solid 1px #EEEEEE; padding: 8px;  font-family: Arial,Helvetica,sans-serif; font-size: 9pt; font-weight: 300; color: #666666; }
             .ListTable    { background-color: #FFFFFF; }
@@ -74,6 +85,10 @@ CSS = """
             .ListCell    { padding: 2px 4px 2px 4px; font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #003399; vertical-align: top; border-bottom: 1px solid #EEEEEE;}
             .FunctionParameter { font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #666666; vertical-align: top; padding-left: 25px }
             .FunctionParameterLineNumber {font-family: Verdana,Arial,Helvetica,Sans-Serif; font-size: 7pt; color: #999999; vertical-align: top; text-align:right; padding-left:2px }
+            .SummaryTable { width: 100%; border-collapse: separate; border-spacing: 0 8px; table-layout: fixed; }
+            .SummaryHeader { background-color: #E6F1F8; border: 1px solid #AAC5D5; color: #003399; font-family: Arial,Helvetica,sans-serif; font-size: 10pt; font-weight: 700; padding: 6px 8px; text-align: left; }
+            .SummaryCell { background-color: #FFFFFF; border-bottom: 1px solid #EEEEEE; overflow-wrap: anywhere; padding: 8px 10px; vertical-align: top; width: 33.333%; }
+            .SummaryItem { color: #003399; font-family: Arial,Helvetica,sans-serif; font-size: 9pt; }
             -->
         """
 SAP_LOGO_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
@@ -350,7 +365,6 @@ class Plan:
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#plans">Plans</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
-        if v=="B": L.append('<tr><td class="Copyright">Copyright</td></tr>')
         L.append('</table>')
         return "\n".join(L)
 
@@ -431,7 +445,6 @@ class Rule:
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#{ca}">{esc(cn)}</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
-        if v=="B": L.append('<tr><td class="Copyright">Copyright</td></tr>')
         L.append('</table>')
         return "\n".join(L)
 
@@ -475,7 +488,6 @@ class MDLT:
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#mdlts">Lookup Tables</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
-        if v=="B": L.append('<tr><td class="Copyright">Copyright</td></tr>')
         L.append('</table>')
         return "\n".join(L)
 
@@ -501,7 +513,6 @@ class FV:
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#fixedvalues">Fixed Values</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
-        if v=="B": L.append('<tr><td class="Copyright">Copyright</td></tr>')
         L.append('</table>')
         return "\n".join(L)
 
@@ -533,7 +544,6 @@ class Quota:
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#quotas">Quotas</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
-        if v=="B": L.append('<tr><td class="Copyright">Copyright</td></tr>')
         L.append('</table>')
         return "\n".join(L)
 
@@ -569,7 +579,6 @@ class Formula:
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#formulas">Formulas</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
-        if v=="B": L.append('<tr><td class="Copyright">Copyright</td></tr>')
         L.append('</table>')
         return "\n".join(L)
 
@@ -600,7 +609,6 @@ class Territory:
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#territories">Territories</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
-        if v=="B": L.append('<tr><td class="Copyright">Copyright</td></tr>')
         L.append('</table>')
         return "\n".join(L)
 
@@ -644,7 +652,6 @@ class Variable:
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#variables">Variables</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
-        if v=="B": L.append('<tr><td class="Copyright">Copyright</td></tr>')
         L.append('</table>')
         return "\n".join(L)
 
@@ -708,7 +715,8 @@ class Transformer:
             bu=r.e.get("BUSINESS_UNITS","")
             if bu and bu not in ("__ALL_BU__",""): self.v="B"; break
     def _so(self, a):
-        return {"plans":self.plans,"mdlts":self.mdlts,"fixedvalues":self.fvs,
+        return {"plans":self.plans,"plancomponents":list(self.comps.values()),
+                "rules":list(self.rules.values()),"mdlts":self.mdlts,"fixedvalues":self.fvs,
                 "quotas":self.quotas,"formulas":self.formulas,"territories":self.terrs,
                 "variables":self.vars}.get(a,[])
     def html(self):
@@ -717,8 +725,9 @@ class Transformer:
             '<title>SAP Incentive Management Plan Summary</title>',
             f'<style type="text/css">{CSS}</style>','</head>','<body class="Body">']
         if v=="B": L.append(f'<p style="text-align: center;"><img src="data:image/png;base64,{SAP_LOGO_B64}" alt="SAP"></p>')
+        L.append('<a name="Top"></a>')
         L.append('<p></p><span class="PageTitle">SAP Incentive Management Plan Summary</span><p></p><p></p>')
-        L.append(self._idx()); L.append('<a name="Top"></a>')
+        L.append(self._idx())
         for anchor,dname,sname in SECTION_ORDER:
             objs=self._so(anchor)
             if not objs:
@@ -745,37 +754,46 @@ class Transformer:
                     raise XErr("Render error", obj_name=on, obj_type=type(obj).__name__, details=str(e)) from e
         L.append('</body></html>')
         return "\n".join(L)
+    def _summary_anchors(self):
+        component_anchors={}; rule_anchors={}
+        for plan in self.plans:
+            for component_name in plan.cn:
+                component=self.comps.get(component_name)
+                if component is None: continue
+                component_anchors.setdefault(component_name, f"{component.name}-plan-{plan.name}")
+                for rule_name in component.rn:
+                    if rule_name in self.rules:
+                        rule_anchors.setdefault(rule_name, f"{rule_name}-rule-{component.name}-{plan.name}")
+        return component_anchors, rule_anchors
+
+    def _summary_entries(self, anchor):
+        component_anchors, rule_anchors=self._summary_anchors()
+        entries=[]
+        for obj in self._so(anchor):
+            name=getattr(obj, "name", "")
+            if anchor=="plancomponents": target=component_anchors.get(name)
+            elif anchor=="rules": target=rule_anchors.get(name)
+            else: target=getattr(obj, "anchor", None)
+            if target:
+                entries.append(f'<a class="Link" href="#{esc(target)}">{esc(name)}</a>')
+            else:
+                entries.append(f'<span class="SummaryItem">{esc(name)}</span>')
+        return entries
+
     def _idx(self):
-        L=[]
-        for anchor,dname,sname in SECTION_ORDER:
-            objs=self._so(anchor); cnt=len(objs)
-            if cnt==0 and anchor not in ("quotas","territories"): continue
-            L.append(f'<a class="Link" href="#{anchor}"><b>{dname}</b></a>')
-            if cnt>0: L.append(f'            ({cnt})')
-            L.append('<br>')
-            if cnt>0:
-                L.append('<table width="100%" border="0" cellpadding="0" cellspacing="0"><tr>')
-                if anchor=="plans":
-                    lnks=[f'<a style="padding: 10px" class="Link" href="#{p.anchor}">{esc(p.name)}</a>' for p in objs]
-                    L.append(f'<td style="padding: 15px; vertical-align: top; overflow: hidden;">{"<br>".join(lnks)}<br></td>')
-                    L.append('<td style="padding: 15px; vertical-align: top; overflow: hidden;"></td>')
-                elif anchor=="fixedvalues":
-                    lnks=[f'<a style="padding: 10px" class="Link" href="#{o.anchor}">{esc(o.name)}</a>' for o in objs]
-                    L.append(f'<td style="padding: 15px; vertical-align: top; overflow: hidden;">{"<br>".join(lnks)}<br></td>')
-                elif anchor in ("quotas","territories"):
-                    lnks=[f'<a style="padding: 10px" class="Link" href="#{o.anchor}">{esc(o.name)}</a>' for o in objs]
-                    if lnks:
-                        L.append(f'<td style="padding: 15px; vertical-align: top; overflow: hidden;">{"<br>".join(lnks)}<br></td>')
-                        L.append('<td style="padding: 15px; vertical-align: top; overflow: hidden;"></td>')
-                    else: L.append('<td></td>')
-                else:
-                    ipc=max(1,min(10,cnt//3+1))
-                    for i in range(0,cnt,ipc):
-                        chunk=objs[i:i+ipc]
-                        cl=[f'<a style="padding: 10px" class="Link" href="#{o.anchor}">{esc(o.name)}</a>' for o in chunk]
-                        L.append(f'<td style="padding: 15px; vertical-align: top; overflow: hidden;">{"<br>".join(cl)}<br></td>')
-                L.append('</tr></table>')
-            L.append('<p></p>')
+        L=['<h1 class="SectionTitle">Plan Summary</h1>', '<table class="SummaryTable">']
+        for anchor,dname in SUMMARY_ORDER:
+            entries=self._summary_entries(anchor)
+            L.append(f'<tr><th colspan="{SUMMARY_COLUMN_COUNT}" class="SummaryHeader">{esc(dname)} ({len(entries)})</th></tr>')
+            rows=[entries[i:i + SUMMARY_COLUMN_COUNT] for i in range(0, len(entries), SUMMARY_COLUMN_COUNT)] or [[]]
+            for row in rows:
+                L.append('<tr>')
+                for entry in row:
+                    L.append(f'<td class="SummaryCell">{entry}</td>')
+                for _ in range(SUMMARY_COLUMN_COUNT-len(row)):
+                    L.append('<td class="SummaryCell">&nbsp;</td>')
+                L.append('</tr>')
+        L.append('</table><p></p>')
         return "\n".join(L)
     def transform(self, xp, hp):
         try:
