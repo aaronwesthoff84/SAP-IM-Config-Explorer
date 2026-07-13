@@ -17,16 +17,8 @@
       <h2>Files</h2>
       <form id="upload-form">
         <label class="file-picker">
-          <span>Graph XML files</span>
+          <span>XML files</span>
           <input id="xml-files" name="files" type="file" accept=".xml,application/xml,text/xml" multiple>
-        </label>
-        <label class="file-picker">
-          <span>Before XML</span>
-          <input id="before-html-file" type="file" accept=".xml,application/xml,text/xml">
-        </label>
-        <label class="file-picker">
-          <span>After XML</span>
-          <input id="after-html-file" type="file" accept=".xml,application/xml,text/xml">
         </label>
         <label>
           <span>HTML variant</span>
@@ -37,7 +29,7 @@
           </select>
         </label>
         <div class="button-row">
-          <button type="button" id="html-button">Generate HTML Comparison</button>
+          <button type="button" id="html-button">Generate HTML</button>
           <button type="button" id="graph-button">Generate Graph</button>
           <button type="button" id="export-button">Export JSON</button>
         </div>
@@ -59,41 +51,17 @@
     <section class="workspace">
       <div class="tabs">
         <button class="tab active" data-view="graph-view">Graph</button>
-        <button class="tab" data-view="before-html-view">Before XML HTML</button>
-        <button class="tab" data-view="after-html-view">After XML HTML</button>
-        <button class="tab" data-view="development-baseline-html-view">Development Baseline HTML</button>
-        <button class="tab" data-view="development-candidate-html-view">Development Candidate HTML</button>
+        <button class="tab" data-view="html-output-view">HTML Output</button>
       </div>
       <div id="graph-view" class="view active">
         <div id="graph"></div>
       </div>
-      <div id="before-html-view" class="view">
+      <div id="html-output-view" class="view">
         <div class="html-actions">
-          <a id="before-html-download" download="sap-im-plan-before-xml.html" hidden>Download Before XML HTML</a>
-          <span id="before-html-meta" class="html-meta">Select a Before XML file and generate the comparison.</span>
+          <a id="html-output-download" download="sap-im-plan.html" hidden>Download HTML</a>
+          <span id="html-output-meta" class="html-meta">Select an XML file and generate HTML.</span>
         </div>
-        <iframe id="before-html-preview" title="Before change HTML preview"></iframe>
-      </div>
-      <div id="after-html-view" class="view">
-        <div class="html-actions">
-          <a id="after-html-download" download="sap-im-plan-after-xml.html" hidden>Download After XML HTML</a>
-          <span id="after-html-meta" class="html-meta">Select an After XML file and generate the comparison.</span>
-        </div>
-        <iframe id="after-html-preview" title="After change HTML preview"></iframe>
-      </div>
-      <div id="development-baseline-html-view" class="view">
-        <div class="html-actions">
-          <a href="/api/development/html/baseline" download="development-baseline.html">Download Development Baseline HTML</a>
-          <span class="html-meta">Temporary converter snapshot captured before the current development change.</span>
-        </div>
-        <iframe id="development-baseline-html-preview" src="/api/development/html/baseline" title="Development baseline HTML preview"></iframe>
-      </div>
-      <div id="development-candidate-html-view" class="view">
-        <div class="html-actions">
-          <a href="/api/development/html/candidate" download="development-candidate.html">Download Development Candidate HTML</a>
-          <span class="html-meta">Temporary converter snapshot captured after the current development change.</span>
-        </div>
-        <iframe id="development-candidate-html-preview" src="/api/development/html/candidate" title="Development candidate HTML preview"></iframe>
+        <iframe id="html-output-preview" title="HTML output preview"></iframe>
       </div>
     </section>
 

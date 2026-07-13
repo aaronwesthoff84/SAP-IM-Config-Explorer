@@ -1,15 +1,12 @@
 const state = {
   graph: { nodes: [], links: [], findings: [] },
   cy: null,
-  html: { before: null, after: null },
-  htmlDownloadUrls: { before: "", after: "" },
+  html: null,
+  htmlDownloadUrl: "",
 };
 
-const HTML_COMPARISON_STORAGE_KEY = "sap-im-html-comparison-v2";
 const statusEl = document.getElementById("status");
 const fileInput = document.getElementById("xml-files");
-const beforeHtmlInput = document.getElementById("before-html-file");
-const afterHtmlInput = document.getElementById("after-html-file");
 const graphEl = document.getElementById("graph");
 const typeFilter = document.getElementById("type-filter");
 const searchInput = document.getElementById("search");
@@ -32,8 +29,6 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
-loadHtmlComparison();
-
 async function generateGraph() {
   const files = [...fileInput.files];
   if (!files.length) return setStatus("Select one or more XML files.");
@@ -51,31 +46,18 @@ async function generateGraph() {
 }
 
 async function generateHtml() {
-  const beforeFile = beforeHtmlInput.files[0];
-  const afterFile = afterHtmlInput.files[0];
-  if (!beforeFile || !afterFile) {
-    return setStatus("Select both a Before XML file and an After XML file.");
-  }
+  const file = fileInput.files[0];
+  if (!file) return setStatus("Select an XML file.");
   const variant = document.getElementById("variant").value;
-  setStatus("Generating HTML comparison...");
-  let before;
-  let after;
+  setStatus("Generating HTML...");
   try {
-    [before, after] = await Promise.all([
-      convertHtml(beforeFile, variant),
-      convertHtml(afterFile, variant),
-    ]);
+    state.html = await convertHtml(file, variant);
   } catch (error) {
-    return setStatus(error.message || "HTML comparison generation failed.");
+    return setStatus(error.message || "HTML generation failed.");
   }
-  state.html.before = before;
-  state.html.after = after;
-  const persisted = saveHtmlComparison();
-  renderHtmlComparison();
-  document.querySelector('[data-view="after-html-view"]').click();
-  setStatus(
-    `Generated HTML comparison: ${before.inputName} and ${after.inputName}.${persisted ? "" : " Browser storage could not retain the comparison after this page closes."}`
-  );
+  renderHtmlOutput();
+  document.querySelector('[data-view="html-output-view"]').click();
+  setStatus(`Generated ${state.html.outputFile}.`);
 }
 
 async function convertHtml(file, variant) {
@@ -95,82 +77,35 @@ async function convertHtml(file, variant) {
   };
 }
 
-function isHtmlOutput(value) {
-  return value
-    && typeof value.html === "string"
-    && typeof value.inputName === "string"
-    && typeof value.outputFile === "string"
-    && typeof value.variant === "string";
-}
-
-function loadHtmlComparison() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(HTML_COMPARISON_STORAGE_KEY) || "null");
-    if (saved) {
-      state.html.before = isHtmlOutput(saved.before) ? saved.before : null;
-      state.html.after = isHtmlOutput(saved.after) ? saved.after : null;
-    }
-  } catch (_error) {
-    state.html.before = null;
-    state.html.after = null;
-  }
-  renderHtmlComparison();
-}
-
-function saveHtmlComparison() {
-  try {
-    window.localStorage.setItem(HTML_COMPARISON_STORAGE_KEY, JSON.stringify(state.html));
-    return true;
-  } catch (_error) {
-    return false;
-  }
-}
-
-function renderHtmlComparison() {
-  renderHtmlOutput("before");
-  renderHtmlOutput("after");
-}
-
-function renderHtmlOutput(kind) {
-  const output = state.html[kind];
-  const preview = document.getElementById(`${kind}-html-preview`);
-  const download = document.getElementById(`${kind}-html-download`);
-  const meta = document.getElementById(`${kind}-html-meta`);
-  const displayName = kind === "before" ? "Before XML HTML" : "After XML HTML";
+function renderHtmlOutput() {
+  const output = state.html;
+  const preview = document.getElementById("html-output-preview");
+  const download = document.getElementById("html-output-download");
+  const meta = document.getElementById("html-output-meta");
 
   if (!output) {
-    preview.srcdoc = emptyHtmlOutputMessage(kind);
+    preview.srcdoc = emptyHtmlOutputMessage();
     download.hidden = true;
-    meta.textContent = kind === "before"
-      ? "Select a Before XML file and generate the comparison."
-      : "Select an After XML file and generate the comparison.";
+    meta.textContent = "Select an XML file and generate HTML.";
     return;
   }
 
   preview.srcdoc = output.html;
   download.hidden = false;
-  download.textContent = `Download ${displayName}`;
-  download.download = comparisonOutputName(output.outputFile, kind);
-  if (state.htmlDownloadUrls[kind]) {
-    URL.revokeObjectURL(state.htmlDownloadUrls[kind]);
+  download.textContent = "Download HTML";
+  download.download = output.outputFile;
+  if (state.htmlDownloadUrl) {
+    URL.revokeObjectURL(state.htmlDownloadUrl);
   }
-  state.htmlDownloadUrls[kind] = URL.createObjectURL(
+  state.htmlDownloadUrl = URL.createObjectURL(
     new Blob([output.html], { type: "text/html" })
   );
-  download.href = state.htmlDownloadUrls[kind];
+  download.href = state.htmlDownloadUrl;
   meta.textContent = `${output.inputName} (${output.variant})`;
 }
 
-function comparisonOutputName(outputFile, kind) {
-  const dot = outputFile.lastIndexOf(".");
-  const stem = dot > 0 ? outputFile.slice(0, dot) : outputFile;
-  return `${stem}-${kind}-xml.html`;
-}
-
-function emptyHtmlOutputMessage(kind) {
-  const message = kind === "before"
-    ? "Select a Before XML file and an After XML file, then generate the HTML comparison."
-    : "Select a Before XML file and an After XML file, then generate the HTML comparison.";
+function emptyHtmlOutputMessage() {
+  const message = "Select an XML file and generate HTML.";
   return `<p style="font-family:Arial,Helvetica,sans-serif;margin:24px;color:#4c5a67">${message}</p>`;
 }
 

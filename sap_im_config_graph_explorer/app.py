@@ -15,7 +15,6 @@ from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent
-DEVELOPMENT_HTML_DIR = PACKAGE_DIR / "development_html"
 
 app = FastAPI(title="SAP IM Config Explorer")
 app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -29,16 +28,6 @@ def index() -> HTMLResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.get("/api/development/html/baseline", response_class=HTMLResponse)
-def development_html_baseline() -> HTMLResponse:
-    return _development_html_response("baseline")
-
-
-@app.get("/api/development/html/candidate", response_class=HTMLResponse)
-def development_html_candidate() -> HTMLResponse:
-    return _development_html_response("candidate")
 
 
 @app.post("/api/convert/html")
@@ -107,10 +96,3 @@ def _write_temp_xml(content: bytes, filename: str) -> Path:
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(content)
         return Path(tmp.name)
-
-
-def _development_html_response(snapshot: str) -> HTMLResponse:
-    path = DEVELOPMENT_HTML_DIR / f"{snapshot}.html"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail=f"Development HTML snapshot is unavailable: {snapshot}")
-    return HTMLResponse(path.read_text(encoding="utf-8"))

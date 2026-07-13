@@ -28,22 +28,18 @@ def test_index_uses_project_name():
     assert "<title>SAP IM Config Explorer</title>" in response.text
     assert "<h1>SAP IM Config Explorer</h1>" in response.text
     assert 'id="validation-findings"' in response.text
-    assert 'id="before-html-file"' in response.text
-    assert 'id="after-html-file"' in response.text
-    assert "Generate HTML Comparison" in response.text
-    assert 'data-view="before-html-view"' in response.text
-    assert 'data-view="after-html-view"' in response.text
-    assert 'data-view="development-baseline-html-view"' in response.text
-    assert 'data-view="development-candidate-html-view"' in response.text
+    assert 'data-view="html-output-view"' in response.text
+    assert 'id="html-output-preview"' in response.text
+    assert "Generate HTML" in response.text
 
 
-def test_html_comparison_client_uses_two_selected_files_not_matching_names():
+def test_html_client_uses_the_selected_xml_file():
     script = (ROOT / "sap_im_config_graph_explorer" / "static" / "app.js").read_text(encoding="utf-8")
 
-    assert 'document.getElementById("before-html-file")' in script
-    assert 'document.getElementById("after-html-file")' in script
-    assert "Promise.all([" in script
-    assert "sameHtmlSource" not in script
+    assert "const file = fileInput.files[0];" in script
+    assert "html-output-preview" in script
+    assert "before-html-file" not in script
+    assert "after-html-file" not in script
 
 
 def test_graph_endpoint_accepts_multiple_uploads():
@@ -117,39 +113,6 @@ def test_html_endpoint_returns_generated_html():
     assert payload["ok"] is True
     assert "SAP Incentive Management Plan Summary" in payload["html"]
     assert payload["outputFile"] == "minimal_plan.html"
-
-
-def test_html_endpoint_accepts_before_and_after_files_with_different_names():
-    client = TestClient(app)
-
-    before = client.post(
-        "/api/convert/html",
-        data={"variant": "A"},
-        files={"file": ("before-export.xml", FIXTURE.read_bytes(), "application/xml")},
-    )
-    after = client.post(
-        "/api/convert/html",
-        data={"variant": "A"},
-        files={"file": ("after-export.xml", FIXTURE.read_bytes(), "application/xml")},
-    )
-
-    assert before.status_code == 200
-    assert after.status_code == 200
-    assert before.json()["outputFile"] == "before-export.html"
-    assert after.json()["outputFile"] == "after-export.html"
-
-
-def test_development_html_endpoints_serve_converter_snapshots():
-    client = TestClient(app)
-
-    baseline = client.get("/api/development/html/baseline")
-    candidate = client.get("/api/development/html/candidate")
-
-    assert baseline.status_code == 200
-    assert candidate.status_code == 200
-    assert "SAP Incentive Management Plan Summary" in baseline.text
-    assert "SAP Incentive Management Plan Summary" in candidate.text
-    assert baseline.text != candidate.text
 
 
 def test_export_graph_json_endpoint_returns_downloadable_json():
