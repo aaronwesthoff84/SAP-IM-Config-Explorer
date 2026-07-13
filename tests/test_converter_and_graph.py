@@ -72,6 +72,27 @@ def test_graph_builder_returns_valid_nodes_and_links():
     assert all(link["relationship"] in RELATIONSHIP_TYPES for link in graph["links"])
 
 
+def test_phase_one_acceptance_covers_exact_allowlist_and_no_logic_nodes():
+    graph = GraphBuilder().build_from_paths(
+        [FIXTURES / "extractor_families.xml", FIXTURES / "minimal_plan.xml"]
+    )
+    node_ids = {node.id for node in graph.nodes}
+
+    assert {node.type for node in graph.nodes} == NODE_TYPES
+    assert all(link.source in node_ids and link.target in node_ids for link in graph.links)
+    assert not any(
+        node.metadata.get("tag") in {"FUNCTION", "PARAMETER_LIST"}
+        for node in graph.nodes
+    )
+    assert [snapshot.to_dict() for snapshot in graph.snapshots] == [
+        {
+            "id": "configuration",
+            "role": "configuration",
+            "sourceFiles": ["extractor_families.xml", "minimal_plan.xml"],
+        }
+    ]
+
+
 def test_multiple_xml_files_merge_and_preserve_source_file():
     graph = GraphBuilder().build_from_paths(
         [FIXTURES / "minimal_plan.xml", FIXTURES / "duplicate_ids.xml"]
@@ -144,13 +165,24 @@ def test_exported_graph_json_matches_expected_schema():
     graph = GraphBuilder().build_from_paths([FIXTURES / "minimal_plan.xml"]).to_dict()
     reloaded = json.loads(json.dumps(graph))
 
-    assert set(reloaded) == {"nodes", "links"}
+    assert set(reloaded) == {"schemaVersion", "snapshots", "nodes", "links", "findings"}
     assert all(
-        set(node) == {"id", "label", "type", "sourceFile", "xmlPath", "rawXml", "metadata"}
+        set(node)
+        == {
+            "id",
+            "canonicalKey",
+            "snapshotId",
+            "label",
+            "type",
+            "sourceFile",
+            "xmlPath",
+            "rawXml",
+            "metadata",
+        }
         for node in reloaded["nodes"]
     )
     assert all(
-        set(link) == {"source", "target", "relationship", "confidence", "metadata"}
+        set(link) == {"id", "source", "target", "relationship", "confidence", "metadata"}
         for link in reloaded["links"]
     )
 

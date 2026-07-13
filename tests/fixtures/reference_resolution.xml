@@ -1,0 +1,14 @@
+<DATA_IMPORT>
+  <FORMULA_SET>
+    <FORMULA ID="F-1" NAME="Resolver Formula">
+      <EXPRESSION>
+        <VARIABLE_REF NAME="Missing" />
+        <VARIABLE_REF NAME="Shared" />
+      </EXPRESSION>
+    </FORMULA>
+  </FORMULA_SET>
+  <VARIABLE_SET>
+    <VARIABLE ID="V-1" NAME="Shared" />
+    <VARIABLE ID="V-2" NAME="Shared" />
+  </VARIABLE_SET>
+</DATA_IMPORT>

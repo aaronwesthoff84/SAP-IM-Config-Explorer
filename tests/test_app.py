@@ -34,6 +34,18 @@ def test_graph_endpoint_accepts_multiple_uploads():
     payload = response.json()
     assert payload["nodes"]
     assert {node["sourceFile"] for node in payload["nodes"]} == {"first.xml", "second.xml"}
+    assert payload["schemaVersion"] == "1.0"
+    assert payload["snapshots"] == [
+        {
+            "id": "configuration",
+            "role": "configuration",
+            "sourceFiles": ["first.xml", "second.xml"],
+        }
+    ]
+    assert payload["findings"]
+    assert {finding["code"] for finding in payload["findings"]} == {
+        "ambiguous_reference"
+    }
 
 
 def test_html_endpoint_returns_generated_html():

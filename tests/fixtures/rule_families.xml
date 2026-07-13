@@ -1,0 +1,48 @@
+<DATA_IMPORT>
+  <RULE_SET>
+    <RULE
+      ID="R-1"
+      NAME="Direct Credit Rule"
+      TYPE="DIRECT_TRANSACTION_CREDIT"
+      DESCRIPTION=" Direct credit description "
+      EFFECTIVE_START_DATE=" 2026-01-01 "
+      EFFECTIVE_END_DATE=" 2200-01-01 "
+    >
+      <CONDITION_EXPRESSION>
+        <FUNCTION ID="ifThenElse">
+          <VARIABLE_REF NAME="Gate" VARIABLE_NAME="Gate" />
+          <NESTED_CONDITION>
+            <VARIABLE_REF NAME="Gate" />
+            <FIXED_VALUE_REF NAME="Cap" />
+            <STRING_FORMULA_REF NAME="Eligibility Formula" ID="STRING_FORMULA_REF" />
+          </NESTED_CONDITION>
+          <PARAMETERS RATE_TABLE_NAME="Payout Rates" REPORT_PATH="/reports/monthly" />
+          <TERRITORY_REF NAME="United States" />
+        </FUNCTION>
+      </CONDITION_EXPRESSION>
+      <ACTION_EXPRESSION_SET>
+        <ACTION_EXPRESSION>
+          <FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+            <CREDIT_TYPE>Revenue Credit</CREDIT_TYPE>
+            <EVENT_TYPE>Sales Order</EVENT_TYPE>
+          </FUNCTION>
+        </ACTION_EXPRESSION>
+      </ACTION_EXPRESSION_SET>
+    </RULE>
+    <RULE ID="R-2" NAME="Rollup Credit Rule" TYPE="ROLLUP_TRANSACTION_CREDIT" />
+    <RULE ID="R-3" NAME="Primary Measurement Rule" TYPE="PRIMARY_MEASUREMENT" />
+    <RULE ID="R-4" NAME="Secondary Measurement Rule" TYPE="SECONDARY_MEASUREMENT" />
+    <RULE ID="R-5" NAME="Bulk Incentive Rule" TYPE="BULK_COMMISSION" />
+    <RULE ID="R-6" NAME="Commission Rule" TYPE="COMMISSION" />
+    <RULE ID="R-7" NAME="Deposit Rule" TYPE="DEPOSIT" />
+    <RULE ID="R-8" NAME="Detailed Deposit Rule" TYPE="DETAIL_DEPOSIT" />
+    <RULE ID="R-9" NAME="Custom Existing Rule" TYPE="CUSTOM_EXISTING_RULE">
+      <ACTIONS>
+        <ACTION>
+          <FUNCTION ID="customAction" />
+        </ACTION>
+      </ACTIONS>
+    </RULE>
+    <RULE ID="R-10" NAME="Unspecified Rule" />
+  </RULE_SET>
+</DATA_IMPORT>

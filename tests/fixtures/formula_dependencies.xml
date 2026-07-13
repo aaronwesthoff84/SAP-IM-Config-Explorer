@@ -1,0 +1,34 @@
+<DATA_IMPORT VERSION="16.0">
+  <FORMULA_SET>
+    <FORMULA
+      ID="F-1"
+      NAME="Commission Gate"
+      RETURN_TYPE=" Boolean "
+      DESCRIPTION=" Eligibility gate "
+      EFFECTIVE_START_DATE=" 2026-01-01 "
+      EFFECTIVE_END_DATE=" 2200-01-01 "
+    >
+      <EXPRESSION>
+        <FUNCTION ID="ifThenElse">
+          <PARAMETER_LIST>
+            <VARIABLE_REF NAME="Gate" />
+            <FIXED_VALUE_REF NAME="Cap" />
+            <FUNCTION ID="isNull" VARIABLE_NAME=" Gate ">
+              <VARIABLE_REF NAME="gate" />
+            </FUNCTION>
+            <MDLT_REF NAME="Commission Lookup" />
+            <STRING_FORMULA_REF NAME="Eligibility" />
+            <BOOLEAN VALUE="true" />
+            <INTERNAL UNKNOWN_REF="not-a-graph-object" />
+          </PARAMETER_LIST>
+        </FUNCTION>
+      </EXPRESSION>
+    </FORMULA>
+    <FORMULA_REF NAME="Not a Formula Definition" />
+  </FORMULA_SET>
+  <VARIABLE_SET><VARIABLE ID="V-1" NAME="Gate" /></VARIABLE_SET>
+  <FIXED_VALUE_SET><FIXED_VALUE ID="FV-1" NAME="Cap" /></FIXED_VALUE_SET>
+  <MD_LOOKUP_TABLE_SET>
+    <MD_LOOKUP_TABLE ID="LT-1" NAME="Commission Lookup" />
+  </MD_LOOKUP_TABLE_SET>
+</DATA_IMPORT>
