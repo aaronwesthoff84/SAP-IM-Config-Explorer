@@ -82,6 +82,7 @@ function renderHtmlOutput() {
   const preview = document.getElementById("html-output-preview");
   const download = document.getElementById("html-output-download");
   const meta = document.getElementById("html-output-meta");
+  preview.onload = () => enableHtmlPreviewAnchors(preview);
 
   if (!output) {
     preview.srcdoc = emptyHtmlOutputMessage();
@@ -102,6 +103,23 @@ function renderHtmlOutput() {
   );
   download.href = state.htmlDownloadUrl;
   meta.textContent = `${output.inputName} (${output.variant})`;
+}
+
+function enableHtmlPreviewAnchors(preview) {
+  const previewDocument = preview.contentDocument;
+  if (!previewDocument) return;
+  previewDocument.addEventListener("click", (event) => {
+    const link = event.target.closest?.("a[href]");
+    const href = link?.getAttribute("href");
+    if (!href?.startsWith("#")) return;
+
+    event.preventDefault();
+    const anchor = href.slice(1);
+    const target = [...previewDocument.querySelectorAll("[name], [id]")].find(
+      (element) => element.getAttribute("name") === anchor || element.id === anchor
+    );
+    target?.scrollIntoView({ block: "start" });
+  });
 }
 
 function emptyHtmlOutputMessage() {

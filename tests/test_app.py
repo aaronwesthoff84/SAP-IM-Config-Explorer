@@ -38,6 +38,9 @@ def test_html_client_uses_the_selected_xml_file():
 
     assert "const file = fileInput.files[0];" in script
     assert "html-output-preview" in script
+    assert "enableHtmlPreviewAnchors" in script
+    assert 'href?.startsWith("#")' in script
+    assert "event.preventDefault();" in script
     assert "before-html-file" not in script
     assert "after-html-file" not in script
 
