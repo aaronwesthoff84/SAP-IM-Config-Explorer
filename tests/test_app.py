@@ -42,6 +42,14 @@ def test_html_client_uses_the_selected_xml_file():
     assert "after-html-file" not in script
 
 
+def test_html_output_preview_uses_the_available_workspace_height():
+    styles = (ROOT / "sap_im_config_graph_explorer" / "static" / "styles.css").read_text(encoding="utf-8")
+
+    assert "#html-output-view.active" in styles
+    assert "grid-template-rows: 42px minmax(0, 1fr);" in styles
+    assert "#html-output-preview" in styles
+
+
 def test_graph_endpoint_accepts_multiple_uploads():
     client = TestClient(app)
     xml = FIXTURE.read_bytes()

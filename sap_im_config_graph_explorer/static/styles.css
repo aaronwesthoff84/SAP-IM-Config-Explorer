@@ -135,6 +135,7 @@ button.secondary {
 
 .view.active {
   display: block;
+  height: 100%;
 }
 
 #graph {
@@ -145,8 +146,14 @@ button.secondary {
 
 #html-output-preview {
   border: 0;
-  height: calc(100% - 42px);
+  height: 100%;
+  min-height: 0;
   width: 100%;
+}
+
+#html-output-view.active {
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
 }
 
 .html-actions {
