@@ -1,6 +1,6 @@
-# SAP Incentive Management Config Graph Explorer
+# SAP IM Config Explorer
 
-SAP Incentive Management Config Graph Explorer is a local-first tool for reviewing XML configuration exports. It preserves the existing XML-to-HTML conversion workflow and adds a browser-based dependency graph.
+SAP IM Config Explorer is a local-first tool for reviewing XML configuration exports. It preserves the existing XML-to-HTML conversion workflow and adds a browser-based dependency graph.
 
 The application runs entirely on the workstation. It does not require cloud services or runtime CDN assets.
 
@@ -124,7 +124,7 @@ The current schema version is `1.0`:
   "findings": [
     {
       "id": "finding-stable-id",
-      "code": "missing_reference | ambiguous_reference",
+      "code": "missing_reference | ambiguous_reference | duplicate_object | unused_object | orphaned_object",
       "severity": "error | warning | info",
       "snapshotId": "configuration",
       "nodeIds": ["source-node-id"],
@@ -157,6 +157,17 @@ references_integration, parent_child, unknown_reference
 
 Missing and ambiguous references are emitted as structured findings. They do not create placeholder graph nodes or links with non-node endpoints.
 
+## Validation Findings
+
+Graph construction runs a deterministic validation pass after reference resolution:
+
+- `missing_reference` and `ambiguous_reference` are error-level broken-reference findings from resolution.
+- `duplicate_object` is a warning when a canonical object identity repeats within one snapshot.
+- `unused_object` is a warning when an object has no inbound semantic dependency. Plan is an explicit root exemption; containment alone does not establish semantic use.
+- `orphaned_object` is a warning when an object has no inbound or outbound graph relationship of any kind.
+
+Validation is snapshot-scoped. Findings identify the affected node IDs and include structured evidence for deterministic review and later migration analysis.
+
 ## Error Handling
 
 The app reports useful local errors for:
@@ -175,7 +186,7 @@ Duplicate source IDs remain separate node instances with stable generated IDs. D
 - Real SAP Incentive Management export shapes vary, so additional exact aliases may be added as representative exports are collected.
 - The first graph renderer is a local Cytoscape-compatible 2D renderer focused on core interaction rather than advanced layout quality.
 - Large-file performance has not yet been optimized.
-- Validation beyond missing and ambiguous reference resolution remains future work.
+- Additional type-specific unused-object exemptions and richer migration rules remain future work.
 
 ## Future Roadmap
 

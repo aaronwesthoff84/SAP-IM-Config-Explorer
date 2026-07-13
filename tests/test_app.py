@@ -18,6 +18,16 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
+def test_index_uses_project_name():
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "<title>SAP IM Config Explorer</title>" in response.text
+    assert "<h1>SAP IM Config Explorer</h1>" in response.text
+
+
 def test_graph_endpoint_accepts_multiple_uploads():
     client = TestClient(app)
     xml = FIXTURE.read_bytes()
@@ -43,8 +53,13 @@ def test_graph_endpoint_accepts_multiple_uploads():
         }
     ]
     assert payload["findings"]
-    assert {finding["code"] for finding in payload["findings"]} == {
-        "ambiguous_reference"
+    finding_codes = {finding["code"] for finding in payload["findings"]}
+    assert "ambiguous_reference" in finding_codes
+    assert finding_codes <= {
+        "ambiguous_reference",
+        "duplicate_object",
+        "unused_object",
+        "orphaned_object",
     }
 
 
