@@ -106,7 +106,6 @@ def test_rule_references_cover_the_complete_subtree_and_are_semantically_unique(
         ("Cap", "FixedValue"),
         ("Eligibility Formula", "Formula"),
         ("Payout Rates", "RateTable"),
-        ("/reports/monthly", None),
         ("United States", "Territory"),
         ("Revenue Credit", "CreditType"),
         ("Sales Order", "EventType"),

@@ -20,6 +20,7 @@ DEFAULT_UNUSED_EXEMPT_TYPES = frozenset({"Plan"})
 class ValidationIndexes:
     duplicate_groups: dict[tuple[str, str], list[GraphNode]]
     inbound_semantic_links: dict[str, list[GraphLink]]
+    containment_source_ids: set[str]
     linked_node_ids: set[str]
 
 
@@ -41,7 +42,13 @@ class ValidationEngine:
         indexes = self._build_indexes(nodes, links)
         findings = list(existing_findings)
         findings.extend(self._duplicate_findings(indexes.duplicate_groups))
-        findings.extend(self._unused_findings(nodes, indexes.inbound_semantic_links))
+        findings.extend(
+            self._unused_findings(
+                nodes,
+                indexes.inbound_semantic_links,
+                indexes.containment_source_ids,
+            )
+        )
         findings.extend(self._orphaned_findings(nodes, indexes.linked_node_ids))
         return findings
 
@@ -53,6 +60,7 @@ class ValidationEngine:
         node_ids = {node.id for node in nodes}
         duplicate_groups: dict[tuple[str, str], list[GraphNode]] = defaultdict(list)
         inbound_semantic_links: dict[str, list[GraphLink]] = defaultdict(list)
+        containment_source_ids: set[str] = set()
         linked_node_ids: set[str] = set()
 
         for node in nodes:
@@ -65,10 +73,13 @@ class ValidationEngine:
             linked_node_ids.update((link.source, link.target))
             if link.relationship not in CONTAINMENT_RELATIONSHIPS:
                 inbound_semantic_links[link.target].append(link)
+            else:
+                containment_source_ids.add(link.source)
 
         return ValidationIndexes(
             duplicate_groups=dict(duplicate_groups),
             inbound_semantic_links=dict(inbound_semantic_links),
+            containment_source_ids=containment_source_ids,
             linked_node_ids=linked_node_ids,
         )
 
@@ -112,12 +123,13 @@ class ValidationEngine:
         self,
         nodes: list[GraphNode],
         inbound_semantic_links: dict[str, list[GraphLink]],
+        containment_source_ids: set[str],
     ) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         for node in _ordered_nodes(nodes):
             if node.type in self.unused_exempt_types:
                 continue
-            if inbound_semantic_links.get(node.id):
+            if inbound_semantic_links.get(node.id) or node.id in containment_source_ids:
                 continue
             findings.append(
                 ValidationFinding(

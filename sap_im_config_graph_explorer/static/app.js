@@ -1,10 +1,11 @@
 const state = {
   graph: { nodes: [], links: [], findings: [] },
   cy: null,
-  html: "",
-  htmlName: "sap-im-plan.html",
+  html: { before: null, after: null },
+  htmlDownloadUrls: { before: "", after: "" },
 };
 
+const HTML_COMPARISON_STORAGE_KEY = "sap-im-html-comparison-v1";
 const statusEl = document.getElementById("status");
 const fileInput = document.getElementById("xml-files");
 const graphEl = document.getElementById("graph");
@@ -29,6 +30,8 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
+loadHtmlComparison();
+
 async function generateGraph() {
   const files = [...fileInput.files];
   if (!files.length) return setStatus("Select one or more XML files.");
@@ -48,21 +51,119 @@ async function generateGraph() {
 async function generateHtml() {
   const file = fileInput.files[0];
   if (!file) return setStatus("Select an XML file.");
+  const variant = document.getElementById("variant").value;
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("variant", document.getElementById("variant").value);
+  formData.append("variant", variant);
   setStatus("Generating HTML...");
   const response = await fetch("/api/convert/html", { method: "POST", body: formData });
   const payload = await response.json();
   if (!response.ok || !payload.ok) return setStatus(payload.error || "HTML generation failed.");
-  state.html = payload.html;
-  state.htmlName = payload.outputFile;
-  document.getElementById("html-preview").srcdoc = payload.html;
-  const download = document.getElementById("html-download");
-  download.href = URL.createObjectURL(new Blob([payload.html], { type: "text/html" }));
-  download.download = payload.outputFile;
-  document.querySelector('[data-view="html-view"]').click();
-  setStatus(`Generated ${payload.outputFile}`);
+  const previousAfter = state.html.after;
+  const after = {
+    html: payload.html,
+    inputName: file.name,
+    outputFile: payload.outputFile,
+    variant,
+  };
+  const savedBaseline = previousAfter && sameHtmlSource(previousAfter, after);
+  state.html.before = savedBaseline ? previousAfter : null;
+  state.html.after = after;
+  const persisted = saveHtmlComparison();
+  renderHtmlComparison();
+  document.querySelector('[data-view="after-html-view"]').click();
+  if (savedBaseline) {
+    setStatus(
+      `Generated ${payload.outputFile}. The prior output is available under Before Change HTML.${persisted ? "" : " Browser storage could not retain the comparison after this page closes."}`
+    );
+  } else {
+    setStatus(
+      `Generated ${payload.outputFile}. Generate again with the same XML after a change to create a before-and-after comparison.${persisted ? "" : " Browser storage could not retain this baseline after this page closes."}`
+    );
+  }
+}
+
+function sameHtmlSource(before, after) {
+  return before.inputName === after.inputName && before.variant === after.variant;
+}
+
+function isHtmlOutput(value) {
+  return value
+    && typeof value.html === "string"
+    && typeof value.inputName === "string"
+    && typeof value.outputFile === "string"
+    && typeof value.variant === "string";
+}
+
+function loadHtmlComparison() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(HTML_COMPARISON_STORAGE_KEY) || "null");
+    if (saved) {
+      state.html.before = isHtmlOutput(saved.before) ? saved.before : null;
+      state.html.after = isHtmlOutput(saved.after) ? saved.after : null;
+    }
+  } catch (_error) {
+    state.html.before = null;
+    state.html.after = null;
+  }
+  renderHtmlComparison();
+}
+
+function saveHtmlComparison() {
+  try {
+    window.localStorage.setItem(HTML_COMPARISON_STORAGE_KEY, JSON.stringify(state.html));
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function renderHtmlComparison() {
+  renderHtmlOutput("before");
+  renderHtmlOutput("after");
+}
+
+function renderHtmlOutput(kind) {
+  const output = state.html[kind];
+  const preview = document.getElementById(`${kind}-html-preview`);
+  const download = document.getElementById(`${kind}-html-download`);
+  const meta = document.getElementById(`${kind}-html-meta`);
+  const displayName = kind === "before" ? "Before Change HTML" : "After Change HTML";
+
+  if (!output) {
+    preview.srcdoc = emptyHtmlOutputMessage(kind);
+    download.hidden = true;
+    meta.textContent = kind === "before"
+      ? "No comparison baseline has been saved."
+      : "Generate HTML to create the current output.";
+    return;
+  }
+
+  preview.srcdoc = output.html;
+  download.hidden = false;
+  download.textContent = `Download ${displayName}`;
+  download.download = comparisonOutputName(output.outputFile, kind);
+  if (state.htmlDownloadUrls[kind]) {
+    URL.revokeObjectURL(state.htmlDownloadUrls[kind]);
+  }
+  state.htmlDownloadUrls[kind] = URL.createObjectURL(
+    new Blob([output.html], { type: "text/html" })
+  );
+  download.href = state.htmlDownloadUrls[kind];
+  meta.textContent = `${output.inputName} (${output.variant})`;
+}
+
+function comparisonOutputName(outputFile, kind) {
+  const dot = outputFile.lastIndexOf(".");
+  const stem = dot > 0 ? outputFile.slice(0, dot) : outputFile;
+  return `${stem}-${kind}-change.html`;
+}
+
+function emptyHtmlOutputMessage(kind) {
+  const message = kind === "before"
+    ? "No before-change HTML is available yet. Generate HTML once to establish a baseline, then generate the same XML again after an update."
+    : "Generate HTML to create the after-change output.";
+  return `<p style="font-family:Arial,Helvetica,sans-serif;margin:24px;color:#4c5a67">${message}</p>`;
 }
 
 function renderGraph() {
@@ -179,14 +280,62 @@ function graphStatus(payload) {
 }
 
 function showNodeDetails(node) {
+  const hierarchy = hierarchyFor(node);
   summaryEl.innerHTML = `
     <dt>Name</dt><dd>${escapeHtml(node.label)}</dd>
     <dt>Type</dt><dd>${escapeHtml(node.type)}</dd>
+    <dt>Associated plans</dt><dd>${escapeHtml(hierarchy.plans.join(", ") || "None")}</dd>
+    <dt>Associated plan components</dt><dd>${escapeHtml(hierarchy.components.join(", ") || "None")}</dd>
+    <dt>Associated rules</dt><dd>${escapeHtml(hierarchy.rules.join(", ") || "None")}</dd>
     <dt>Source file</dt><dd>${escapeHtml(node.sourceFile)}</dd>
     <dt>XML path</dt><dd>${escapeHtml(node.xmlPath)}</dd>
     <dt>Metadata</dt><dd>${escapeHtml(JSON.stringify(node.metadata, null, 2))}</dd>
   `;
   rawXmlEl.textContent = node.rawXml || "";
+}
+
+function hierarchyFor(node) {
+  const nodesById = new Map(state.graph.nodes.map((item) => [item.id, item]));
+  const links = state.graph.links;
+  const componentIds = new Set();
+  const planIds = new Set();
+  const ruleIds = new Set();
+
+  if (node.type === "Rule") {
+    ruleIds.add(node.id);
+    links
+      .filter((link) => link.relationship === "belongs_to_plan_component" && link.source === node.id)
+      .forEach((link) => componentIds.add(link.target));
+  } else if (node.type === "PlanComponent") {
+    componentIds.add(node.id);
+  } else if (node.type === "Plan") {
+    planIds.add(node.id);
+    links
+      .filter((link) => link.relationship === "belongs_to_plan" && link.target === node.id)
+      .forEach((link) => componentIds.add(link.source));
+  }
+
+  componentIds.forEach((componentId) => {
+    links
+      .filter((link) => link.relationship === "belongs_to_plan" && link.source === componentId)
+      .forEach((link) => planIds.add(link.target));
+    links
+      .filter((link) => link.relationship === "belongs_to_plan_component" && link.target === componentId)
+      .forEach((link) => ruleIds.add(link.source));
+  });
+
+  return {
+    plans: labelsForIds(planIds, nodesById),
+    components: labelsForIds(componentIds, nodesById),
+    rules: labelsForIds(ruleIds, nodesById),
+  };
+}
+
+function labelsForIds(ids, nodesById) {
+  return [...ids]
+    .map((id) => nodesById.get(id)?.label)
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function showEdgeDetails(edge) {

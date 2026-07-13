@@ -143,7 +143,8 @@ button.secondary {
   position: relative;
 }
 
-#html-preview {
+#before-html-preview,
+#after-html-preview {
   border: 0;
   height: calc(100% - 42px);
   width: 100%;
@@ -158,9 +159,16 @@ button.secondary {
   padding: 0 12px;
 }
 
-#html-download {
+#before-html-download,
+#after-html-download {
   color: #1b5e7a;
   font-weight: 700;
+}
+
+.html-meta {
+  color: #4c5a67;
+  font-size: 12px;
+  margin-left: 14px;
 }
 
 .validation-findings {

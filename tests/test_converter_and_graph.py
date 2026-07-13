@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from sap_im_config_graph_explorer.graph_builder import GraphBuilder
+from sap_im_config_graph_explorer.graph_builder import (
+    CORE_GRAPH_NODE_TYPES,
+    GraphBuilder,
+)
 from sap_im_config_graph_explorer.models import NODE_TYPES, RELATIONSHIP_TYPES
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError, load_xml_file
 from sap_im_config_graph_explorer.xml_to_html_converter import Transformer
@@ -13,6 +16,13 @@ from sap_im_config_graph_explorer.xml_to_html_converter import Transformer
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
+
+
+def full_graph_builder() -> GraphBuilder:
+    return GraphBuilder(
+        node_types=NODE_TYPES,
+        relationship_types=RELATIONSHIP_TYPES,
+    )
 
 
 def test_xml_to_html_conversion_still_emits_plan_summary():
@@ -65,25 +75,21 @@ def test_graph_builder_returns_valid_nodes_and_links():
     type_by_label = {node["label"]: node["type"] for node in graph["nodes"]}
     relationships = {link["relationship"] for link in graph["links"]}
 
-    assert {
+    assert labels == {
         "Enterprise Plan",
         "Core Component",
         "Credit Rule",
-        "Eligibility Formula",
-        "Rate Table",
-        "Revenue Credit",
-    } <= labels
+    }
     assert type_by_label["Core Component"] == "PlanComponent"
-    assert type_by_label["Revenue Credit"] == "CreditType"
-    assert "belongs_to_plan" in relationships
-    assert "uses_formula" in relationships
-    assert "uses_lookup" in relationships
+    assert relationships == {"belongs_to_plan", "belongs_to_plan_component"}
+    assert not graph["findings"]
+    assert {node["type"] for node in graph["nodes"]} == CORE_GRAPH_NODE_TYPES
     assert all(node["type"] in NODE_TYPES for node in graph["nodes"])
     assert all(link["relationship"] in RELATIONSHIP_TYPES for link in graph["links"])
 
 
 def test_phase_one_acceptance_covers_exact_allowlist_and_no_logic_nodes():
-    graph = GraphBuilder().build_from_paths(
+    graph = full_graph_builder().build_from_paths(
         [FIXTURES / "extractor_families.xml", FIXTURES / "minimal_plan.xml"]
     )
     node_ids = {node.id for node in graph.nodes}
@@ -104,7 +110,7 @@ def test_phase_one_acceptance_covers_exact_allowlist_and_no_logic_nodes():
 
 
 def test_multiple_xml_files_merge_and_preserve_source_file():
-    graph = GraphBuilder().build_from_paths(
+    graph = full_graph_builder().build_from_paths(
         [FIXTURES / "minimal_plan.xml", FIXTURES / "duplicate_ids.xml"]
     )
 
@@ -165,7 +171,7 @@ def test_formula_logic_elements_do_not_become_graph_nodes(tmp_path):
         encoding="utf-8",
     )
 
-    graph = GraphBuilder().build_from_paths([source])
+    graph = full_graph_builder().build_from_paths([source])
 
     assert {node.label for node in graph.nodes} == {"Commission Gate", "Gate Variable"}
     assert {node.type for node in graph.nodes} == {"Formula", "Variable"}
@@ -198,9 +204,45 @@ def test_exported_graph_json_matches_expected_schema():
 
 
 def test_duplicate_object_ids_are_stable_non_colliding_and_recorded():
-    graph = GraphBuilder().build_from_paths([FIXTURES / "duplicate_ids.xml"])
+    graph = full_graph_builder().build_from_paths([FIXTURES / "duplicate_ids.xml"])
     duplicate_nodes = [node for node in graph.nodes if node.metadata.get("sourceId") == "DUP-1"]
 
     assert len(duplicate_nodes) == 2
     assert len({node.id for node in duplicate_nodes}) == 2
     assert any(node.metadata.get("duplicateKey") for node in duplicate_nodes)
+
+
+def test_core_graph_only_resolves_plan_component_and_rule_containment(tmp_path):
+    source = tmp_path / "core-topology.xml"
+    source.write_text(
+        """<DATA_IMPORT>
+  <PLAN NAME="Plan A"><COMPONENT_REF NAME="Component A" /></PLAN>
+  <PLAN_COMPONENT NAME="Component A"><RULE_REF NAME="Rule A" /></PLAN_COMPONENT>
+  <RULE NAME="Rule A" TYPE="DIRECT_TRANSACTION_CREDIT">
+    <RULE_ELEMENT_REF NAME="F Spiff Percentage to Pay" />
+    <HOLD_REF RELEASE_TYPE="Release Immediately" />
+    <CREDIT_TYPE>Compounding</CREDIT_TYPE>
+  </RULE>
+  <FORMULA NAME="F Spiff Percentage to Pay" />
+  <CREDIT_TYPE NAME="Compounding" />
+  <CREDIT_TYPE NAME="Compounding" />
+</DATA_IMPORT>""",
+        encoding="utf-8",
+    )
+
+    graph = GraphBuilder().build_from_paths([source])
+
+    assert {(node.label, node.type) for node in graph.nodes} == {
+        ("Plan A", "Plan"),
+        ("Component A", "PlanComponent"),
+        ("Rule A", "Rule"),
+    }
+    assert {link.relationship for link in graph.links} == {
+        "belongs_to_plan",
+        "belongs_to_plan_component",
+    }
+    assert not {
+        finding.code
+        for finding in graph.findings
+        if finding.code in {"missing_reference", "ambiguous_reference"}
+    }
