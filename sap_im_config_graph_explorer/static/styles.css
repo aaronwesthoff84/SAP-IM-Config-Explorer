@@ -144,7 +144,9 @@ button.secondary {
 }
 
 #before-html-preview,
-#after-html-preview {
+#after-html-preview,
+#development-baseline-html-preview,
+#development-candidate-html-preview {
   border: 0;
   height: calc(100% - 42px);
   width: 100%;
@@ -160,7 +162,9 @@ button.secondary {
 }
 
 #before-html-download,
-#after-html-download {
+#after-html-download,
+#development-baseline-html-view .html-actions a,
+#development-candidate-html-view .html-actions a {
   color: #1b5e7a;
   font-weight: 700;
 }

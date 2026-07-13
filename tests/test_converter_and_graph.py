@@ -16,6 +16,7 @@ from sap_im_config_graph_explorer.xml_to_html_converter import Transformer
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
+HTML_SORTING_FIXTURE = FIXTURES / "html_sorting_comparison.xml"
 
 
 def full_graph_builder() -> GraphBuilder:
@@ -44,6 +45,46 @@ def test_xml_to_html_conversion_still_emits_plan_summary():
     assert html.index("Territories (0)") < html.index("Fixed Values (0)")
     assert html.count('class="SummaryCell"') == 27
     assert ">Copyright<" not in html
+
+
+def test_html_sorts_objects_by_name_and_rules_by_category_then_name():
+    transformer = Transformer()
+    transformer.parse(str(HTML_SORTING_FIXTURE))
+    html = transformer.html()
+
+    assert html.index('name="Alpha Plan-plan"') < html.index('name="Zulu Plan-plan"')
+    assert html.index('name="Alpha Component-plan-Alpha Plan"') < html.index(
+        'name="Zeta Component-plan-Alpha Plan"'
+    )
+
+    ordered_rule_anchors = [
+        'name="Alpha Credit-rule-Alpha Component-Alpha Plan"',
+        'name="Zulu Credit-rule-Zeta Component-Alpha Plan"',
+        'name="Beta Measurement-rule-Zeta Component-Alpha Plan"',
+        'name="Alpha Incentive-rule-Zeta Component-Alpha Plan"',
+        'name="Zulu Deposit-rule-Alpha Component-Alpha Plan"',
+        'name="Alpha Detailed Deposit-rule-Alpha Component-Alpha Plan"',
+    ]
+    assert [html.index(anchor) for anchor in ordered_rule_anchors] == sorted(
+        html.index(anchor) for anchor in ordered_rule_anchors
+    )
+
+    for first_anchor, second_anchor in [
+        ('name="Alpha Lookup-mdlt"', 'name="Zulu Lookup-mdlt"'),
+        ('name="Alpha Fixed-fv"', 'name="Zulu Fixed-fv"'),
+        ('name="Alpha Quota-quota"', 'name="Zulu Quota-quota"'),
+        ('name="Alpha Formula-formula"', 'name="Zulu Formula-formula"'),
+        ('name="Alpha Territory-terr"', 'name="Zulu Territory-terr"'),
+        ('name="Alpha Variable-var"', 'name="Zulu Variable-var"'),
+    ]:
+        assert html.index(first_anchor) < html.index(second_anchor)
+
+    summary_rules = html[html.index("Rules (6)"):html.index("Formulas (2)")]
+    for first_name, second_name in zip(
+        ["Alpha Credit", "Zulu Credit", "Beta Measurement", "Alpha Incentive", "Zulu Deposit"],
+        ["Zulu Credit", "Beta Measurement", "Alpha Incentive", "Zulu Deposit", "Alpha Detailed Deposit"],
+    ):
+        assert summary_rules.index(f">{first_name}</a>") < summary_rules.index(f">{second_name}</a>")
 
 
 def test_legacy_cli_still_accepts_old_argument_shape(tmp_path):

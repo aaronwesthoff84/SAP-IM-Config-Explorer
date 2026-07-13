@@ -41,6 +41,19 @@ The local app also has a `Generate HTML` action. Select an XML file, choose `Aut
 
 For visual regression testing, the app keeps a local browser baseline for the same XML file and variant. Generate the current output once. After a code update, generate that same XML again: the prior output appears under **Before Change HTML** and the new one under **After Change HTML**. Each output has its own download link. The comparison remains on the workstation in browser storage; download either file if it must survive browser-storage cleanup or use in another browser.
 
+While the converter is under active development, the app also includes **Development Baseline HTML** and **Development Candidate HTML** tabs. These are separate from the browser comparison above. They display version-controlled snapshots generated from `tests/fixtures/html_sorting_comparison.xml`, so a converter-logic change can be reviewed without uploading a file. Before changing converter code, capture the baseline; after the change, capture the candidate:
+
+```powershell
+.\.venv\Scripts\python scripts\capture_development_html_comparison.py baseline
+.\.venv\Scripts\python scripts\capture_development_html_comparison.py candidate
+```
+
+The snapshots are intentionally temporary development aids. Refresh the baseline and candidate around each converter change, then review them in the two Development tabs.
+
+## HTML Ordering
+
+The generated HTML sorts named objects alphabetically, without changing the displayed section order. Rules are sorted by rule family first, then alphabetically within each family: Credit, Measurement, Incentive, Deposit, and Detailed Deposit. Any unrecognized rule family is shown last as **Other Rules** rather than being incorrectly presented as a Credit Rule.
+
 ## Use The Graph Explorer
 
 1. Select one or more `.xml` export files.

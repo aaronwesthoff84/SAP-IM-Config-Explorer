@@ -25,6 +25,16 @@ TYPE_CATEGORY = {
     "BULK_COMMISSION": "incentive", "COMMISSION": "incentive",
     "DEPOSIT": "deposit", "DETAIL_DEPOSIT": "detail_deposit",
 }
+RULE_CATEGORY_ORDER = ("credit", "measurement", "incentive", "deposit", "detail_deposit")
+RULE_CATEGORY_HEADINGS = {
+    "credit": "Credit Rules",
+    "measurement": "Measurement Rules",
+    "incentive": "Incentive Rules",
+    "deposit": "Deposit Rules",
+    "detail_deposit": "Detailed Deposit Rules",
+    "other": "Other Rules",
+}
+RULE_CATEGORY_INDEX = {category: index for index, category in enumerate(RULE_CATEGORY_ORDER)}
 ACTION_LABELS = {
     "DIRECT_TRANSACTION_CREDIT_ALLGAs": "Create Credit (GA)",
     "COMMISSION_USING_FLATRATE_GAS": "Create Commission (GA)",
@@ -119,6 +129,28 @@ def drange(s,e):
     if not s: return e
     if not e or "2200" in e or "2099" in e: return f"{s} - End of Time"
     return f"{s} - {e}"
+
+def object_sort_key(obj):
+    name = getattr(obj, "name", "")
+    return (name.casefold(), name)
+
+def rule_category(rule):
+    return TYPE_CATEGORY.get(rule.rt, "other")
+
+def rule_sort_key(rule):
+    return (RULE_CATEGORY_INDEX.get(rule_category(rule), len(RULE_CATEGORY_ORDER)), object_sort_key(rule))
+
+def sorted_objects(objects):
+    return sorted(objects, key=object_sort_key)
+
+def sorted_rules(rules):
+    return sorted(rules, key=rule_sort_key)
+
+def rule_categories(rules):
+    categories = list(RULE_CATEGORY_ORDER)
+    if any(rule_category(rule) == "other" for rule in rules):
+        categories.append("other")
+    return categories
 
 def render_ref(elem):
     nm = elem.get("NAME","")
@@ -343,24 +375,25 @@ class Plan:
         L.append(f'<tr><td class="LabelCell">Effective Date Range</td><td class="Value">{esc(drange(self.st,self.en))}</td></tr>')
         L.append(f'<tr><td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td></tr>')
         L.append('</table><p></p>')
-        pcs=[cm[c] for c in self.cn if c in cm]
+        pcs=sorted_objects([cm[c] for c in self.cn if c in cm])
+        referenced_rules=[rm[rn] for pc in pcs for rn in pc.rn if rn in rm]
+        categories=rule_categories(referenced_rules)
         L.append('<table width="100%" border="0" cellpadding="0" cellspacing="5"><tr>')
-        for h in ["Plan Components","Credit Rules","Measurement Rules","Incentive Rules","Deposit Rules","Detailed Deposit Rules"]:
+        for h in ["Plan Components"] + [RULE_CATEGORY_HEADINGS[category] for category in categories]:
             L.append(f'<td class="ContentTitle">{h}</td>')
         L.append('</tr><tr>')
-        clinks=[]; cats={k:[] for k in ["credit","measurement","incentive","deposit","detail_deposit"]}
+        clinks=[]; cats={category:[] for category in categories}
         for pc in pcs:
             ca=f"{pc.name}-plan-{self.name}"
             clinks.append(f'<a class="Link" href="#{ca}">{esc(pc.name)}</a>')
-            for rn in pc.rn:
-                if rn in rm:
-                    r=rm[rn]; cat=TYPE_CATEGORY.get(r.rt,"credit")
-                    ra=f"{r.name}-rule-{pc.name}-{self.name}"
-                    link=f'<a class="Link" href="#{ra}">{esc(r.name)}</a>'
-                    if link not in cats[cat]: cats[cat].append(link)
+            for r in sorted_rules([rm[rn] for rn in pc.rn if rn in rm]):
+                category=rule_category(r)
+                ra=f"{r.name}-rule-{pc.name}-{self.name}"
+                link=f'<a class="Link" href="#{ra}">{esc(r.name)}</a>'
+                if link not in cats[category]: cats[category].append(link)
         L.append(f'<td valign="top">{"<br>".join(clinks)}</td>')
-        for ck in ["credit","measurement","incentive","deposit","detail_deposit"]:
-            L.append(f'<td valign="top">{"<br>".join(cats[ck])}</td>')
+        for category in categories:
+            L.append(f'<td valign="top">{"<br>".join(cats[category])}</td>')
         L.append('</tr></table>')
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#plans">Plans</a> | <a class="Link" href="#Top">Top</a></td>')
@@ -378,18 +411,20 @@ class PComp:
         L.append(f'<tr><td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td></tr>')
         L.append(f'<tr><td class="LabelCell">Effective</td><td class="Value">{esc(es)} to {esc(ee)}</td></tr>')
         L.append('</table><p></p>')
-        cr=[rm[rn] for rn in self.rn if rn in rm]
+        cr=sorted_rules([rm[rn] for rn in self.rn if rn in rm])
+        categories=rule_categories(cr)
         L.append('<table width="100%" border="0" cellpadding="0" cellspacing="5"><tr>')
-        for h in ["Credit Rules","Measurement Rules","Incentive Rules","Deposit Rules","Detailed Deposit Rules"]:
+        for category in categories:
+            h=RULE_CATEGORY_HEADINGS[category]
             L.append(f'<td class="ContentTitle">{h}</td>')
         L.append('</tr><tr>')
-        cats={k:[] for k in ["credit","measurement","incentive","deposit","detail_deposit"]}
+        cats={category:[] for category in categories}
         for r in cr:
-            cat=TYPE_CATEGORY.get(r.rt,"credit")
+            category=rule_category(r)
             ra=f"{r.name}-rule-{self.name}-{pn}"
-            cats[cat].append(f'<a class="Link" href="#{ra}">{esc(r.name)}</a>')
-        for ck in ["credit","measurement","incentive","deposit","detail_deposit"]:
-            L.append(f'<td valign="top">{"<br>".join(cats[ck])}</td>')
+            cats[category].append(f'<a class="Link" href="#{ra}">{esc(r.name)}</a>')
+        for category in categories:
+            L.append(f'<td valign="top">{"<br>".join(cats[category])}</td>')
         L.append('</tr></table>')
         return "\n".join(L)
 
@@ -715,10 +750,25 @@ class Transformer:
             bu=r.e.get("BUSINESS_UNITS","")
             if bu and bu not in ("__ALL_BU__",""): self.v="B"; break
     def _so(self, a):
-        return {"plans":self.plans,"plancomponents":list(self.comps.values()),
-                "rules":list(self.rules.values()),"mdlts":self.mdlts,"fixedvalues":self.fvs,
-                "quotas":self.quotas,"formulas":self.formulas,"territories":self.terrs,
-                "variables":self.vars}.get(a,[])
+        objects={"plans":self.plans,"plancomponents":list(self.comps.values()),
+                 "rules":list(self.rules.values()),"mdlts":self.mdlts,"fixedvalues":self.fvs,
+                 "quotas":self.quotas,"formulas":self.formulas,"territories":self.terrs,
+                 "variables":self.vars}.get(a,[])
+        return sorted_rules(objects) if a=="rules" else sorted_objects(objects)
+
+    def _plan_components(self, plan):
+        return sorted_objects([self.comps[name] for name in plan.cn if name in self.comps])
+
+    def _component_rules(self, component):
+        return sorted_rules([self.rules[name] for name in component.rn if name in self.rules])
+
+    def _plan_rule_occurrences(self, plan):
+        occurrences=[]
+        for component in self._plan_components(plan):
+            for rule in self._component_rules(component):
+                occurrences.append((component, rule))
+        return sorted(occurrences, key=lambda item: (rule_sort_key(item[1]), object_sort_key(item[0])))
+
     def html(self):
         v=self.v; L=['<!DOCTYPE HTML>','<html>','<head>',
             '<META http-equiv="Content-Type" content="text/html; charset=UTF-8">',
@@ -740,13 +790,10 @@ class Transformer:
                 try:
                     if anchor=="plans":
                         L.append(obj.render(v,self.comps,self.rules)); L.append('<p></p>')
-                        for cn in obj.cn:
-                            if cn in self.comps:
-                                comp=self.comps[cn]
-                                L.append(comp.render(v,obj.name,self.rules)); L.append('<p></p>')
-                                for rn in comp.rn:
-                                    if rn in self.rules:
-                                        L.append(self.rules[rn].render(v,obj.name,cn)); L.append('<p></p>')
+                        for comp in self._plan_components(obj):
+                            L.append(comp.render(v,obj.name,self.rules)); L.append('<p></p>')
+                        for comp, rule in self._plan_rule_occurrences(obj):
+                            L.append(rule.render(v,obj.name,comp.name)); L.append('<p></p>')
                     else:
                         L.append(obj.render(v)); L.append('<p></p>')
                 except Exception as e:
@@ -756,14 +803,11 @@ class Transformer:
         return "\n".join(L)
     def _summary_anchors(self):
         component_anchors={}; rule_anchors={}
-        for plan in self.plans:
-            for component_name in plan.cn:
-                component=self.comps.get(component_name)
-                if component is None: continue
-                component_anchors.setdefault(component_name, f"{component.name}-plan-{plan.name}")
-                for rule_name in component.rn:
-                    if rule_name in self.rules:
-                        rule_anchors.setdefault(rule_name, f"{rule_name}-rule-{component.name}-{plan.name}")
+        for plan in self._so("plans"):
+            for component in self._plan_components(plan):
+                component_anchors.setdefault(component.name, f"{component.name}-plan-{plan.name}")
+                for rule in self._component_rules(component):
+                    rule_anchors.setdefault(rule.name, f"{rule.name}-rule-{component.name}-{plan.name}")
         return component_anchors, rule_anchors
 
     def _summary_entries(self, anchor):

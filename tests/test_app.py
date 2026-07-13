@@ -30,6 +30,8 @@ def test_index_uses_project_name():
     assert 'id="validation-findings"' in response.text
     assert 'data-view="before-html-view"' in response.text
     assert 'data-view="after-html-view"' in response.text
+    assert 'data-view="development-baseline-html-view"' in response.text
+    assert 'data-view="development-candidate-html-view"' in response.text
 
 
 def test_graph_endpoint_accepts_multiple_uploads():
@@ -103,6 +105,19 @@ def test_html_endpoint_returns_generated_html():
     assert payload["ok"] is True
     assert "SAP Incentive Management Plan Summary" in payload["html"]
     assert payload["outputFile"] == "minimal_plan.html"
+
+
+def test_development_html_endpoints_serve_converter_snapshots():
+    client = TestClient(app)
+
+    baseline = client.get("/api/development/html/baseline")
+    candidate = client.get("/api/development/html/candidate")
+
+    assert baseline.status_code == 200
+    assert candidate.status_code == 200
+    assert "SAP Incentive Management Plan Summary" in baseline.text
+    assert "SAP Incentive Management Plan Summary" in candidate.text
+    assert baseline.text != candidate.text
 
 
 def test_export_graph_json_endpoint_returns_downloadable_json():
