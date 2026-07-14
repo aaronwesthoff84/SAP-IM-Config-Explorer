@@ -5,6 +5,8 @@ const state = {
   htmlDownloadUrl: "",
 };
 
+window.state = state;
+
 const statusEl = document.getElementById("status");
 const themeToggle = document.getElementById("theme-toggle");
 const fileInput = document.getElementById("xml-files");
@@ -230,11 +232,41 @@ function renderGraph() {
           "border-width": 4,
         },
       },
+      {
+        selector: ".dimmed",
+        style: {
+          opacity: 0.15,
+        },
+      },
     ],
     layout: { name: "cose", animate: false, fit: true, padding: 36 },
   });
-  state.cy.on("tap", "node", (event) => showNodeDetails(event.target.data()));
+  state.cy.on("tap", "node", (event) => {
+    const node = event.target;
+    highlightDependencies(node);
+    showNodeDetails(node.data());
+  });
+  state.cy.on("tap", (event) => {
+    if (event.target === state.cy || event.target.length === 0) {
+      clearHighlighting();
+      summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
+      rawXmlEl.textContent = "";
+    }
+  });
   state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
+}
+
+function highlightDependencies(node) {
+  const cy = state.cy;
+  const neighborhood = node.successors().union(node.predecessors()).union(node);
+  cy.elements().addClass("dimmed");
+  neighborhood.removeClass("dimmed");
+}
+
+function clearHighlighting() {
+  if (state.cy) {
+    state.cy.elements().removeClass("dimmed");
+  }
 }
 
 function populateTypeFilter(nodes) {
