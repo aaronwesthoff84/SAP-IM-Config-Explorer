@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: General project discussion
+    url: https://github.com/aaronwesthoff84/SAP-IM-Config-Explorer/discussions
+    about: Use Discussions for questions that are not implementation-ready work.
