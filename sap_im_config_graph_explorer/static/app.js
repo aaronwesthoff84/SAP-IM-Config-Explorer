@@ -1,12 +1,12 @@
 const state = {
   graph: { nodes: [], links: [], findings: [] },
   cy: null,
-  html: { before: null, after: null },
-  htmlDownloadUrls: { before: "", after: "" },
+  html: null,
+  htmlDownloadUrl: "",
 };
 
-const HTML_COMPARISON_STORAGE_KEY = "sap-im-html-comparison-v1";
 const statusEl = document.getElementById("status");
+const themeToggle = document.getElementById("theme-toggle");
 const fileInput = document.getElementById("xml-files");
 const graphEl = document.getElementById("graph");
 const typeFilter = document.getElementById("type-filter");
@@ -18,8 +18,11 @@ const findingsEl = document.getElementById("validation-findings");
 document.getElementById("graph-button").addEventListener("click", generateGraph);
 document.getElementById("html-button").addEventListener("click", generateHtml);
 document.getElementById("export-button").addEventListener("click", exportGraph);
+themeToggle.addEventListener("click", toggleTheme);
 searchInput.addEventListener("input", renderGraph);
 typeFilter.addEventListener("change", renderGraph);
+
+initializeTheme();
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
@@ -29,8 +32,6 @@ document.querySelectorAll(".tab").forEach((tab) => {
     if (state.cy) state.cy.resize().fit();
   });
 });
-
-loadHtmlComparison();
 
 async function generateGraph() {
   const files = [...fileInput.files];
@@ -52,122 +53,119 @@ async function generateHtml() {
   const file = fileInput.files[0];
   if (!file) return setStatus("Select an XML file.");
   const variant = document.getElementById("variant").value;
+  setStatus("Generating HTML...");
+  try {
+    state.html = await convertHtml(file, variant);
+  } catch (error) {
+    return setStatus(error.message || "HTML generation failed.");
+  }
+  renderFindings(state.html.findings || []);
+  renderHtmlOutput();
+  document.querySelector('[data-view="html-output-view"]').click();
+  setStatus(`Generated ${state.html.outputFile}.`);
+}
+
+async function convertHtml(file, variant) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("variant", variant);
-  setStatus("Generating HTML...");
+  formData.append("theme", currentTheme());
   const response = await fetch("/api/convert/html", { method: "POST", body: formData });
   const payload = await response.json();
-  if (!response.ok || !payload.ok) return setStatus(payload.error || "HTML generation failed.");
-  const previousAfter = state.html.after;
-  const after = {
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error || `Unable to generate HTML for ${file.name}.`);
+  }
+  return {
     html: payload.html,
     inputName: file.name,
     outputFile: payload.outputFile,
     variant,
+    findings: payload.findings || [],
   };
-  const savedBaseline = previousAfter && sameHtmlSource(previousAfter, after);
-  state.html.before = savedBaseline ? previousAfter : null;
-  state.html.after = after;
-  const persisted = saveHtmlComparison();
-  renderHtmlComparison();
-  document.querySelector('[data-view="after-html-view"]').click();
-  if (savedBaseline) {
-    setStatus(
-      `Generated ${payload.outputFile}. The prior output is available under Before Change HTML.${persisted ? "" : " Browser storage could not retain the comparison after this page closes."}`
-    );
-  } else {
-    setStatus(
-      `Generated ${payload.outputFile}. Generate again with the same XML after a change to create a before-and-after comparison.${persisted ? "" : " Browser storage could not retain this baseline after this page closes."}`
-    );
-  }
 }
 
-function sameHtmlSource(before, after) {
-  return before.inputName === after.inputName && before.variant === after.variant;
-}
-
-function isHtmlOutput(value) {
-  return value
-    && typeof value.html === "string"
-    && typeof value.inputName === "string"
-    && typeof value.outputFile === "string"
-    && typeof value.variant === "string";
-}
-
-function loadHtmlComparison() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(HTML_COMPARISON_STORAGE_KEY) || "null");
-    if (saved) {
-      state.html.before = isHtmlOutput(saved.before) ? saved.before : null;
-      state.html.after = isHtmlOutput(saved.after) ? saved.after : null;
-    }
-  } catch (_error) {
-    state.html.before = null;
-    state.html.after = null;
-  }
-  renderHtmlComparison();
-}
-
-function saveHtmlComparison() {
-  try {
-    window.localStorage.setItem(HTML_COMPARISON_STORAGE_KEY, JSON.stringify(state.html));
-    return true;
-  } catch (_error) {
-    return false;
-  }
-}
-
-function renderHtmlComparison() {
-  renderHtmlOutput("before");
-  renderHtmlOutput("after");
-}
-
-function renderHtmlOutput(kind) {
-  const output = state.html[kind];
-  const preview = document.getElementById(`${kind}-html-preview`);
-  const download = document.getElementById(`${kind}-html-download`);
-  const meta = document.getElementById(`${kind}-html-meta`);
-  const displayName = kind === "before" ? "Before Change HTML" : "After Change HTML";
+function renderHtmlOutput() {
+  const output = state.html;
+  const preview = document.getElementById("html-output-preview");
+  const download = document.getElementById("html-output-download");
+  const meta = document.getElementById("html-output-meta");
+  preview.onload = () => enableHtmlPreviewAnchors(preview);
 
   if (!output) {
-    preview.srcdoc = emptyHtmlOutputMessage(kind);
+    preview.srcdoc = emptyHtmlOutputMessage();
     download.hidden = true;
-    meta.textContent = kind === "before"
-      ? "No comparison baseline has been saved."
-      : "Generate HTML to create the current output.";
+    meta.textContent = "Select an XML file and generate HTML.";
     return;
   }
 
   preview.srcdoc = output.html;
   download.hidden = false;
-  download.textContent = `Download ${displayName}`;
-  download.download = comparisonOutputName(output.outputFile, kind);
-  if (state.htmlDownloadUrls[kind]) {
-    URL.revokeObjectURL(state.htmlDownloadUrls[kind]);
+  download.textContent = "Download HTML";
+  download.download = output.outputFile;
+  if (state.htmlDownloadUrl) {
+    URL.revokeObjectURL(state.htmlDownloadUrl);
   }
-  state.htmlDownloadUrls[kind] = URL.createObjectURL(
+  state.htmlDownloadUrl = URL.createObjectURL(
     new Blob([output.html], { type: "text/html" })
   );
-  download.href = state.htmlDownloadUrls[kind];
+  download.href = state.htmlDownloadUrl;
   meta.textContent = `${output.inputName} (${output.variant})`;
 }
 
-function comparisonOutputName(outputFile, kind) {
-  const dot = outputFile.lastIndexOf(".");
-  const stem = dot > 0 ? outputFile.slice(0, dot) : outputFile;
-  return `${stem}-${kind}-change.html`;
+function enableHtmlPreviewAnchors(preview) {
+  const previewDocument = preview.contentDocument;
+  if (!previewDocument) return;
+  previewDocument.addEventListener("click", (event) => {
+    const link = event.target.closest?.("a[href]");
+    const href = link?.getAttribute("href");
+    if (!href?.startsWith("#")) return;
+
+    event.preventDefault();
+    const anchor = href.slice(1);
+    const target = [...previewDocument.querySelectorAll("[name], [id]")].find(
+      (element) => element.getAttribute("name") === anchor || element.id === anchor
+    );
+    target?.scrollIntoView({ block: "start" });
+  });
 }
 
-function emptyHtmlOutputMessage(kind) {
-  const message = kind === "before"
-    ? "No before-change HTML is available yet. Generate HTML once to establish a baseline, then generate the same XML again after an update."
-    : "Generate HTML to create the after-change output.";
-  return `<p style="font-family:Arial,Helvetica,sans-serif;margin:24px;color:#4c5a67">${message}</p>`;
+function emptyHtmlOutputMessage() {
+  const message = "Select an XML file and generate HTML.";
+  return `<p style="font-family:Inter,Segoe UI,Arial,Helvetica,sans-serif;margin:24px;color:#333333">${message}</p>`;
+}
+
+function initializeTheme() {
+  const savedTheme = localStorage.getItem("sap-im-config-explorer-theme");
+  applyTheme(savedTheme === "dark" ? "dark" : "light", false);
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
+
+function applyTheme(theme, persist = true) {
+  document.documentElement.dataset.theme = theme;
+  themeToggle.setAttribute("aria-pressed", String(theme === "dark"));
+  themeToggle.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+  if (persist) localStorage.setItem("sap-im-config-explorer-theme", theme);
+  if (state.html) {
+    state.html.html = applyThemeToHtml(state.html.html, theme);
+    renderHtmlOutput();
+  }
+  if (state.graph.nodes.length) renderGraph();
+}
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function applyThemeToHtml(html, theme) {
+  return html.replace(/<html(?:\s+data-theme="(?:light|dark)")?>/i, `<html data-theme="${theme}">`);
 }
 
 function renderGraph() {
   if (state.cy) state.cy.destroy();
+  const graphTheme = graphThemeColors();
   const term = searchInput.value.trim().toLowerCase();
   const type = typeFilter.value;
   const nodes = state.graph.nodes.filter((node) => {
@@ -190,13 +188,13 @@ function renderGraph() {
         selector: "node",
         style: {
           "background-color": "data(displayColor)",
-          "border-color": "#ffffff",
+          "border-color": graphTheme.border,
           "border-width": 2,
-          color: "#1c2630",
+          color: graphTheme.text,
           label: "data(label)",
           "font-size": 11,
           height: 30,
-          "text-background-color": "#ffffff",
+          "text-background-color": graphTheme.labelBackground,
           "text-background-opacity": 0.86,
           "text-background-padding": 3,
           "text-margin-y": -8,
@@ -208,8 +206,8 @@ function renderGraph() {
         selector: "edge",
         style: {
           "curve-style": "bezier",
-          "line-color": "#8fa1b2",
-          "target-arrow-color": "#8fa1b2",
+          "line-color": graphTheme.edge,
+          "target-arrow-color": graphTheme.edge,
           "target-arrow-shape": "triangle",
           width: 1.4,
         },
@@ -217,18 +215,18 @@ function renderGraph() {
       {
         selector: "edge:selected",
         style: {
-          color: "#1c2630",
+          color: graphTheme.text,
           label: "data(relationship)",
           "font-size": 10,
-          "line-color": "#1b5e7a",
-          "target-arrow-color": "#1b5e7a",
+          "line-color": graphTheme.accent,
+          "target-arrow-color": graphTheme.accent,
           width: 3,
         },
       },
       {
         selector: "node:selected",
         style: {
-          "border-color": "#1c2630",
+          "border-color": graphTheme.accent,
           "border-width": 4,
         },
       },
@@ -380,22 +378,34 @@ function escapeHtml(value) {
 
 function colorForType(type) {
   return {
-    FixedValue: "#8a5a14",
-    Formula: "#5f4aa0",
-    LookupTable: "#28724f",
-    Quota: "#8a3f23",
-    RateTable: "#00695c",
-    Territory: "#6a5b22",
-    Variable: "#795548",
-    Rule: "#ad1457",
-    Plan: "#1b5e7a",
-    PlanComponent: "#455a64",
-    EventType: "#c2185b",
+    FixedValue: "#81c784",
+    Formula: "#2e7d32",
+    LookupTable: "#81c784",
+    Quota: "#ffa000",
+    RateTable: "#2e7d32",
+    Territory: "#81c784",
+    Variable: "#ffa000",
+    Rule: "#2e7d32",
+    Plan: "#2e7d32",
+    PlanComponent: "#81c784",
+    EventType: "#ffa000",
     CreditType: "#2e7d32",
-    EarningCode: "#1565c0",
-    EarningGroup: "#3949ab",
-    BusinessUnit: "#00838f",
-    ProcessingUnit: "#9e5d00",
-    Calendar: "#616161",
-  }[type] || "#52616f";
+    EarningCode: "#81c784",
+    EarningGroup: "#2e7d32",
+    BusinessUnit: "#81c784",
+    ProcessingUnit: "#ffa000",
+    Calendar: "#2e7d32",
+  }[type] || "#81c784";
+}
+
+function graphThemeColors() {
+  const styles = getComputedStyle(document.documentElement);
+  const color = (name) => styles.getPropertyValue(name).trim();
+  return {
+    accent: color("--forest-green"),
+    border: color("--light-green"),
+    edge: color("--graph-edge"),
+    labelBackground: color("--graph-label-background"),
+    text: color("--graph-label-text"),
+  };
 }

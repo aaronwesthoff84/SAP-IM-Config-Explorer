@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Zulu Plan" />
+    <PLAN NAME="Alpha Plan">
+      <COMPONENT_REF NAME="Zeta Component" />
+      <COMPONENT_REF NAME="Alpha Component" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT NAME="Zeta Component">
+      <RULE_REFS>
+        <RULE_REF NAME="Beta Measurement" />
+        <RULE_REF NAME="Alpha Incentive" />
+        <RULE_REF NAME="Zulu Credit" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+    <PLANCOMPONENT NAME="Alpha Component">
+      <RULE_REFS>
+        <RULE_REF NAME="Zulu Deposit" />
+        <RULE_REF NAME="Alpha Detailed Deposit" />
+        <RULE_REF NAME="Alpha Credit" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE NAME="Zulu Deposit" TYPE="DEPOSIT" />
+    <RULE NAME="Alpha Detailed Deposit" TYPE="DETAIL_DEPOSIT" />
+    <RULE NAME="Beta Measurement" TYPE="PRIMARY_MEASUREMENT" />
+    <RULE NAME="Alpha Incentive" TYPE="COMMISSION" />
+    <RULE NAME="Zulu Credit" TYPE="DIRECT_TRANSACTION_CREDIT" />
+    <RULE NAME="Alpha Credit" TYPE="DIRECT_TRANSACTION_CREDIT" />
+  </RULE_SET>
+  <MD_LOOKUP_TABLE_SET>
+    <MD_LOOKUP_TABLE NAME="Zulu Lookup" />
+    <MD_LOOKUP_TABLE NAME="Alpha Lookup" />
+  </MD_LOOKUP_TABLE_SET>
+  <FIXED_VALUE_SET>
+    <FIXED_VALUE NAME="Zulu Fixed" />
+    <FIXED_VALUE NAME="Alpha Fixed" />
+  </FIXED_VALUE_SET>
+  <QUOTA_SET>
+    <QUOTA NAME="Zulu Quota" />
+    <QUOTA NAME="Alpha Quota" />
+  </QUOTA_SET>
+  <FORMULA_SET>
+    <FORMULA NAME="Zulu Formula" />
+    <FORMULA NAME="Alpha Formula" />
+  </FORMULA_SET>
+  <TERRITORY_SET>
+    <TERRITORY NAME="Zulu Territory" />
+    <TERRITORY NAME="Alpha Territory" />
+  </TERRITORY_SET>
+  <VARIABLE_SET>
+    <VARIABLE NAME="Zulu Variable" />
+    <VARIABLE NAME="Alpha Variable" />
+  </VARIABLE_SET>
+</DATA_IMPORT>

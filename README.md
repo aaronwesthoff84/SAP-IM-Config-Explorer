@@ -39,7 +39,11 @@ If `output.html` is omitted, the converter writes beside the XML input using the
 
 The local app also has a `Generate HTML` action. Select an XML file, choose `Auto`, `A`, or `B`, then generate and preview the HTML output in the browser.
 
-For visual regression testing, the app keeps a local browser baseline for the same XML file and variant. Generate the current output once. After a code update, generate that same XML again: the prior output appears under **Before Change HTML** and the new one under **After Change HTML**. Each output has its own download link. The comparison remains on the workstation in browser storage; download either file if it must survive browser-storage cleanup or use in another browser.
+The output has its own download link for reuse outside the browser.
+
+## HTML Ordering
+
+The generated HTML sorts named objects alphabetically, without changing the displayed section order. Rules are sorted by rule family first, then alphabetically within each family: Credit, Measurement, Incentive, Deposit, and Detailed Deposit. Any unrecognized rule family is shown last as **Other Rules** rather than being incorrectly presented as a Credit Rule.
 
 ## Use The Graph Explorer
 

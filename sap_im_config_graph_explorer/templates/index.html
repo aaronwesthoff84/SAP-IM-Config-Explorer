@@ -9,7 +9,10 @@
 <body>
   <header class="topbar">
     <h1>SAP IM Config Explorer</h1>
-    <div id="status" class="status">Ready</div>
+    <div class="topbar-actions">
+      <div id="status" class="status">Ready</div>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
+    </div>
   </header>
 
   <main class="layout">
@@ -51,25 +54,17 @@
     <section class="workspace">
       <div class="tabs">
         <button class="tab active" data-view="graph-view">Graph</button>
-        <button class="tab" data-view="before-html-view">Before Change HTML</button>
-        <button class="tab" data-view="after-html-view">After Change HTML</button>
+        <button class="tab" data-view="html-output-view">HTML Output</button>
       </div>
       <div id="graph-view" class="view active">
         <div id="graph"></div>
       </div>
-      <div id="before-html-view" class="view">
+      <div id="html-output-view" class="view">
         <div class="html-actions">
-          <a id="before-html-download" download="sap-im-plan-before.html" hidden>Download Before Change HTML</a>
-          <span id="before-html-meta" class="html-meta">No comparison baseline has been saved.</span>
+          <a id="html-output-download" download="sap-im-plan.html" hidden>Download HTML</a>
+          <span id="html-output-meta" class="html-meta">Select an XML file and generate HTML.</span>
         </div>
-        <iframe id="before-html-preview" title="Before change HTML preview"></iframe>
-      </div>
-      <div id="after-html-view" class="view">
-        <div class="html-actions">
-          <a id="after-html-download" download="sap-im-plan-after.html" hidden>Download After Change HTML</a>
-          <span id="after-html-meta" class="html-meta">Generate HTML to create the current output.</span>
-        </div>
-        <iframe id="after-html-preview" title="After change HTML preview"></iframe>
+        <iframe id="html-output-preview" title="HTML output preview"></iframe>
       </div>
     </section>
 

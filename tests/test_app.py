@@ -28,8 +28,74 @@ def test_index_uses_project_name():
     assert "<title>SAP IM Config Explorer</title>" in response.text
     assert "<h1>SAP IM Config Explorer</h1>" in response.text
     assert 'id="validation-findings"' in response.text
-    assert 'data-view="before-html-view"' in response.text
-    assert 'data-view="after-html-view"' in response.text
+    assert 'data-view="html-output-view"' in response.text
+    assert 'id="html-output-preview"' in response.text
+    assert 'id="theme-toggle"' in response.text
+    assert "Generate HTML" in response.text
+
+
+def test_html_client_uses_the_selected_xml_file():
+    script = (ROOT / "sap_im_config_graph_explorer" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert "const file = fileInput.files[0];" in script
+    assert "html-output-preview" in script
+    assert "enableHtmlPreviewAnchors" in script
+    assert 'href?.startsWith("#")' in script
+    assert "event.preventDefault();" in script
+    assert 'formData.append("theme", currentTheme());' in script
+    assert "renderFindings(state.html.findings || []);" in script
+    assert "function applyThemeToHtml" in script
+    assert "before-html-file" not in script
+    assert "after-html-file" not in script
+
+
+def test_html_output_preview_uses_the_available_workspace_height():
+    styles = (ROOT / "sap_im_config_graph_explorer" / "static" / "styles.css").read_text(encoding="utf-8")
+
+    assert "#html-output-view.active" in styles
+    assert "grid-template-rows: 42px minmax(0, 1fr);" in styles
+    assert "#html-output-preview" in styles
+
+
+def test_spectrumtek_light_and_dark_theme_variables_are_defined():
+    styles = (ROOT / "sap_im_config_graph_explorer" / "static" / "styles.css").read_text(encoding="utf-8")
+
+    for color in ("#2e7d32", "#81c784", "#333333", "#ffffff", "#d32f2f", "#ffa000"):
+        assert color in styles
+    assert ':root[data-theme="dark"]' in styles
+    assert "font-size: 36px;" in styles
+    assert "font-size: 24px;" in styles
+    assert "font-size: 18px;" in styles
+    assert "rgba(129, 199, 132" in styles
+
+
+def test_theme_toggle_persists_and_redraws_the_graph():
+    script = (ROOT / "sap_im_config_graph_explorer" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert 'localStorage.getItem("sap-im-config-explorer-theme")' in script
+    assert 'localStorage.setItem("sap-im-config-explorer-theme", theme)' in script
+    assert 'document.documentElement.dataset.theme = theme;' in script
+    assert "if (state.graph.nodes.length) renderGraph();" in script
+    assert "function graphThemeColors()" in script
+
+
+def test_html_endpoint_applies_selected_theme_and_returns_findings():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/convert/html",
+        data={"variant": "A", "theme": "dark"},
+        files={"file": ("validation_findings.xml", VALIDATION_FIXTURE.read_bytes(), "application/xml")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert '<html data-theme="dark">' in payload["html"]
+    assert {finding["code"] for finding in payload["findings"]} >= {
+        "duplicate_object",
+        "unused_object",
+        "orphaned_object",
+    }
 
 
 def test_graph_endpoint_accepts_multiple_uploads():

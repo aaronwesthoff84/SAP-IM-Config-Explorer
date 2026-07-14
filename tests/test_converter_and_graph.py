@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -11,11 +12,12 @@ from sap_im_config_graph_explorer.graph_builder import (
 )
 from sap_im_config_graph_explorer.models import NODE_TYPES, RELATIONSHIP_TYPES
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError, load_xml_file
-from sap_im_config_graph_explorer.xml_to_html_converter import Transformer
+from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, render_action
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
+HTML_SORTING_FIXTURE = FIXTURES / "html_sorting_comparison.xml"
 
 
 def full_graph_builder() -> GraphBuilder:
@@ -44,6 +46,81 @@ def test_xml_to_html_conversion_still_emits_plan_summary():
     assert html.index("Territories (0)") < html.index("Fixed Values (0)")
     assert html.count('class="SummaryCell"') == 27
     assert ">Copyright<" not in html
+
+
+def test_generated_html_supports_spectrumtek_dark_theme():
+    transformer = Transformer()
+
+    transformer.parse(str(FIXTURES / "minimal_plan.xml"))
+    html = transformer.html(theme="dark")
+
+    assert '<html data-theme="dark">' in html
+    for color in ("#2e7d32", "#81c784", "#333333", "#ffffff", "#d32f2f", "#ffa000"):
+        assert color in html
+    assert ':root[data-theme="dark"]' in html
+
+
+def test_html_sorts_objects_by_name_and_rules_by_category_then_name():
+    transformer = Transformer()
+    transformer.parse(str(HTML_SORTING_FIXTURE))
+    html = transformer.html()
+
+    assert html.index('name="Alpha Plan-plan"') < html.index('name="Zulu Plan-plan"')
+    assert html.index('name="Alpha Component-plan-Alpha Plan"') < html.index(
+        'name="Zeta Component-plan-Alpha Plan"'
+    )
+
+    ordered_rule_anchors = [
+        'name="Alpha Credit-rule-Alpha Component-Alpha Plan"',
+        'name="Zulu Credit-rule-Zeta Component-Alpha Plan"',
+        'name="Beta Measurement-rule-Zeta Component-Alpha Plan"',
+        'name="Alpha Incentive-rule-Zeta Component-Alpha Plan"',
+        'name="Zulu Deposit-rule-Alpha Component-Alpha Plan"',
+        'name="Alpha Detailed Deposit-rule-Alpha Component-Alpha Plan"',
+    ]
+    assert [html.index(anchor) for anchor in ordered_rule_anchors] == sorted(
+        html.index(anchor) for anchor in ordered_rule_anchors
+    )
+
+    for first_anchor, second_anchor in [
+        ('name="Alpha Lookup-mdlt"', 'name="Zulu Lookup-mdlt"'),
+        ('name="Alpha Fixed-fv"', 'name="Zulu Fixed-fv"'),
+        ('name="Alpha Quota-quota"', 'name="Zulu Quota-quota"'),
+        ('name="Alpha Formula-formula"', 'name="Zulu Formula-formula"'),
+        ('name="Alpha Territory-terr"', 'name="Zulu Territory-terr"'),
+        ('name="Alpha Variable-var"', 'name="Zulu Variable-var"'),
+    ]:
+        assert html.index(first_anchor) < html.index(second_anchor)
+
+    summary_rules = html[html.index("Rules (6)"):html.index("Formulas (2)")]
+    for first_name, second_name in zip(
+        ["Alpha Credit", "Zulu Credit", "Beta Measurement", "Alpha Incentive", "Zulu Deposit"],
+        ["Zulu Credit", "Beta Measurement", "Alpha Incentive", "Zulu Deposit", "Alpha Detailed Deposit"],
+    ):
+        assert summary_rules.index(f">{first_name}</a>") < summary_rules.index(f">{second_name}</a>")
+
+
+def test_rule_actions_omit_null_generic_values():
+    action = ET.fromstring(
+        """<FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+  <STRING_LITERAL>NULL</STRING_LITERAL>
+  <VALUE DECIMAL_VALUE="NULL" />
+  <DATE_LITERAL>NULL</DATE_LITERAL>
+  <BOOLEAN VALUE="NULL" />
+  <STRING_LITERAL>Keep attribute</STRING_LITERAL>
+  <VALUE DECIMAL_VALUE="5" UNIT_TYPE="USD" />
+  <DATE_LITERAL>2026-01-01</DATE_LITERAL>
+  <BOOLEAN VALUE="true" />
+</FUNCTION>"""
+    )
+
+    html = render_action(action)
+
+    assert "NULL" not in html
+    assert "Keep attribute" in html
+    assert "5 USD" in html
+    assert "2026-01-01" in html
+    assert "true" in html
 
 
 def test_legacy_cli_still_accepts_old_argument_shape(tmp_path):
