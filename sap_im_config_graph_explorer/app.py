@@ -34,23 +34,28 @@ def health() -> dict[str, str]:
 async def convert_html(
     file: UploadFile = File(...),
     variant: str = Form("auto"),
+    theme: str = Form("light"),
 ) -> dict[str, object]:
     content = await file.read()
     _validate_xml_upload_name(file.filename or "upload.xml")
     if not content.strip():
         raise HTTPException(status_code=400, detail=f"Empty XML file: {file.filename}")
+    if theme not in {"light", "dark"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported theme: {theme}")
     temp_path = _write_temp_xml(content, file.filename or "upload.xml")
     try:
         transformer = Transformer(variant="A" if variant.lower() == "auto" else variant.upper())
         transformer.parse(str(temp_path))
+        graph = GraphBuilder().build_from_uploads([(file.filename or "upload.xml", content)])
         output_name = f"{Path(file.filename or 'output.xml').stem}.html"
         return ConversionResult(
             ok=True,
-            html=transformer.html(),
+            html=transformer.html(theme=theme),
             outputFile=output_name,
             variant=transformer.v,
+            findings=[finding.to_dict() for finding in graph.findings],
         ).to_dict()
-    except XErr as exc:
+    except (XErr, XmlLoadError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         temp_path.unlink(missing_ok=True)

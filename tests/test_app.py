@@ -42,6 +42,9 @@ def test_html_client_uses_the_selected_xml_file():
     assert "enableHtmlPreviewAnchors" in script
     assert 'href?.startsWith("#")' in script
     assert "event.preventDefault();" in script
+    assert 'formData.append("theme", currentTheme());' in script
+    assert "renderFindings(state.html.findings || []);" in script
+    assert "function applyThemeToHtml" in script
     assert "before-html-file" not in script
     assert "after-html-file" not in script
 
@@ -74,6 +77,25 @@ def test_theme_toggle_persists_and_redraws_the_graph():
     assert 'document.documentElement.dataset.theme = theme;' in script
     assert "if (state.graph.nodes.length) renderGraph();" in script
     assert "function graphThemeColors()" in script
+
+
+def test_html_endpoint_applies_selected_theme_and_returns_findings():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/convert/html",
+        data={"variant": "A", "theme": "dark"},
+        files={"file": ("validation_findings.xml", VALIDATION_FIXTURE.read_bytes(), "application/xml")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert '<html data-theme="dark">' in payload["html"]
+    assert {finding["code"] for finding in payload["findings"]} >= {
+        "duplicate_object",
+        "unused_object",
+        "orphaned_object",
+    }
 
 
 def test_graph_endpoint_accepts_multiple_uploads():

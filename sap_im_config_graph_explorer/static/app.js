@@ -59,6 +59,7 @@ async function generateHtml() {
   } catch (error) {
     return setStatus(error.message || "HTML generation failed.");
   }
+  renderFindings(state.html.findings || []);
   renderHtmlOutput();
   document.querySelector('[data-view="html-output-view"]').click();
   setStatus(`Generated ${state.html.outputFile}.`);
@@ -68,6 +69,7 @@ async function convertHtml(file, variant) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("variant", variant);
+  formData.append("theme", currentTheme());
   const response = await fetch("/api/convert/html", { method: "POST", body: formData });
   const payload = await response.json();
   if (!response.ok || !payload.ok) {
@@ -78,6 +80,7 @@ async function convertHtml(file, variant) {
     inputName: file.name,
     outputFile: payload.outputFile,
     variant,
+    findings: payload.findings || [],
   };
 }
 
@@ -145,7 +148,19 @@ function applyTheme(theme, persist = true) {
   themeToggle.setAttribute("aria-pressed", String(theme === "dark"));
   themeToggle.textContent = theme === "dark" ? "Light mode" : "Dark mode";
   if (persist) localStorage.setItem("sap-im-config-explorer-theme", theme);
+  if (state.html) {
+    state.html.html = applyThemeToHtml(state.html.html, theme);
+    renderHtmlOutput();
+  }
   if (state.graph.nodes.length) renderGraph();
+}
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function applyThemeToHtml(html, theme) {
+  return html.replace(/<html(?:\s+data-theme="(?:light|dark)")?>/i, `<html data-theme="${theme}">`);
 }
 
 function renderGraph() {

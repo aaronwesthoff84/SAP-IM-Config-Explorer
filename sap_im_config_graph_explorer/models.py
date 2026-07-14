@@ -181,6 +181,7 @@ class ConversionResult:
     outputFile: str = ""
     variant: str = ""
     error: str = ""
+    findings: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -189,6 +190,7 @@ class ConversionResult:
             "outputFile": self.outputFile,
             "variant": self.variant,
             "error": self.error,
+            "findings": self.findings,
         }
 
 

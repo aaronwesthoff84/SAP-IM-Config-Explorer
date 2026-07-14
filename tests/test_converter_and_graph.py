@@ -48,6 +48,18 @@ def test_xml_to_html_conversion_still_emits_plan_summary():
     assert ">Copyright<" not in html
 
 
+def test_generated_html_supports_spectrumtek_dark_theme():
+    transformer = Transformer()
+
+    transformer.parse(str(FIXTURES / "minimal_plan.xml"))
+    html = transformer.html(theme="dark")
+
+    assert '<html data-theme="dark">' in html
+    for color in ("#2e7d32", "#81c784", "#333333", "#ffffff", "#d32f2f", "#ffa000"):
+        assert color in html
+    assert ':root[data-theme="dark"]' in html
+
+
 def test_html_sorts_objects_by_name_and_rules_by_category_then_name():
     transformer = Transformer()
     transformer.parse(str(HTML_SORTING_FIXTURE))

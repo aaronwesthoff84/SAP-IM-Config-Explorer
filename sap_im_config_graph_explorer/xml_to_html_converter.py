@@ -77,29 +77,39 @@ SUMMARY_ORDER = [
 ]
 SUMMARY_COLUMN_COUNT = 3
 CSS = """
-            <!--
-            .Body   { background-color: #F3F3F6; margin: 20; link: #FF6600; alink: #FF9900; vlink: #FF6600; font-family: Arial,Helvetica,sans-serif; font-size: 9pt; font-weight: 300; color: #666677; text-decoration: none; }
-            .PageTitle    { font-family: Arial,Helvetica,sans-serif; font-size: 14pt; font-weight: 700; color: #003399;}
-            .SectionTitle    { background-color: #003399; border: solid 1px #2255BB; padding: 3px;  font-family: Arial,Helvetica,sans-serif; font-size: 12pt; font-weight: 700; color: #FFFFFF;}
-            .SubSectionTitle    { background-color: #3399CC; border: solid 1px #1177AA; padding: 3px;  font-family: Arial,Helvetica,sans-serif; font-size: 12pt; font-weight: 700; color: #FFFFFF;}
-            .ComponentObjectTitle    { background-color: #800000; border: solid 1px #AAC5D5; padding: 3px;  font-family: Arial,Helvetica,sans-serif; font-size: 11pt; font-weight: 700; color: #008080;}
-            .ObjectTitle    { background-color: #C3DFF0; border: solid 1px #AAC5D5; padding: 3px;  font-family: Arial,Helvetica,sans-serif; font-size: 10pt; font-weight: 700; color: #003399;}
-            .ContentTitle    { font-family: Arial,Helvetica,sans-serif; font-size: 9pt; font-weight: 700; color: #003399;}
-            .Link          { font-family: Arial,Helvetica,sans-serif !important; font-size: 9pt; font-weight: 300; color: #0088BB; text-decoration: none; }
-            .Link:hover    { color: #005588 !important; text-decoration: none; }
-            .LabelCell        { font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #777777; font-weight: 300; padding: 6px 6px 1px 0px; vertical-align: top; text-align: right; }
-            .Value    { font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #003399; font-weight: 300; padding: 6px 6px 4px 3px; vertical-align: top; }
-            .ContentBox    {  background-color: #FFFFFF; border: solid 1px #EEEEEE; padding: 8px;  font-family: Arial,Helvetica,sans-serif; font-size: 9pt; font-weight: 300; color: #666666; }
-            .ListTable    { background-color: #FFFFFF; }
-            .ListHeaderCell    { background-color: #F3F3F6; border: 1px solid #DDDDDD; padding: 1px 3px 1px 3px; font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #777777; text-decoration: none; vertical-align: bottom; }
-            .ListCell    { padding: 2px 4px 2px 4px; font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #003399; vertical-align: top; border-bottom: 1px solid #EEEEEE;}
-            .FunctionParameter { font-family: Arial,Helvetica,Sans-Serif; font-size: 9pt; color: #666666; vertical-align: top; padding-left: 25px }
-            .FunctionParameterLineNumber {font-family: Verdana,Arial,Helvetica,Sans-Serif; font-size: 7pt; color: #999999; vertical-align: top; text-align:right; padding-left:2px }
-            .SummaryTable { width: 100%; border-collapse: separate; border-spacing: 0 8px; table-layout: fixed; }
-            .SummaryHeader { background-color: #E6F1F8; border: 1px solid #AAC5D5; color: #003399; font-family: Arial,Helvetica,sans-serif; font-size: 10pt; font-weight: 700; padding: 6px 8px; text-align: left; }
-            .SummaryCell { background-color: #FFFFFF; border-bottom: 1px solid #EEEEEE; overflow-wrap: anywhere; padding: 8px 10px; vertical-align: top; width: 33.333%; }
-            .SummaryItem { color: #003399; font-family: Arial,Helvetica,sans-serif; font-size: 9pt; }
-            -->
+            :root {
+              color-scheme: light;
+              --forest-green: #2e7d32; --light-green: #81c784; --charcoal-gray: #333333;
+              --neutral-white: #ffffff; --alert-red: #d32f2f; --warning-amber: #ffa000;
+              --background: var(--neutral-white); --surface: #f7faf7; --surface-muted: #edf4ed;
+              --text: var(--charcoal-gray); --muted-text: #59635a; --border: #c8d8ca;
+            }
+            :root[data-theme="dark"] {
+              color-scheme: dark;
+              --background: var(--charcoal-gray); --surface: #252b26; --surface-muted: #202720;
+              --text: var(--neutral-white); --muted-text: #d7e4d8; --border: #748076;
+            }
+            .Body { background-color: var(--background); color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; font-weight: 300; margin: 20px; text-decoration: none; }
+            .PageTitle { color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 36px; font-weight: 700; }
+            .SectionTitle { background-color: var(--forest-green); border: solid 1px var(--light-green); color: var(--neutral-white); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 24px; font-weight: 700; padding: 6px 8px; }
+            .SubSectionTitle { background-color: var(--light-green); border: solid 1px var(--forest-green); color: var(--charcoal-gray); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 18px; font-weight: 700; padding: 5px 7px; }
+            .ComponentObjectTitle, .ObjectTitle { background-color: var(--surface-muted); border: solid 1px var(--border); color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 18px; font-weight: 700; padding: 5px 7px; }
+            .ContentTitle { color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; font-weight: 700; }
+            .Link { color: var(--forest-green); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif !important; font-size: 14px; font-weight: 600; text-decoration: none; }
+            .Link:hover { color: var(--light-green) !important; text-decoration: underline; }
+            .LabelCell { color: var(--muted-text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; font-weight: 300; padding: 6px 6px 1px 0; text-align: right; vertical-align: top; }
+            .Value { color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; font-weight: 300; padding: 6px 6px 4px 3px; vertical-align: top; }
+            .ContentBox { background-color: var(--surface); border: solid 1px var(--border); color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; font-weight: 300; padding: 8px; }
+            .ListTable { background-color: var(--surface); }
+            .ListHeaderCell { background-color: var(--surface-muted); border: 1px solid var(--border); color: var(--muted-text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; padding: 3px; text-decoration: none; vertical-align: bottom; }
+            .ListCell { border-bottom: 1px solid var(--border); color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; padding: 2px 4px; vertical-align: top; }
+            .FunctionParameter { color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; padding-left: 25px; vertical-align: top; }
+            .FunctionParameterLineNumber { color: var(--muted-text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; padding-left: 2px; text-align: right; vertical-align: top; }
+            .FunctionParameter[style] { border-color: var(--border) !important; }
+            .SummaryTable { border-collapse: separate; border-spacing: 0 8px; table-layout: fixed; width: 100%; }
+            .SummaryHeader { background-color: var(--surface-muted); border: 1px solid var(--border); color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 18px; font-weight: 700; padding: 6px 8px; text-align: left; }
+            .SummaryCell { background-color: var(--surface); border-bottom: 1px solid var(--border); overflow-wrap: anywhere; padding: 8px 10px; vertical-align: top; width: 33.333%; }
+            .SummaryItem { color: var(--text); font-family: Inter,"Segoe UI",Arial,Helvetica,sans-serif; font-size: 14px; }
         """
 SAP_LOGO_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
@@ -782,8 +792,10 @@ class Transformer:
                 occurrences.append((component, rule))
         return sorted(occurrences, key=lambda item: (rule_sort_key(item[1]), object_sort_key(item[0])))
 
-    def html(self):
-        v=self.v; L=['<!DOCTYPE HTML>','<html>','<head>',
+    def html(self, theme="light"):
+        if theme not in {"light", "dark"}:
+            raise XErr(f"Unsupported theme: {theme}")
+        v=self.v; L=['<!DOCTYPE HTML>',f'<html data-theme="{theme}">','<head>',
             '<META http-equiv="Content-Type" content="text/html; charset=UTF-8">',
             '<title>SAP Incentive Management Plan Summary</title>',
             f'<style type="text/css">{CSS}</style>','</head>','<body class="Body">']
