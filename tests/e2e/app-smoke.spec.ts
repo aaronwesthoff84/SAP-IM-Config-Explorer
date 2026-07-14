@@ -3,12 +3,16 @@ import path from 'node:path';
 
 const fixture = path.resolve('tests/fixtures/minimal_plan.xml');
 
-test('loads the local-first application without browser errors', async ({ page }) => {
-  const errors: string[] = [];
+function collectBrowserErrors(page, errors: string[]) {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {
     if (message.type() === 'error') errors.push(message.text());
   });
+}
+
+test('loads the local-first application without browser errors', async ({ page }) => {
+  const errors: string[] = [];
+  collectBrowserErrors(page, errors);
 
   await page.goto('/');
   await expect(page).toHaveTitle('SAP IM Config Explorer');
@@ -19,20 +23,19 @@ test('loads the local-first application without browser errors', async ({ page }
 
 test('uploads XML and generates graph and HTML output', async ({ page }) => {
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  page.on('console', message => {
-    if (message.type() === 'error') errors.push(message.text());
-  });
+  collectBrowserErrors(page, errors);
 
   await page.goto('/');
   await page.locator('#xml-files').setInputFiles(fixture);
 
   await page.locator('#graph-button').click();
-  await expect(page.locator('#status')).toContainText(/Graph|Ready|Loaded/i);
-  await expect(page.locator('#type-filter option')).toHaveCountGreaterThan(1);
+  await expect(page.locator('#status')).not.toHaveText('Generating graph...');
+  await expect.poll(async () => page.locator('#type-filter option').count()).toBeGreaterThan(1);
+  await expect(page.locator('#graph canvas')).toBeVisible();
 
   await page.locator('#html-button').click();
-  await page.getByRole('button', { name: 'HTML Output' }).click();
+  await expect(page.locator('#status')).toContainText('Generated');
+  await expect(page.locator('#html-output-view')).toHaveClass(/active/);
   await expect(page.locator('#html-output-download')).toBeVisible();
   await expect(page.locator('#html-output-preview')).toHaveAttribute('srcdoc', /SAP|Plan|html/i);
 
@@ -47,5 +50,5 @@ test('persists theme choice', async ({ page }) => {
   await expect(toggle).not.toHaveAttribute('aria-pressed', initial ?? 'false');
   const changed = await toggle.getAttribute('aria-pressed');
   await page.reload();
-  await expect(toggle).toHaveAttribute('aria-pressed', changed ?? 'true');
+  await expect(page.locator('#theme-toggle')).toHaveAttribute('aria-pressed', changed ?? 'true');
 });
