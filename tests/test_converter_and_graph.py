@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -11,7 +12,7 @@ from sap_im_config_graph_explorer.graph_builder import (
 )
 from sap_im_config_graph_explorer.models import NODE_TYPES, RELATIONSHIP_TYPES
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError, load_xml_file
-from sap_im_config_graph_explorer.xml_to_html_converter import Transformer
+from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, render_action
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +86,29 @@ def test_html_sorts_objects_by_name_and_rules_by_category_then_name():
         ["Zulu Credit", "Beta Measurement", "Alpha Incentive", "Zulu Deposit", "Alpha Detailed Deposit"],
     ):
         assert summary_rules.index(f">{first_name}</a>") < summary_rules.index(f">{second_name}</a>")
+
+
+def test_rule_actions_omit_null_generic_values():
+    action = ET.fromstring(
+        """<FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+  <STRING_LITERAL>NULL</STRING_LITERAL>
+  <VALUE DECIMAL_VALUE="NULL" />
+  <DATE_LITERAL>NULL</DATE_LITERAL>
+  <BOOLEAN VALUE="NULL" />
+  <STRING_LITERAL>Keep attribute</STRING_LITERAL>
+  <VALUE DECIMAL_VALUE="5" UNIT_TYPE="USD" />
+  <DATE_LITERAL>2026-01-01</DATE_LITERAL>
+  <BOOLEAN VALUE="true" />
+</FUNCTION>"""
+    )
+
+    html = render_action(action)
+
+    assert "NULL" not in html
+    assert "Keep attribute" in html
+    assert "5 USD" in html
+    assert "2026-01-01" in html
+    assert "true" in html
 
 
 def test_legacy_cli_still_accepts_old_argument_shape(tmp_path):

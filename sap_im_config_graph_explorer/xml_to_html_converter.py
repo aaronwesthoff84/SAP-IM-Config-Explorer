@@ -313,6 +313,16 @@ def _ap_lbl(fid, idx, child):
     if tag=="boolean": return "Generic Boolean"
     return f"Parameter {idx}"
 
+def _is_null_generic_action_value(child):
+    tag=child.tag.lower() if hasattr(child, "tag") else ""
+    if tag=="string_literal": value=gtxt(child)
+    elif tag=="value": value=child.get("DECIMAL_VALUE") or gtxt(child)
+    elif tag=="boolean": value=child.get("VALUE") or gtxt(child)
+    elif tag in ("date", "date_literal", "date_value"):
+        value=child.get("VALUE") or child.get("DATE_VALUE") or child.get("DATE") or gtxt(child)
+    else: return False
+    return value.strip().upper()=="NULL"
+
 def render_action(func_elem, depth=0):
     fid=func_elem.get("ID","")
     al=ACTION_LABELS.get(fid, f"Create {fid}" if not fid.startswith("Create ") else fid)
@@ -323,6 +333,9 @@ def render_action(func_elem, depth=0):
         tag=child.tag.lower() if hasattr(child,'tag') else ""
         if tag=="parameter_list": continue
         lbl=_ap_lbl(fid, pi, child)
+        if _is_null_generic_action_value(child):
+            pi+=1
+            continue
         L.append(f'{ind}<tr>')
         L.append(f'{ind}<td valign="top" style="right-padding: 10px" class="FunctionParameterLineNumber">{esc(lbl)}</td>')
         if tag=="output_reference":
