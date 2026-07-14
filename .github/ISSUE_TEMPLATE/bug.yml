@@ -1,0 +1,73 @@
+name: Bug report
+description: Define a reproducible defect for Jules
+title: "[Bug] "
+labels:
+  - state:needs-details
+  - type:bug
+body:
+  - type:textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the incorrect behavior and impact.
+    validations:
+      required: true
+  - type:textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type:textarea
+    id: expected
+    attributes:
+      label: Expected user-visible behavior
+    validations:
+      required: true
+  - type:textarea
+    id: scope
+    attributes:
+      label: Scope
+    validations:
+      required: true
+  - type:textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+    validations:
+      required: true
+  - type:textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations:
+      required: true
+  - type:textarea
+    id: tests
+    attributes:
+      label: Required regression coverage
+    validations:
+      required: true
+  - type:textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List blocking Issues or write None.
+    validations:
+      required: true
+  - type:textarea
+    id: security
+    attributes:
+      label: Security, privacy, and local-first considerations
+    validations:
+      required: true
+  - type:textarea
+    id: evidence
+    attributes:
+      label: Logs, XML fixture, screenshots, or other evidence
+  - type:textarea
+    id: done
+    attributes:
+      label: Definition of done
+    validations:
+      required: true

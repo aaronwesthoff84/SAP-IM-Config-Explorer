@@ -1,0 +1,76 @@
+name: Feature request
+description: Define implementation-ready work for Jules
+title: "[Feature] "
+labels:
+  - state:needs-details
+  - type:feature
+body:
+  - type:markdown
+    attributes:
+      value: Complete every section before moving this Issue to Ready for Jules.
+  - type:textarea
+    id: problem
+    attributes:
+      label: Problem or user need
+    validations:
+      required: true
+  - type:textarea
+    id: goal
+    attributes:
+      label: Goal
+    validations:
+      required: true
+  - type:textarea
+    id: behavior
+    attributes:
+      label: User-visible behavior
+    validations:
+      required: true
+  - type:textarea
+    id: scope
+    attributes:
+      label: Scope
+    validations:
+      required: true
+  - type:textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+    validations:
+      required: true
+  - type:textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use a checklist with deterministic outcomes.
+    validations:
+      required: true
+  - type:textarea
+    id: tests
+    attributes:
+      label: Required test coverage
+    validations:
+      required: true
+  - type:textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List blocking Issues or write None.
+    validations:
+      required: true
+  - type:textarea
+    id: security
+    attributes:
+      label: Security, privacy, and local-first considerations
+    validations:
+      required: true
+  - type:textarea
+    id: examples
+    attributes:
+      label: Examples, fixtures, or screenshots
+  - type:textarea
+    id: done
+    attributes:
+      label: Definition of done
+    validations:
+      required: true

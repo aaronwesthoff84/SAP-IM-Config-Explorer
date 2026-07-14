@@ -1,0 +1,38 @@
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: dependency-review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native dependency review
+        id: native-review
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Audit Python runtime dependencies
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit -r requirements.txt
+      - name: Audit Node runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Report native dependency review availability
+        if: steps.native-review.outcome == 'failure'
+        run: echo "Native dependency review was unavailable or failed; pip-audit and runtime npm audit completed as the enforced fallback."
