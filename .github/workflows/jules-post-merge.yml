@@ -1,0 +1,38 @@
+name: Jules Post Merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: read
+  actions: write
+
+jobs:
+  progress:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+            const match = (pr.body || '').match(/(?:Closes|Fixes|Resolves)\s+#(\d+)/i);
+            if (!match) return;
+            const issueNumber = Number(match[1]);
+            const {data: issue} = await github.rest.issues.get({owner,repo,issue_number:issueNumber});
+            const labels = issue.labels.map(l => l.name);
+            if (!labels.includes('agent:jules')) return;
+            for (const label of ['state:in-progress','state:ready-to-merge','state:waiting-owner','automation:repair-1','automation:repair-2','jules']) {
+              await github.rest.issues.removeLabel({owner,repo,issue_number:issueNumber,name:label}).catch(() => {});
+            }
+            await github.rest.issues.addLabels({owner,repo,issue_number:issueNumber,labels:['state:done']});
+            await github.rest.issues.update({owner,repo,issue_number:issueNumber,state:'closed',state_reason:'completed'});
+            if (pr.head.repo?.full_name === `${owner}/${repo}` && pr.head.ref !== context.payload.repository.default_branch) {
+              await github.rest.git.deleteRef({owner,repo,ref:`heads/${pr.head.ref}`}).catch(() => {});
+            }
+            await github.rest.actions.createWorkflowDispatch({owner,repo,workflow_id:'jules-dispatch.yml',ref:context.payload.repository.default_branch});
