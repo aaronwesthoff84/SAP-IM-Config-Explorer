@@ -31,7 +31,7 @@ test('uploads XML and generates graph and HTML output', async ({ page }) => {
   await page.locator('#graph-button').click();
   await expect(page.locator('#status')).not.toHaveText('Generating graph...');
   await expect.poll(async () => page.locator('#type-filter option').count()).toBeGreaterThan(1);
-  await expect(page.locator('#graph canvas')).toBeVisible();
+  await expect(page.locator('#graph canvas').first()).toBeVisible();
 
   await page.locator('#html-button').click();
   await expect(page.locator('#status')).toContainText('Generated');
