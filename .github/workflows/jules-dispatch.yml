@@ -1,0 +1,94 @@
+name: Jules Dispatch
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened, closed]
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: jules-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: vars.JULES_AUTOMATION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          PROJECT_OWNER: ${{ vars.JULES_PROJECT_OWNER }}
+          PROJECT_NUMBER: ${{ vars.JULES_PROJECT_NUMBER }}
+          PROJECT_TOKEN: ${{ secrets.JULES_PROJECT_TOKEN }}
+        with:
+          github-token: ${{ secrets.JULES_PROJECT_TOKEN || github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const required = ['## goal', '## scope', '## acceptance criteria'];
+            const all = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', per_page: 100
+            });
+            const issues = all.filter(item => !item.pull_request);
+            const active = issues.filter(item => item.labels.some(l => l.name === 'state:in-progress'));
+            if (active.length >= 2) return;
+
+            let orderedNumbers = [];
+            if (process.env.PROJECT_TOKEN && process.env.PROJECT_OWNER && process.env.PROJECT_NUMBER) {
+              const query = `query($login:String!, $number:Int!) {
+                user(login:$login) { projectV2(number:$number) {
+                  items(first:100) { nodes { content { ... on Issue { number repository { nameWithOwner } } } } }
+                } }
+              }`;
+              try {
+                const data = await github.graphql(query, {
+                  login: process.env.PROJECT_OWNER,
+                  number: Number(process.env.PROJECT_NUMBER)
+                });
+                orderedNumbers = data.user.projectV2.items.nodes
+                  .map(node => node.content)
+                  .filter(content => content?.repository?.nameWithOwner === `${owner}/${repo}`)
+                  .map(content => content.number);
+              } catch (error) {
+                core.warning(`Project order unavailable; falling back to issue order: ${error.message}`);
+              }
+            }
+            const rank = new Map(orderedNumbers.map((number, index) => [number, index]));
+            const candidates = issues
+              .filter(item => item.labels.some(l => l.name === 'state:ready'))
+              .filter(item => item.labels.some(l => l.name === 'agent:jules'))
+              .filter(item => !item.labels.some(l => ['jules', 'state:blocked', 'state:needs-details'].includes(l.name)))
+              .sort((a, b) => (rank.get(a.number) ?? 100000 + a.number) - (rank.get(b.number) ?? 100000 + b.number));
+
+            const activeAreas = new Set(active.flatMap(item => item.labels.map(l => l.name).filter(n => n.startsWith('area:'))));
+            for (const issue of candidates) {
+              if (active.length >= 2) break;
+              const body = (issue.body || '').toLowerCase();
+              const missing = required.filter(heading => !body.includes(heading));
+              const labels = issue.labels.map(l => l.name);
+              const areas = labels.filter(name => name.startsWith('area:'));
+              const risks = labels.filter(name => name.startsWith('risk:'));
+              if (missing.length || areas.length !== 1 || risks.length !== 1) {
+                await github.rest.issues.removeLabel({owner, repo, issue_number: issue.number, name: 'state:ready'}).catch(() => {});
+                await github.rest.issues.addLabels({owner, repo, issue_number: issue.number, labels: ['state:needs-details']});
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issue.number,
+                  body: `## Action required from @aaronwesthoff84\n\nThis Issue is not ready for Jules. Missing headings: ${missing.join(', ') || 'none'}. It must also have exactly one risk label and one area label.`
+                });
+                continue;
+              }
+              if (activeAreas.has(areas[0])) continue;
+              await github.rest.issues.removeLabel({owner, repo, issue_number: issue.number, name: 'state:ready'}).catch(() => {});
+              await github.rest.issues.addLabels({owner, repo, issue_number: issue.number, labels: ['state:in-progress']});
+              await github.rest.issues.addLabels({owner, repo, issue_number: issue.number, labels: ['jules']});
+              active.push(issue);
+              activeAreas.add(areas[0]);
+            }
