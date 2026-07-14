@@ -20,10 +20,9 @@ concurrency:
 
 jobs:
   dispatch:
-    if: vars.JULES_AUTOMATION_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v8
         env:
           PROJECT_OWNER: ${{ vars.JULES_PROJECT_OWNER }}
           PROJECT_NUMBER: ${{ vars.JULES_PROJECT_NUMBER }}
@@ -38,6 +37,10 @@ jobs:
               owner, repo, state: 'open', per_page: 100
             });
             const issues = all.filter(item => !item.pull_request);
+            if (issues.some(item => item.labels.some(l => l.name === 'automation:paused'))) {
+              core.notice('Jules dispatch is paused by automation:paused.');
+              return;
+            }
             const active = issues.filter(item => item.labels.some(l => l.name === 'state:in-progress'));
             if (active.length >= 2) return;
 
