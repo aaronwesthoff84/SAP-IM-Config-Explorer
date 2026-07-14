@@ -1,0 +1,46 @@
+name: Jules Owner Commands
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  command:
+    if: github.event.comment.user.login == 'aaronwesthoff84' && startsWith(github.event.comment.body, '/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const number = context.issue.number;
+            const first = context.payload.comment.body.trim().split('\n')[0];
+            const [raw, ...rest] = first.split(' ');
+            const command = raw.slice(1);
+            const argument = rest.join(' ').trim();
+            const allowed = new Set(['approve','request-changes','retry','block','cancel','needs-details','ready','pause','resume']);
+            if (!allowed.has(command)) return;
+            if (['request-changes','block'].includes(command) && !argument) {
+              core.setFailed(`/${command} requires a reason or instruction.`); return;
+            }
+            const add = labels => github.rest.issues.addLabels({owner, repo, issue_number:number, labels});
+            const remove = name => github.rest.issues.removeLabel({owner, repo, issue_number:number, name}).catch(() => {});
+            if (command === 'approve') await add(['owner:approved']);
+            if (command === 'ready') { await remove('state:needs-details'); await remove('state:blocked'); await add(['state:ready','agent:jules']); }
+            if (command === 'needs-details') { await remove('jules'); await remove('state:ready'); await add(['state:needs-details']); }
+            if (command === 'block') { await remove('jules'); await add(['state:blocked']); }
+            if (command === 'cancel') { await remove('jules'); await github.rest.issues.update({owner,repo,issue_number:number,state:'closed',state_reason:'not_planned'}); }
+            if (command === 'request-changes') await github.rest.issues.createComment({owner,repo,issue_number:number,body:`@jules Requested changes from the repository owner:\n\n${argument}`});
+            if (command === 'retry') await github.rest.issues.createComment({owner,repo,issue_number:number,body:'@jules Retry this work using the latest failure details and AGENTS.md validation requirements.'});
+            if (command === 'pause' || command === 'resume') {
+              const value = command === 'resume' ? 'true' : 'false';
+              await github.request('PATCH /repos/{owner}/{repo}/actions/variables/{name}', {owner,repo,name:'JULES_AUTOMATION_ENABLED',value});
+            }
+            await github.rest.reactions.createForIssueComment({owner,repo,comment_id:context.payload.comment.id,content:'+1'});

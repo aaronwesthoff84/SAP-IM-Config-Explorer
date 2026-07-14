@@ -1,0 +1,43 @@
+name: Jules Bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const labels = {
+              'state:idea':'d4c5f9','state:needs-details':'fbca04','state:ready':'0e8a16','state:in-progress':'1d76db',
+              'state:waiting-owner':'d93f0b','state:blocked':'b60205','state:ready-to-merge':'5319e7','state:done':'8250df',
+              'agent:jules':'7057ff','jules':'7057ff','owner:approved':'0e8a16','automation:repair-1':'fbca04','automation:repair-2':'d93f0b',
+              'risk:low':'0e8a16','risk:medium':'fbca04','risk:high':'b60205',
+              'area:graph-model':'c5def5','area:xml-parser':'c5def5','area:html-output':'c5def5','area:web-ui':'c5def5',
+              'area:testing':'c5def5','area:documentation':'c5def5','area:dependencies':'c5def5',
+              'type:bug':'d73a4a','type:feature':'a2eeef','type:refactor':'cfd3d7','type:test':'bfdadc','type:documentation':'0075ca','type:maintenance':'fef2c0'
+            };
+            const existing = await github.paginate(github.rest.issues.listLabelsForRepo,{owner,repo,per_page:100});
+            const names = new Set(existing.map(label => label.name));
+            for (const [name,color] of Object.entries(labels)) {
+              if (!names.has(name)) await github.rest.issues.createLabel({owner,repo,name,color});
+            }
+            const variables = {
+              JULES_AUTOMATION_ENABLED:'false',
+              JULES_PROJECT_OWNER:'aaronwesthoff84',
+              JULES_PROJECT_NUMBER:'',
+              JULES_RECONCILE_MINUTES:'15'
+            };
+            for (const [name,value] of Object.entries(variables)) {
+              try { await github.request('PATCH /repos/{owner}/{repo}/actions/variables/{name}',{owner,repo,name,value}); }
+              catch { await github.request('POST /repos/{owner}/{repo}/actions/variables',{owner,repo,name,value}); }
+            }

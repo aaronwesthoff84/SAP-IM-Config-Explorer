@@ -1,0 +1,57 @@
+name: Jules PR Control
+
+on:
+  workflow_run:
+    workflows: [CI, CodeQL, Dependency Review]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
+concurrency:
+  group: jules-sequential-merge
+  cancel-in-progress: false
+
+jobs:
+  automation-policy-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prs = context.payload.workflow_run?.pull_requests || [];
+            if (!prs.length) { core.notice('No pull request attached to workflow run.'); return; }
+            const prNumber = prs[0].number;
+            const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: prNumber});
+            const issueMatch = (pr.body || '').match(/(?:Closes|Fixes|Resolves)\s+#(\d+)/i);
+            if (!issueMatch) { core.setFailed('Exactly one primary Issue must be linked with Closes #N.'); return; }
+            const issueNumber = Number(issueMatch[1]);
+            const {data: issue} = await github.rest.issues.get({owner, repo, issue_number: issueNumber});
+            const labels = issue.labels.map(l => l.name);
+            if (!labels.includes('agent:jules')) { core.notice('PR is not linked to a Jules-managed Issue.'); return; }
+            const risks = labels.filter(l => l.startsWith('risk:'));
+            if (risks.length !== 1) { core.setFailed('Linked Issue must have exactly one risk label.'); return; }
+            const risk = risks[0].slice(5);
+            const approved = labels.includes('owner:approved');
+            if (risk === 'high' && !approved) {
+              await github.rest.issues.addLabels({owner, repo, issue_number: prNumber, labels: ['state:waiting-owner']});
+              await github.rest.issues.createComment({owner, repo, issue_number: prNumber, body:
+                '## Action required from @aaronwesthoff84\n\n**Reason:** High-risk change detected.\n\nCommands:\n- `/approve`\n- `/request-changes <instructions>`\n- `/block <reason>`\n- `/cancel`'});
+              return;
+            }
+            const {data: checks} = await github.rest.checks.listForRef({owner, repo, ref: pr.head.sha, per_page: 100});
+            const required = ['validation', 'e2e', 'codeql', 'dependency-review'];
+            const states = new Map(checks.check_runs.map(check => [check.name, check.conclusion]));
+            const missing = required.filter(name => states.get(name) !== 'success');
+            if (missing.length) { core.notice(`Waiting for required checks: ${missing.join(', ')}`); return; }
+            if (pr.mergeable_state !== 'clean' && pr.mergeable_state !== 'unstable') {
+              core.notice(`PR is not current/mergeable: ${pr.mergeable_state}`); return;
+            }
+            await github.rest.issues.addLabels({owner, repo, issue_number: prNumber, labels: ['state:ready-to-merge']});
+            await github.graphql(`mutation($id:ID!){ enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:SQUASH}){pullRequest{number}} }`, {id: pr.node_id});

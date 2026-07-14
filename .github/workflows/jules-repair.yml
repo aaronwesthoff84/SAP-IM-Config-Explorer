@@ -1,0 +1,47 @@
+name: Jules Repair
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  repair:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prs = context.payload.workflow_run.pull_requests || [];
+            if (!prs.length) return;
+            const number = prs[0].number;
+            const {data: pr} = await github.rest.pulls.get({owner,repo,pull_number:number});
+            const match = (pr.body || '').match(/(?:Closes|Fixes|Resolves)\s+#(\d+)/i);
+            if (!match) return;
+            const issueNumber = Number(match[1]);
+            const {data: issue} = await github.rest.issues.get({owner,repo,issue_number:issueNumber});
+            const labels = issue.labels.map(l => l.name);
+            if (!labels.includes('agent:jules')) return;
+            let attempt = 1;
+            if (labels.includes('automation:repair-2')) {
+              await github.rest.issues.addLabels({owner,repo,issue_number:issueNumber,labels:['state:blocked']});
+              await github.rest.issues.createComment({owner,repo,issue_number:issueNumber,body:
+                '## Action required from @aaronwesthoff84\n\nCI still fails after two automated repair attempts. The Issue is now blocked.'});
+              return;
+            }
+            if (labels.includes('automation:repair-1')) attempt = 2;
+            const previous = attempt === 2 ? 'automation:repair-1' : null;
+            if (previous) await github.rest.issues.removeLabel({owner,repo,issue_number:issueNumber,name:previous}).catch(() => {});
+            await github.rest.issues.addLabels({owner,repo,issue_number:issueNumber,labels:[`automation:repair-${attempt}`]});
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({owner,repo,run_id:context.payload.workflow_run.id,filter:'latest'});
+            const failed = jobs.data.jobs.filter(j => j.conclusion === 'failure').map(j => j.name);
+            await github.rest.issues.createComment({owner,repo,issue_number:number,body:
+              `@jules Repair the failing required checks for this pull request.\n\nDo not change the Issue scope. Diagnose the root cause, add or update regression coverage, run the complete validation commands from AGENTS.md, and push the repair to this branch.\n\nFailing checks:\n- ${failed.join('\n- ')}\n\nRepair attempt: ${attempt} of 2`});
