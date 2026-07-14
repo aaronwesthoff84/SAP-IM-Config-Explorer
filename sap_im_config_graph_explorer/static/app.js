@@ -6,6 +6,7 @@ const state = {
 };
 
 const statusEl = document.getElementById("status");
+const themeToggle = document.getElementById("theme-toggle");
 const fileInput = document.getElementById("xml-files");
 const graphEl = document.getElementById("graph");
 const typeFilter = document.getElementById("type-filter");
@@ -17,8 +18,11 @@ const findingsEl = document.getElementById("validation-findings");
 document.getElementById("graph-button").addEventListener("click", generateGraph);
 document.getElementById("html-button").addEventListener("click", generateHtml);
 document.getElementById("export-button").addEventListener("click", exportGraph);
+themeToggle.addEventListener("click", toggleTheme);
 searchInput.addEventListener("input", renderGraph);
 typeFilter.addEventListener("change", renderGraph);
+
+initializeTheme();
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
@@ -124,11 +128,29 @@ function enableHtmlPreviewAnchors(preview) {
 
 function emptyHtmlOutputMessage() {
   const message = "Select an XML file and generate HTML.";
-  return `<p style="font-family:Arial,Helvetica,sans-serif;margin:24px;color:#4c5a67">${message}</p>`;
+  return `<p style="font-family:Inter,Segoe UI,Arial,Helvetica,sans-serif;margin:24px;color:#333333">${message}</p>`;
+}
+
+function initializeTheme() {
+  const savedTheme = localStorage.getItem("sap-im-config-explorer-theme");
+  applyTheme(savedTheme === "dark" ? "dark" : "light", false);
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
+
+function applyTheme(theme, persist = true) {
+  document.documentElement.dataset.theme = theme;
+  themeToggle.setAttribute("aria-pressed", String(theme === "dark"));
+  themeToggle.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+  if (persist) localStorage.setItem("sap-im-config-explorer-theme", theme);
+  if (state.graph.nodes.length) renderGraph();
 }
 
 function renderGraph() {
   if (state.cy) state.cy.destroy();
+  const graphTheme = graphThemeColors();
   const term = searchInput.value.trim().toLowerCase();
   const type = typeFilter.value;
   const nodes = state.graph.nodes.filter((node) => {
@@ -151,13 +173,13 @@ function renderGraph() {
         selector: "node",
         style: {
           "background-color": "data(displayColor)",
-          "border-color": "#ffffff",
+          "border-color": graphTheme.border,
           "border-width": 2,
-          color: "#1c2630",
+          color: graphTheme.text,
           label: "data(label)",
           "font-size": 11,
           height: 30,
-          "text-background-color": "#ffffff",
+          "text-background-color": graphTheme.labelBackground,
           "text-background-opacity": 0.86,
           "text-background-padding": 3,
           "text-margin-y": -8,
@@ -169,8 +191,8 @@ function renderGraph() {
         selector: "edge",
         style: {
           "curve-style": "bezier",
-          "line-color": "#8fa1b2",
-          "target-arrow-color": "#8fa1b2",
+          "line-color": graphTheme.edge,
+          "target-arrow-color": graphTheme.edge,
           "target-arrow-shape": "triangle",
           width: 1.4,
         },
@@ -178,18 +200,18 @@ function renderGraph() {
       {
         selector: "edge:selected",
         style: {
-          color: "#1c2630",
+          color: graphTheme.text,
           label: "data(relationship)",
           "font-size": 10,
-          "line-color": "#1b5e7a",
-          "target-arrow-color": "#1b5e7a",
+          "line-color": graphTheme.accent,
+          "target-arrow-color": graphTheme.accent,
           width: 3,
         },
       },
       {
         selector: "node:selected",
         style: {
-          "border-color": "#1c2630",
+          "border-color": graphTheme.accent,
           "border-width": 4,
         },
       },
@@ -341,22 +363,34 @@ function escapeHtml(value) {
 
 function colorForType(type) {
   return {
-    FixedValue: "#8a5a14",
-    Formula: "#5f4aa0",
-    LookupTable: "#28724f",
-    Quota: "#8a3f23",
-    RateTable: "#00695c",
-    Territory: "#6a5b22",
-    Variable: "#795548",
-    Rule: "#ad1457",
-    Plan: "#1b5e7a",
-    PlanComponent: "#455a64",
-    EventType: "#c2185b",
+    FixedValue: "#81c784",
+    Formula: "#2e7d32",
+    LookupTable: "#81c784",
+    Quota: "#ffa000",
+    RateTable: "#2e7d32",
+    Territory: "#81c784",
+    Variable: "#ffa000",
+    Rule: "#2e7d32",
+    Plan: "#2e7d32",
+    PlanComponent: "#81c784",
+    EventType: "#ffa000",
     CreditType: "#2e7d32",
-    EarningCode: "#1565c0",
-    EarningGroup: "#3949ab",
-    BusinessUnit: "#00838f",
-    ProcessingUnit: "#9e5d00",
-    Calendar: "#616161",
-  }[type] || "#52616f";
+    EarningCode: "#81c784",
+    EarningGroup: "#2e7d32",
+    BusinessUnit: "#81c784",
+    ProcessingUnit: "#ffa000",
+    Calendar: "#2e7d32",
+  }[type] || "#81c784";
+}
+
+function graphThemeColors() {
+  const styles = getComputedStyle(document.documentElement);
+  const color = (name) => styles.getPropertyValue(name).trim();
+  return {
+    accent: color("--forest-green"),
+    border: color("--light-green"),
+    edge: color("--graph-edge"),
+    labelBackground: color("--graph-label-background"),
+    text: color("--graph-label-text"),
+  };
 }

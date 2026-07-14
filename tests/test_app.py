@@ -30,6 +30,7 @@ def test_index_uses_project_name():
     assert 'id="validation-findings"' in response.text
     assert 'data-view="html-output-view"' in response.text
     assert 'id="html-output-preview"' in response.text
+    assert 'id="theme-toggle"' in response.text
     assert "Generate HTML" in response.text
 
 
@@ -51,6 +52,28 @@ def test_html_output_preview_uses_the_available_workspace_height():
     assert "#html-output-view.active" in styles
     assert "grid-template-rows: 42px minmax(0, 1fr);" in styles
     assert "#html-output-preview" in styles
+
+
+def test_spectrumtek_light_and_dark_theme_variables_are_defined():
+    styles = (ROOT / "sap_im_config_graph_explorer" / "static" / "styles.css").read_text(encoding="utf-8")
+
+    for color in ("#2e7d32", "#81c784", "#333333", "#ffffff", "#d32f2f", "#ffa000"):
+        assert color in styles
+    assert ':root[data-theme="dark"]' in styles
+    assert "font-size: 36px;" in styles
+    assert "font-size: 24px;" in styles
+    assert "font-size: 18px;" in styles
+    assert "rgba(129, 199, 132" in styles
+
+
+def test_theme_toggle_persists_and_redraws_the_graph():
+    script = (ROOT / "sap_im_config_graph_explorer" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert 'localStorage.getItem("sap-im-config-explorer-theme")' in script
+    assert 'localStorage.setItem("sap-im-config-explorer-theme", theme)' in script
+    assert 'document.documentElement.dataset.theme = theme;' in script
+    assert "if (state.graph.nodes.length) renderGraph();" in script
+    assert "function graphThemeColors()" in script
 
 
 def test_graph_endpoint_accepts_multiple_uploads():
