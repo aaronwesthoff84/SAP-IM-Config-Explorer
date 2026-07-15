@@ -238,6 +238,13 @@ function renderGraph() {
           opacity: 0.15,
         },
       },
+      {
+        selector: "node.dimmed",
+        style: {
+          "text-opacity": 0.15,
+          "text-background-opacity": 0.1,
+        },
+      },
     ],
     layout: { name: "cose", animate: false, fit: true, padding: 36 },
   });
