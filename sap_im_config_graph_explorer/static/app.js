@@ -9,13 +9,16 @@ window.state = state;
 
 const statusEl = document.getElementById("status");
 const themeToggle = document.getElementById("theme-toggle");
-const fileInput = document.getElementById("xml-files");
+const npFileInput = document.getElementById("np-xml-files");
+const pFileInput = document.getElementById("p-xml-files");
 const graphEl = document.getElementById("graph");
 const typeFilter = document.getElementById("type-filter");
 const searchInput = document.getElementById("search");
 const rawXmlEl = document.getElementById("raw-xml");
 const summaryEl = document.getElementById("node-summary");
 const findingsEl = document.getElementById("validation-findings");
+const riskContainer = document.getElementById("migration-risk-container");
+const riskReportEl = document.getElementById("migration-risk-report");
 
 document.getElementById("graph-button").addEventListener("click", generateGraph);
 document.getElementById("html-button").addEventListener("click", generateHtml);
@@ -36,23 +39,29 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 async function generateGraph() {
-  const files = [...fileInput.files];
-  if (!files.length) return setStatus("Select one or more XML files.");
+  const npFiles = [...npFileInput.files];
+  const pFiles = [...pFileInput.files];
+  if (!npFiles.length && !pFiles.length) return setStatus("Select one or more XML files.");
+
   const formData = new FormData();
-  files.forEach((file) => formData.append("files", file));
+  npFiles.forEach((file) => formData.append("np_files", file));
+  pFiles.forEach((file) => formData.append("p_files", file));
+
   setStatus("Generating graph...");
   const response = await fetch("/api/graph", { method: "POST", body: formData });
   const payload = await response.json();
   if (!response.ok) return setStatus(payload.error || "Graph generation failed.");
+
   state.graph = payload;
   populateTypeFilter(payload.nodes);
   renderFindings(payload.findings || []);
+  renderRiskReport(payload.migrationRisk);
   renderGraph();
   setStatus(graphStatus(payload));
 }
 
 async function generateHtml() {
-  const file = fileInput.files[0];
+  const file = npFileInput.files[0] || pFileInput.files[0];
   if (!file) return setStatus("Select an XML file.");
   const variant = document.getElementById("variant").value;
   setStatus("Generating HTML...");
@@ -311,6 +320,30 @@ function renderFindings(findings) {
   findingsEl.innerHTML = `<p class="findings-summary">${escapeHtml(summary)}</p><ul class="findings-list">${items}</ul>`;
 }
 
+function renderRiskReport(risk) {
+  if (!risk) {
+    riskContainer.hidden = true;
+    riskReportEl.innerHTML = "";
+    return;
+  }
+
+  riskContainer.hidden = false;
+  const severity = risk.score >= 70 ? "high" : risk.score >= 30 ? "medium" : "low";
+  const factors = (risk.factors || []).map((f) => `
+    <li class="risk-factor ${escapeHtml(f.severity)}">
+      <strong>${escapeHtml(f.code)}</strong> (Weight: ${f.weight}): ${escapeHtml(f.message)}
+    </li>
+  `).join("");
+
+  riskReportEl.innerHTML = `
+    <div class="risk-score-box">
+      <span class="risk-score-value ${severity}">${Math.round(risk.score)}</span>
+      <span class="risk-score-label">${severity.toUpperCase()} RISK</span>
+    </div>
+    <ul class="risk-factors-list">${factors}</ul>
+  `;
+}
+
 function graphStatus(payload) {
   const findings = payload.findings || [];
   if (!findings.length) return `${payload.nodes.length} nodes, ${payload.links.length} links, no findings`;
@@ -321,8 +354,12 @@ function graphStatus(payload) {
 
 function showNodeDetails(node) {
   const hierarchy = hierarchyFor(node);
+  const riskFactor = state.graph.migrationRisk?.factors?.find((f) => f.nodeIds?.includes(node.id));
+  const riskHtml = riskFactor ? `<dt>Migration risk</dt><dd class="risk-factor ${riskFactor.severity}"><strong>${riskFactor.code}</strong>: ${riskFactor.message}</dd>` : "";
+
   summaryEl.innerHTML = `
     <dt>Name</dt><dd>${escapeHtml(node.label)}</dd>
+    ${riskHtml}
     <dt>Type</dt><dd>${escapeHtml(node.type)}</dd>
     <dt>Associated plans</dt><dd>${escapeHtml(hierarchy.plans.join(", ") || "None")}</dd>
     <dt>Associated plan components</dt><dd>${escapeHtml(hierarchy.components.join(", ") || "None")}</dd>

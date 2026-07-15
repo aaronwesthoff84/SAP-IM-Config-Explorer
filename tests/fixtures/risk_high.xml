@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT>
+    <PLAN_SET>
+        <PLAN NAME="Sales Plan">
+            <PLAN_COMPONENT_REF NAME="Commission Component"/>
+        </PLAN>
+    </PLAN_SET>
+    <PLAN_COMPONENT_SET>
+        <PLAN_COMPONENT NAME="Commission Component">
+            <RULE_REF NAME="Missing Rule"/>
+        </PLAN_COMPONENT>
+    </PLAN_COMPONENT_SET>
+    <RULE_SET>
+        <RULE NAME="Direct Commission Rule" TYPE="Direct_Transaction_Credit"/>
+        <RULE NAME="Direct Commission Rule" TYPE="Direct_Transaction_Credit"/>
+    </RULE_SET>
+</DATA_IMPORT>

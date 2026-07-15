@@ -20,8 +20,12 @@
       <h2>Files</h2>
       <form id="upload-form">
         <label class="file-picker">
-          <span>XML files</span>
-          <input id="xml-files" name="files" type="file" accept=".xml,application/xml,text/xml" multiple>
+          <span>Non-Production XML</span>
+          <input id="np-xml-files" name="np_files" type="file" accept=".xml,application/xml,text/xml" multiple>
+        </label>
+        <label class="file-picker">
+          <span>Production XML (optional)</span>
+          <input id="p-xml-files" name="p_files" type="file" accept=".xml,application/xml,text/xml" multiple>
         </label>
         <label>
           <span>HTML variant</span>
@@ -69,6 +73,10 @@
     </section>
 
     <aside class="panel details">
+      <div id="migration-risk-container" class="migration-risk-container" hidden>
+        <h2>Migration Risk</h2>
+        <div id="migration-risk-report" class="migration-risk-report"></div>
+      </div>
       <h2>Validation Findings</h2>
       <div id="validation-findings" class="validation-findings">
         <p class="empty-findings">Generate a graph to review validation findings.</p>
