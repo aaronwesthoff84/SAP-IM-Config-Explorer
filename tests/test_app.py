@@ -37,7 +37,7 @@ def test_index_uses_project_name():
 def test_html_client_uses_the_selected_xml_file():
     script = (ROOT / "sap_im_config_graph_explorer" / "static" / "app.js").read_text(encoding="utf-8")
 
-    assert "const file = fileInput.files[0];" in script
+    assert "const file = npFileInput.files[0] || pFileInput.files[0];" in script
     assert "html-output-preview" in script
     assert "enableHtmlPreviewAnchors" in script
     assert 'href?.startsWith("#")' in script

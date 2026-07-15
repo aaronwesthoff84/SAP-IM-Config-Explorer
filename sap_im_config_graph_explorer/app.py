@@ -8,7 +8,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from sap_im_config_graph_explorer.graph_builder import GraphBuilder
+from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
+from sap_im_config_graph_explorer.migration import MigrationRiskEngine
 from sap_im_config_graph_explorer.models import ConversionResult
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError
 from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
@@ -62,14 +63,46 @@ async def convert_html(
 
 
 @app.post("/api/graph")
-async def graph(files: list[UploadFile] = File(...)) -> dict[str, object]:
-    uploads: list[tuple[str, bytes]] = []
-    for upload in files:
-        filename = upload.filename or "upload.xml"
-        _validate_xml_upload_name(filename)
-        uploads.append((filename, await upload.read()))
+async def graph(
+    files: list[UploadFile] | None = File(None),
+    np_files: list[UploadFile] | None = File(None),
+    p_files: list[UploadFile] | None = File(None),
+) -> dict[str, object]:
+    snapshot_inputs: list[SnapshotInput] = []
+
+    # Handle legacy 'files' parameter for backward compatibility
+    if files:
+        uploads = []
+        for upload in files:
+            filename = upload.filename or "upload.xml"
+            _validate_xml_upload_name(filename)
+            uploads.append((filename, await upload.read()))
+        snapshot_inputs.append(SnapshotInput(id="configuration", role="configuration", uploads=uploads))
+
+    if np_files:
+        uploads = []
+        for upload in np_files:
+            filename = upload.filename or "upload.xml"
+            _validate_xml_upload_name(filename)
+            uploads.append((filename, await upload.read()))
+        snapshot_inputs.append(SnapshotInput(id="non_production", role="non_production", uploads=uploads))
+
+    if p_files:
+        uploads = []
+        for upload in p_files:
+            filename = upload.filename or "upload.xml"
+            _validate_xml_upload_name(filename)
+            uploads.append((filename, await upload.read()))
+        snapshot_inputs.append(SnapshotInput(id="production", role="production", uploads=uploads))
+
+    if not snapshot_inputs:
+        raise HTTPException(status_code=400, detail="No XML files provided.")
+
     try:
-        return GraphBuilder().build_from_uploads(uploads).to_dict()
+        doc = GraphBuilder().build_snapshots(snapshot_inputs)
+        if np_files and p_files:
+            doc.migrationRisk = MigrationRiskEngine().analyze(doc)
+        return doc.to_dict()
     except XmlLoadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
