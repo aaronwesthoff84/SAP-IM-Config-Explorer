@@ -39,12 +39,21 @@ test.describe('Dependency impact highlighting', () => {
     // Other Plan and Other Component should be dimmed
     const unrelated = ['Other Plan', 'Other Component'];
     for (const label of unrelated) {
-        const isDimmed = await page.evaluate((l) => {
+        const [isDimmed, specifiedOpacity] = await page.evaluate((l) => {
             const node = (window as any).state.cy.nodes().filter(n => n.data('label') === l)[0];
-            return node.hasClass('dimmed');
+            return [node.hasClass('dimmed'), node.style('opacity')];
         }, label);
         expect(isDimmed).toBe(true);
+        expect(parseFloat(specifiedOpacity)).toBeLessThan(0.15);
     }
+
+    // Verify edges are also dimmed
+    const areEdgesDimmed = await page.evaluate(() => {
+        const cy = (window as any).state.cy;
+        const dimmedEdges = cy.edges('.dimmed');
+        return dimmedEdges.length > 0 && dimmedEdges.every(e => parseFloat(e.style('opacity')) < 0.15);
+    });
+    expect(areEdgesDimmed).toBe(true);
   });
 
   test('clears highlighting when clicking background', async ({ page }) => {

@@ -233,16 +233,19 @@ function renderGraph() {
         },
       },
       {
-        selector: ".dimmed",
+        selector: "node.dimmed",
         style: {
-          opacity: 0.15,
+          opacity: 0.1,
+          "text-opacity": 0.1,
+          "text-background-opacity": 0.05,
         },
       },
       {
-        selector: "node.dimmed",
+        selector: "edge.dimmed",
         style: {
-          "text-opacity": 0.15,
-          "text-background-opacity": 0.1,
+          opacity: 0.1,
+          "line-opacity": 0.1,
+          "target-arrow-opacity": 0.1,
         },
       },
     ],
