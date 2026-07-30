@@ -26,7 +26,7 @@ test('uploads XML and generates graph and HTML output', async ({ page }) => {
   collectBrowserErrors(page, errors);
 
   await page.goto('/');
-  await page.locator('#xml-files').setInputFiles(fixture);
+  await page.locator('#np-xml-files').setInputFiles(fixture);
 
   await page.locator('#graph-button').click();
   await expect(page.locator('#status')).not.toHaveText('Generating graph...');

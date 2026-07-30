@@ -317,6 +317,49 @@ button.secondary {
   color: var(--alert-red);
 }
 
+.migration-risk-container {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.risk-score-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.risk-score-value {
+  font-size: 24px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: var(--light-green);
+}
+
+.risk-score-value.high { background: var(--alert-red); color: white; }
+.risk-score-value.medium { background: var(--warning-amber); color: white; }
+.risk-score-value.low { background: #fff176; color: black; }
+
+.risk-factors-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.risk-factor {
+  font-size: 13px;
+  padding: 8px;
+  margin-bottom: 4px;
+  background: var(--surface-muted);
+  border-left: 3px solid transparent;
+}
+
+.risk-factor.high { border-left-color: var(--alert-red); }
+.risk-factor.medium { border-left-color: var(--warning-amber); }
+.risk-factor.low { border-left-color: #fff176; }
+
 dl {
   margin: 0 0 16px;
 }

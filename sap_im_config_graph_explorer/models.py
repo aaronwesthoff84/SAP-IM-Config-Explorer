@@ -156,22 +156,56 @@ class ValidationFinding:
         }
 
 
+@dataclass(frozen=True)
+class MigrationRiskFactor:
+    code: str
+    severity: str
+    message: str
+    weight: float
+    nodeIds: tuple[str, ...] = field(default_factory=tuple)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "code": self.code,
+            "severity": self.severity,
+            "message": self.message,
+            "weight": self.weight,
+            "nodeIds": list(self.nodeIds),
+        }
+
+
+@dataclass
+class MigrationRiskReport:
+    score: float
+    factors: list[MigrationRiskFactor] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "score": self.score,
+            "factors": [factor.to_dict() for factor in self.factors],
+        }
+
+
 @dataclass
 class GraphDocument:
     snapshots: list[Snapshot] = field(default_factory=list)
     nodes: list[GraphNode] = field(default_factory=list)
     links: list[GraphLink] = field(default_factory=list)
     findings: list[ValidationFinding] = field(default_factory=list)
+    migrationRisk: MigrationRiskReport | None = None
     schemaVersion: str = GRAPH_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "schemaVersion": self.schemaVersion,
             "snapshots": [snapshot.to_dict() for snapshot in self.snapshots],
             "nodes": [node.to_dict() for node in self.nodes],
             "links": [link.to_dict() for link in self.links],
             "findings": [finding.to_dict() for finding in self.findings],
         }
+        if self.migrationRisk:
+            data["migrationRisk"] = self.migrationRisk.to_dict()
+        return data
 
 
 @dataclass

@@ -8,7 +8,7 @@ test.describe('Dependency impact highlighting', () => {
     await page.goto('/');
 
     // Upload file
-    await page.locator('#xml-files').setInputFiles(fixture);
+    await page.locator('#np-xml-files').setInputFiles(fixture);
 
     // Generate Graph
     await page.locator('#graph-button').click();
@@ -58,7 +58,7 @@ test.describe('Dependency impact highlighting', () => {
 
   test('clears highlighting when clicking background', async ({ page }) => {
     await page.goto('/');
-    await page.locator('#xml-files').setInputFiles(fixture);
+    await page.locator('#np-xml-files').setInputFiles(fixture);
     await page.locator('#graph-button').click();
     await page.waitForSelector('#graph canvas');
     await page.waitForTimeout(1000);
