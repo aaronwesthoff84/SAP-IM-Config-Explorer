@@ -38,3 +38,17 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 ## Pull-request requirements
 
 Every pull request must identify one primary Issue, map changes to its acceptance criteria, list validation performed, document dependency changes, classify risk, and state whether local-first or graph-contract behavior changed.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the canonical `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix` labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using a root `CONTEXT.md` and `docs/adr/` when those documents exist. See `docs/agents/domain.md`.
