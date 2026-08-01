@@ -9,10 +9,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def build_commands(mode: str) -> list[list[str]]:
+def build_commands(
+    mode: str, platform_name: str | None = None
+) -> list[list[str]]:
     python = sys.executable
+    npm = "npm.cmd" if (platform_name or os.name) == "nt" else "npm"
     commands = [
-        [python, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+        [
+            python,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--basetemp",
+            str(ROOT / ".validation-output" / "pytest-temp"),
+        ],
         ["node", "--check", "sap_im_config_graph_explorer/static/app.js"],
         [
             python,
@@ -23,13 +35,17 @@ def build_commands(mode: str) -> list[list[str]]:
         ],
     ]
     if mode == "full":
-        commands.extend([["npm", "ci"], ["npm", "run", "test:e2e"]])
+        commands.extend([[npm, "ci"], [npm, "run", "test:e2e"]])
     return commands
 
 
 def run_commands(commands: list[list[str]]) -> int:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    python_directory = str(Path(sys.executable).parent)
+    env["PATH"] = os.pathsep.join(
+        part for part in (python_directory, env.get("PATH")) if part
+    )
     (ROOT / ".validation-output").mkdir(exist_ok=True)
     first_failure = 0
     for command in commands:
