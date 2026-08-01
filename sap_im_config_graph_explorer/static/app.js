@@ -187,13 +187,15 @@ function renderGraph() {
   const nodeIds = new Set(nodes.map((node) => node.id));
   const links = state.graph.links.filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target));
   const elements = [
-    ...nodes.map((node) => ({ data: { ...node, displayColor: colorForType(node.type) } })),
+    ...nodes.map((node, index) => ({
+      data: { ...node, displayColor: colorForType(node.type) },
+      position: initialGraphPosition(index, nodes.length),
+    })),
     ...links.map((link, index) => ({ data: { ...link, id: `edge-${index}` } })),
   ];
   state.cy = cytoscape({
     container: graphEl,
     elements,
-    wheelSensitivity: 0.18,
     style: [
       {
         selector: "node",
@@ -204,13 +206,15 @@ function renderGraph() {
           color: graphTheme.text,
           label: "data(label)",
           "font-size": 11,
-          height: 30,
+          height: 48,
           "text-background-color": graphTheme.labelBackground,
-          "text-background-opacity": 0.86,
+          "text-background-opacity": 0.92,
           "text-background-padding": 3,
-          "text-margin-y": -8,
-          "text-valign": "bottom",
-          width: 30,
+          "text-halign": "center",
+          "text-max-width": 96,
+          "text-valign": "center",
+          "text-wrap": "wrap",
+          width: 112,
         },
       },
       {
@@ -254,11 +258,19 @@ function renderGraph() {
         style: {
           opacity: 0.1,
           "line-opacity": 0.1,
-          "target-arrow-opacity": 0.1,
         },
       },
     ],
-    layout: { name: "cose", animate: false, fit: true, padding: 36 },
+    layout: {
+      name: "cose",
+      animate: false,
+      componentSpacing: 48,
+      fit: true,
+      idealEdgeLength: 88,
+      nodeOverlap: 16,
+      padding: 24,
+      randomize: false,
+    },
   });
   state.cy.on("tap", "node", (event) => {
     const node = event.target;
@@ -273,6 +285,14 @@ function renderGraph() {
     }
   });
   state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
+}
+
+function initialGraphPosition(index, nodeCount) {
+  const columns = Math.max(1, Math.ceil(Math.sqrt(nodeCount)));
+  return {
+    x: (index % columns) * 140,
+    y: Math.floor(index / columns) * 80,
+  };
 }
 
 function highlightDependencies(node) {
