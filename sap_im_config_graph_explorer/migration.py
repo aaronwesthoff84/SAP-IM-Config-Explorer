@@ -104,26 +104,67 @@ class MigrationRiskEngine:
         containment_rels = {"belongs_to_plan", "belongs_to_plan_component", "parent_child"}
 
         # Changed Containment
-        np_containment = {(sk, r): tk for (sk, tk, r) in np_link_set if r in containment_rels}
-        p_containment = {(sk, r): tk for (sk, tk, r) in p_link_set if r in containment_rels}
-
-        for (sk, r), tk_np in np_containment.items():
-            if (sk, r) in p_containment:
-                tk_p = p_containment[(sk, r)]
-                if tk_np != tk_p:
-                    child_node = np_nodes_by_key[sk]
-                    p_parent_label = p_nodes_by_key[tk_p].label if tk_p in p_nodes_by_key else tk_p
-                    np_parent_label = np_nodes_by_key[tk_np].label if tk_np in np_nodes_by_key else tk_np
-
-                    factors.append(
-                        MigrationRiskFactor(
-                            code="changed_containment",
-                            severity="medium",
-                            message=f"{child_node.type} '{child_node.label}' moved from '{p_parent_label}' to '{np_parent_label}'",
-                            weight=MEDIUM_RISK_WEIGHT,
-                            nodeIds=(child_node.id,),
-                        )
+        def group_containment_targets(link_keys):
+            grouped: dict[tuple[str, str], set[str]] = {}
+            for source_key, target_key, relationship in link_keys:
+                if relationship in containment_rels:
+                    grouped.setdefault((source_key, relationship), set()).add(
+                        target_key
                     )
+            return grouped
+
+        np_containment = group_containment_targets(np_link_set)
+        p_containment = group_containment_targets(p_link_set)
+        containment_keys = sorted(set(np_containment) | set(p_containment))
+
+        for sk, relationship in containment_keys:
+            if sk not in np_nodes_by_key or sk not in p_nodes_by_key:
+                continue
+
+            np_targets = np_containment.get((sk, relationship), set())
+            p_targets = p_containment.get((sk, relationship), set())
+            if np_targets == p_targets:
+                continue
+
+            added_keys = sorted(np_targets - p_targets)
+            removed_keys = sorted(p_targets - np_targets)
+            added_labels = [
+                np_nodes_by_key[key].label if key in np_nodes_by_key else key
+                for key in added_keys
+            ]
+            removed_labels = [
+                p_nodes_by_key[key].label if key in p_nodes_by_key else key
+                for key in removed_keys
+            ]
+            child_node = np_nodes_by_key[sk]
+            message_prefix = (
+                f"{child_node.type} '{child_node.label}' containment via {relationship}"
+            )
+
+            if len(removed_labels) == 1 and len(added_labels) == 1:
+                change = f"moved from '{removed_labels[0]}' to '{added_labels[0]}'"
+            elif added_labels and not removed_labels:
+                noun = "parent" if len(added_labels) == 1 else "parents"
+                labels = ", ".join(f"'{label}'" for label in added_labels)
+                change = f"added {noun} {labels}"
+            elif removed_labels and not added_labels:
+                noun = "parent" if len(removed_labels) == 1 else "parents"
+                labels = ", ".join(f"'{label}'" for label in removed_labels)
+                change = f"removed {noun} {labels}"
+            else:
+                removed = ", ".join(f"'{label}'" for label in removed_labels)
+                added = ", ".join(f"'{label}'" for label in added_labels)
+                change = f"changed parents: removed {removed}; added {added}"
+
+            factors.append(
+                MigrationRiskFactor(
+                    code="changed_containment",
+                    severity="medium",
+                    message=f"{message_prefix} {change}",
+                    weight=MEDIUM_RISK_WEIGHT,
+                    nodeIds=(child_node.id,),
+                )
+            )
 
         # Missing Relationships (existed in P, gone in NP for an existing object)
         for (sk, tk, r) in p_link_set:
