@@ -47,6 +47,21 @@ def test_xml_to_html_conversion_still_emits_plan_summary():
     assert ">Copyright<" not in html
 
 
+def test_generated_html_marks_object_sections_with_graph_type_and_label():
+    transformer = Transformer()
+
+    transformer.parse(str(FIXTURES / "minimal_plan.xml"))
+    html = transformer.html()
+
+    assert '<section data-object-type="Plan" data-object-label="Enterprise Plan">' in html
+    assert '<section data-object-type="PlanComponent" data-object-label="Core Component">' in html
+    assert '<section data-object-type="Rule" data-object-label="Credit Rule">' in html
+    assert '<section data-object-type="Formula" data-object-label="Eligibility Formula">' in html
+    assert '<section data-object-type="LookupTable" data-object-label="Rate Table">' in html
+    assert '<span data-object-entry="true" data-object-type="Plan" data-object-label="Enterprise Plan">' in html
+    assert '<span data-object-entry="true" data-object-type="Formula" data-object-label="Eligibility Formula">' in html
+
+
 def test_generated_html_supports_spectrumtek_dark_theme():
     transformer = Transformer()
 

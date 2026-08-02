@@ -76,6 +76,17 @@ SUMMARY_ORDER = [
     ("fixedvalues", "Fixed Values"),
 ]
 SUMMARY_COLUMN_COUNT = 3
+OBJECT_TYPE_BY_SECTION = {
+    "plans": "Plan",
+    "plancomponents": "PlanComponent",
+    "rules": "Rule",
+    "formulas": "Formula",
+    "variables": "Variable",
+    "mdlts": "LookupTable",
+    "quotas": "Quota",
+    "territories": "Territory",
+    "fixedvalues": "FixedValue",
+}
 CSS = """
             :root {
               color-scheme: light;
@@ -161,6 +172,18 @@ def rule_categories(rules):
     if any(rule_category(rule) == "other" for rule in rules):
         categories.append("other")
     return categories
+
+def render_object_section(object_type, label, content):
+    return (
+        f'<section data-object-type="{esc(object_type)}" '
+        f'data-object-label="{esc(label)}">\n{content}\n</section>'
+    )
+
+def render_object_entry(object_type, label, content):
+    return (
+        f'<span data-object-entry="true" data-object-type="{esc(object_type)}" '
+        f'data-object-label="{esc(label)}">{content}</span>'
+    )
 
 def render_ref(elem):
     nm = elem.get("NAME","")
@@ -818,13 +841,14 @@ class Transformer:
             for obj in objs:
                 try:
                     if anchor=="plans":
-                        L.append(obj.render(v,self.comps,self.rules)); L.append('<p></p>')
+                        L.append(render_object_section(OBJECT_TYPE_BY_SECTION[anchor], obj.name, obj.render(v,self.comps,self.rules))); L.append('<p></p>')
                         for comp in self._plan_components(obj):
-                            L.append(comp.render(v,obj.name,self.rules)); L.append('<p></p>')
+                            L.append(render_object_section(OBJECT_TYPE_BY_SECTION["plancomponents"], comp.name, comp.render(v,obj.name,self.rules))); L.append('<p></p>')
                         for comp, rule in self._plan_rule_occurrences(obj):
-                            L.append(rule.render(v,obj.name,comp.name)); L.append('<p></p>')
+                            L.append(render_object_section(OBJECT_TYPE_BY_SECTION["rules"], rule.name, rule.render(v,obj.name,comp.name))); L.append('<p></p>')
                     else:
-                        L.append(obj.render(v)); L.append('<p></p>')
+                        object_type=OBJECT_TYPE_BY_SECTION[anchor]
+                        L.append(render_object_section(object_type, obj.name, obj.render(v))); L.append('<p></p>')
                 except Exception as e:
                     on=getattr(obj,'name','?')
                     raise XErr("Render error", obj_name=on, obj_type=type(obj).__name__, details=str(e)) from e
@@ -842,15 +866,17 @@ class Transformer:
     def _summary_entries(self, anchor):
         component_anchors, rule_anchors=self._summary_anchors()
         entries=[]
+        object_type=OBJECT_TYPE_BY_SECTION[anchor]
         for obj in self._so(anchor):
             name=getattr(obj, "name", "")
             if anchor=="plancomponents": target=component_anchors.get(name)
             elif anchor=="rules": target=rule_anchors.get(name)
             else: target=getattr(obj, "anchor", None)
             if target:
-                entries.append(f'<a class="Link" href="#{esc(target)}">{esc(name)}</a>')
+                content=f'<a class="Link" href="#{esc(target)}">{esc(name)}</a>'
             else:
-                entries.append(f'<span class="SummaryItem">{esc(name)}</span>')
+                content=f'<span class="SummaryItem">{esc(name)}</span>'
+            entries.append(render_object_entry(object_type, name, content))
         return entries
 
     def _idx(self):

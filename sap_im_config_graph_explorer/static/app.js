@@ -68,8 +68,8 @@ document.getElementById("graph-button").addEventListener("click", requestGraphGe
 document.getElementById("html-button").addEventListener("click", generateHtml);
 document.getElementById("export-button").addEventListener("click", exportGraph);
 themeToggle.addEventListener("click", toggleTheme);
-searchInput.addEventListener("input", renderGraph);
-typeFilter.addEventListener("change", renderGraph);
+searchInput.addEventListener("input", renderGraphAndHtmlOutput);
+typeFilter.addEventListener("change", renderGraphAndHtmlOutput);
 sourceFileFilter.addEventListener("change", renderGraph);
 relationshipFilter.addEventListener("change", renderGraph);
 confidenceFilter.addEventListener("change", renderGraph);
@@ -162,7 +162,7 @@ async function convertHtml(file, variant) {
     throw new Error(payload.error || `Unable to generate HTML for ${file.name}.`);
   }
   return {
-    html: payload.html,
+    originalHtml: payload.html,
     inputName: file.name,
     outputFile: payload.outputFile,
     variant,
@@ -184,7 +184,14 @@ function renderHtmlOutput() {
     return;
   }
 
-  preview.srcdoc = output.html;
+  const html = applyThemeToHtml(
+    filterGeneratedHtml(output.originalHtml, {
+      search: searchInput.value,
+      type: typeFilter.value,
+    }),
+    currentTheme()
+  );
+  preview.srcdoc = html;
   download.hidden = false;
   download.textContent = "Download HTML";
   download.download = output.outputFile;
@@ -192,10 +199,33 @@ function renderHtmlOutput() {
     URL.revokeObjectURL(state.htmlDownloadUrl);
   }
   state.htmlDownloadUrl = URL.createObjectURL(
-    new Blob([output.html], { type: "text/html" })
+    new Blob([html], { type: "text/html" })
   );
   download.href = state.htmlDownloadUrl;
   meta.textContent = `${output.inputName} (${output.variant})`;
+}
+
+function filterGeneratedHtml(originalHtml, filters) {
+  const term = (filters.search || "").trim().toLowerCase();
+  const objectType = filters.type || "";
+  if (!term && !objectType) return originalHtml;
+
+  const documentForOutput = new DOMParser().parseFromString(originalHtml, "text/html");
+  const matches = (element) => {
+    const label = element.getAttribute("data-object-label") || "";
+    return (!term || label.toLowerCase().includes(term))
+      && (!objectType || element.getAttribute("data-object-type") === objectType);
+  };
+
+  documentForOutput.querySelectorAll("section[data-object-type][data-object-label]").forEach((section) => {
+    if (!matches(section)) section.remove();
+  });
+  documentForOutput.querySelectorAll("[data-object-entry][data-object-type][data-object-label]").forEach((entry) => {
+    if (!matches(entry)) entry.remove();
+  });
+
+  const doctype = originalHtml.match(/^\s*(<!doctype[^>]*>)/i)?.[1] || "";
+  return `${doctype}${doctype ? "\n" : ""}${documentForOutput.documentElement.outerHTML}`;
 }
 
 function enableHtmlPreviewAnchors(preview) {
@@ -235,7 +265,6 @@ function applyTheme(theme, persist = true) {
   themeToggle.textContent = theme === "dark" ? "Light mode" : "Dark mode";
   if (persist) localStorage.setItem("sap-im-config-explorer-theme", theme);
   if (state.html) {
-    state.html.html = applyThemeToHtml(state.html.html, theme);
     renderHtmlOutput();
   }
   if (state.graph.nodes.length) renderGraph();
@@ -247,6 +276,11 @@ function currentTheme() {
 
 function applyThemeToHtml(html, theme) {
   return html.replace(/<html(?:\s+data-theme="(?:light|dark)")?>/i, `<html data-theme="${theme}">`);
+}
+
+function renderGraphAndHtmlOutput() {
+  renderGraph();
+  if (state.html) renderHtmlOutput();
 }
 
 function renderGraph() {
@@ -460,7 +494,7 @@ function clearAllFilters() {
   relationshipFilter.value = "";
   confidenceFilter.value = "";
   effectiveDateFilter.value = "";
-  renderGraph();
+  renderGraphAndHtmlOutput();
 }
 
 function renderFindings(findings) {
