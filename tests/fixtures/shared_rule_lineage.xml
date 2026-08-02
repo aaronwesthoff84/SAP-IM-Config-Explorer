@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Zulu Plan">
+      <COMPONENT_REF NAME="Beta Component" />
+    </PLAN>
+    <PLAN NAME="Alpha Plan">
+      <COMPONENT_REF NAME="Alpha Component" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT NAME="Beta Component">
+      <RULE_REFS>
+        <RULE_REF NAME="Shared Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+    <PLANCOMPONENT NAME="Alpha Component">
+      <RULE_REFS>
+        <RULE_REF NAME="Shared Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE NAME="Shared Rule" TYPE="DIRECT_TRANSACTION_CREDIT">
+      <CONDITION_EXPRESSION>
+        <FUNCTION ID="MDLT_FUNCTION">
+          <STRING_FORMULA_REF NAME="Lineage Formula" ID="STRING_FORMULA_REF" />
+        </FUNCTION>
+      </CONDITION_EXPRESSION>
+    </RULE>
+  </RULE_SET>
+  <FORMULA_SET>
+    <FORMULA NAME="Lineage Formula" RETURN_TYPE="Boolean">
+      <EXPRESSION>
+        <BOOLEAN VALUE="true" />
+      </EXPRESSION>
+    </FORMULA>
+  </FORMULA_SET>
+</DATA_IMPORT>

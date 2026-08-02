@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <RULE_SET>
+    <RULE NAME="Uncontained Rule" TYPE="DIRECT_TRANSACTION_CREDIT">
+      <ACTION_EXPRESSION_SET>
+        <ACTION_EXPRESSION>
+          <FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+            <CREDIT_TYPE>Revenue Credit</CREDIT_TYPE>
+          </FUNCTION>
+        </ACTION_EXPRESSION>
+      </ACTION_EXPRESSION_SET>
+    </RULE>
+  </RULE_SET>
+</DATA_IMPORT>

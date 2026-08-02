@@ -1,6 +1,8 @@
 const state = {
   graph: { nodes: [], links: [], findings: [] },
   cy: null,
+  lineageCy: null,
+  selectedRule: null,
   html: null,
   htmlDownloadUrl: "",
 };
@@ -40,6 +42,80 @@ function filterGraphElements(graph, filters) {
 
 window.filterGraphElements = filterGraphElements;
 
+function selectRuleLineage(graph, ruleId, snapshotId) {
+  const nodes = graph?.nodes || [];
+  const links = graph?.links || [];
+  const selectedRule = nodes.find(
+    (node) => node.id === ruleId && node.snapshotId === snapshotId && node.type === "Rule"
+  );
+  if (!selectedRule) return { nodes: [], links: [], hasResolvedContainment: false };
+
+  const nodesById = new Map(
+    nodes
+      .filter((node) => node.snapshotId === snapshotId)
+      .filter((node) => ["Rule", "PlanComponent", "Plan"].includes(node.type))
+      .map((node) => [node.id, node])
+  );
+  const lineageNodes = new Map([[selectedRule.id, selectedRule]]);
+  const lineageLinks = new Map();
+  const addLink = (link) => {
+    if (link.id) lineageLinks.set(link.id, link);
+  };
+
+  const componentIds = new Set();
+  links
+    .filter(
+      (link) => link.relationship === "belongs_to_plan_component"
+        && link.source === selectedRule.id
+        && nodesById.get(link.target)?.type === "PlanComponent"
+    )
+    .forEach((link) => {
+      componentIds.add(link.target);
+      lineageNodes.set(link.target, nodesById.get(link.target));
+      addLink(link);
+    });
+
+  componentIds.forEach((componentId) => {
+    links
+      .filter(
+        (link) => link.relationship === "belongs_to_plan"
+          && link.source === componentId
+          && nodesById.get(link.target)?.type === "Plan"
+      )
+      .forEach((link) => {
+        lineageNodes.set(link.target, nodesById.get(link.target));
+        addLink(link);
+      });
+  });
+
+  const compareByCanonicalKeyAndId = (leftKey, leftId, rightKey, rightId) =>
+    String(leftKey).localeCompare(String(rightKey)) || String(leftId).localeCompare(String(rightId));
+  const orderNodes = (left, right) => compareByCanonicalKeyAndId(
+    left.canonicalKey || left.id,
+    left.id,
+    right.canonicalKey || right.id,
+    right.id
+  );
+  const linkCanonicalKey = (link) => {
+    const sourceKey = nodesById.get(link.source)?.canonicalKey || link.source;
+    const targetKey = nodesById.get(link.target)?.canonicalKey || link.target;
+    return `${sourceKey}\u0000${link.relationship || ""}\u0000${targetKey}`;
+  };
+  const orderLinks = (left, right) => compareByCanonicalKeyAndId(
+    linkCanonicalKey(left),
+    left.id,
+    linkCanonicalKey(right),
+    right.id
+  );
+  return {
+    nodes: [...lineageNodes.values()].sort(orderNodes),
+    links: [...lineageLinks.values()].sort(orderLinks),
+    hasResolvedContainment: lineageLinks.size > 0,
+  };
+}
+
+window.selectRuleLineage = selectRuleLineage;
+
 let latestGraphRequestId = 0;
 let pendingGraphGeneration = null;
 
@@ -49,6 +125,11 @@ const npFileInput = document.getElementById("np-xml-files");
 const pFileInput = document.getElementById("p-xml-files");
 const topologySelect = document.getElementById("topology-mode");
 const graphEl = document.getElementById("graph");
+const lineageGraphEl = document.getElementById("lineage-graph");
+const lineageTab = document.getElementById("lineage-tab");
+const lineageSummaryEl = document.getElementById("lineage-summary");
+const lineageDescriptionEl = document.getElementById("lineage-description");
+const lineageEmptyEl = document.getElementById("lineage-empty");
 const typeFilter = document.getElementById("type-filter");
 const searchInput = document.getElementById("search");
 const sourceFileFilter = document.getElementById("source-file-filter");
@@ -75,6 +156,7 @@ relationshipFilter.addEventListener("change", renderGraph);
 confidenceFilter.addEventListener("change", renderGraph);
 effectiveDateFilter.addEventListener("input", renderGraph);
 clearFiltersButton.addEventListener("click", clearAllFilters);
+document.getElementById("lineage-back-button").addEventListener("click", () => switchWorkspace("graph-view"));
 topologySelect.addEventListener("change", () => {
   if (npFileInput.files.length || pFileInput.files.length) {
     requestGraphGeneration();
@@ -87,12 +169,26 @@ initializeTheme();
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab, .view").forEach((el) => el.classList.remove("active"));
-    tab.classList.add("active");
-    document.getElementById(tab.dataset.view).classList.add("active");
-    if (state.cy) state.cy.resize().fit();
+    if (tab.dataset.view === "lineage-view" && state.selectedRule) {
+      const rule = state.graph.nodes.find(
+        (node) => node.id === state.selectedRule.id && node.snapshotId === state.selectedRule.snapshotId
+      );
+      if (rule) return openRuleLineage(rule);
+    }
+    switchWorkspace(tab.dataset.view);
   });
 });
+
+function switchWorkspace(viewId) {
+  document.querySelectorAll(".tab, .view").forEach((el) => el.classList.remove("active"));
+  document.querySelector(`.tab[data-view="${viewId}"]`).classList.add("active");
+  document.getElementById(viewId).classList.add("active");
+  if (viewId === "lineage-view") {
+    state.lineageCy?.resize().fit();
+  } else if (viewId === "graph-view") {
+    state.cy?.resize();
+  }
+}
 
 function requestGraphGeneration() {
   const generation = generateGraph();
@@ -128,6 +224,8 @@ async function generateGraph() {
   if (!response.ok) return setStatus(payload.error || "Graph generation failed.");
 
   state.graph = payload;
+  clearSelectedRule();
+  destroyLineageRenderer();
   populateFilterControls(payload);
   renderFindings(payload.findings || []);
   renderRiskReport(payload.migrationRisk);
@@ -307,7 +405,36 @@ function renderGraph() {
   state.cy = cytoscape({
     container: graphEl,
     elements,
-    style: [
+    style: cytoscapeStyles(graphTheme),
+    layout: {
+      name: "cose",
+      animate: false,
+      componentSpacing: 48,
+      fit: true,
+      idealEdgeLength: 88,
+      nodeOverlap: 16,
+      padding: 24,
+      randomize: false,
+    },
+  });
+  state.cy.on("tap", "node", (event) => {
+    const node = event.target;
+    highlightDependencies(node);
+    showNodeDetails(node.data());
+  });
+  state.cy.on("tap", (event) => {
+    if (event.target === state.cy || event.target.length === 0) {
+      clearHighlighting();
+      clearSelectedRule();
+      summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
+      rawXmlEl.textContent = "";
+    }
+  });
+  state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
+}
+
+function cytoscapeStyles(graphTheme) {
+  return [
       {
         selector: "node",
         style: {
@@ -371,31 +498,7 @@ function renderGraph() {
           "line-opacity": 0.1,
         },
       },
-    ],
-    layout: {
-      name: "cose",
-      animate: false,
-      componentSpacing: 48,
-      fit: true,
-      idealEdgeLength: 88,
-      nodeOverlap: 16,
-      padding: 24,
-      randomize: false,
-    },
-  });
-  state.cy.on("tap", "node", (event) => {
-    const node = event.target;
-    highlightDependencies(node);
-    showNodeDetails(node.data());
-  });
-  state.cy.on("tap", (event) => {
-    if (event.target === state.cy || event.target.length === 0) {
-      clearHighlighting();
-      summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
-      rawXmlEl.textContent = "";
-    }
-  });
-  state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
+  ];
 }
 
 function initialGraphPosition(index, nodeCount) {
@@ -554,6 +657,12 @@ function topologyLabel(topologyMode) {
 }
 
 function showNodeDetails(node) {
+  if (node.type === "Rule") {
+    state.selectedRule = { id: node.id, snapshotId: node.snapshotId };
+    lineageTab.disabled = false;
+  } else {
+    clearSelectedRule();
+  }
   const hierarchy = hierarchyFor(node);
   const riskFactor = state.graph.migrationRisk?.factors?.find((f) => f.nodeIds?.includes(node.id));
   const riskHtml = riskFactor ? `<dt>Migration risk</dt><dd class="risk-factor ${riskFactor.severity}"><strong>${riskFactor.code}</strong>: ${riskFactor.message}</dd>` : "";
@@ -562,6 +671,7 @@ function showNodeDetails(node) {
     <dt>Name</dt><dd>${escapeHtml(node.label)}</dd>
     ${riskHtml}
     <dt>Type</dt><dd>${escapeHtml(node.type)}</dd>
+    ${node.type === "Rule" ? '<dt>Lineage</dt><dd><button id="open-lineage-button" type="button">Open lineage</button></dd>' : ""}
     <dt>Associated plans</dt><dd>${escapeHtml(hierarchy.plans.join(", ") || "None")}</dd>
     <dt>Associated plan components</dt><dd>${escapeHtml(hierarchy.components.join(", ") || "None")}</dd>
     <dt>Associated rules</dt><dd>${escapeHtml(hierarchy.rules.join(", ") || "None")}</dd>
@@ -570,6 +680,94 @@ function showNodeDetails(node) {
     <dt>Metadata</dt><dd>${escapeHtml(JSON.stringify(node.metadata, null, 2))}</dd>
   `;
   rawXmlEl.textContent = node.rawXml || "";
+  document.getElementById("open-lineage-button")?.addEventListener("click", () => openRuleLineage(node));
+}
+
+function clearSelectedRule() {
+  state.selectedRule = null;
+  lineageTab.disabled = true;
+}
+
+function openRuleLineage(rule) {
+  const lineage = selectRuleLineage(state.graph, rule.id, rule.snapshotId);
+  renderLineage(rule, lineage);
+  switchWorkspace("lineage-view");
+}
+
+function renderLineage(rule, lineage) {
+  destroyLineageRenderer();
+  const componentCount = lineage.nodes.filter((node) => node.type === "PlanComponent").length;
+  const planCount = lineage.nodes.filter((node) => node.type === "Plan").length;
+  lineageSummaryEl.textContent = `${rule.label}: ${componentCount} plan component${componentCount === 1 ? "" : "s"} and ${planCount} plan${planCount === 1 ? "" : "s"}.`;
+  renderLineageDescription(rule, lineage);
+
+  if (!lineage.hasResolvedContainment) {
+    lineageGraphEl.hidden = true;
+    lineageEmptyEl.hidden = false;
+    lineageEmptyEl.textContent = `No resolved containment path for ${rule.label}.`;
+    return;
+  }
+
+  lineageEmptyEl.hidden = true;
+  lineageEmptyEl.textContent = "";
+  lineageGraphEl.hidden = false;
+  const graphTheme = graphThemeColors();
+  state.lineageCy = cytoscape({
+    container: lineageGraphEl,
+    elements: [
+      ...lineage.nodes.map((node, index) => ({
+        data: { ...node, displayColor: colorForType(node.type) },
+        position: initialGraphPosition(index, lineage.nodes.length),
+      })),
+      ...lineage.links.map((link, index) => ({ data: { ...link, id: link.id || `lineage-edge-${index}` } })),
+    ],
+    style: cytoscapeStyles(graphTheme),
+    layout: {
+      name: "breadthfirst",
+      animate: false,
+      directed: true,
+      fit: true,
+      padding: 24,
+      spacingFactor: 1.2,
+    },
+  });
+}
+
+function renderLineageDescription(rule, lineage) {
+  const labelsById = new Map(lineage.nodes.map((node) => [node.id, node.label]));
+  const componentLabels = lineage.nodes
+    .filter((node) => node.type === "PlanComponent")
+    .map((node) => node.label);
+  const planLabels = lineage.nodes
+    .filter((node) => node.type === "Plan")
+    .map((node) => node.label);
+  const relationshipDescriptions = lineage.links.map((link) => {
+    const sourceLabel = labelsById.get(link.source) || link.source;
+    const targetLabel = labelsById.get(link.target) || link.target;
+    return `${sourceLabel} ${link.relationship.replaceAll("_", " ")} ${targetLabel}`;
+  });
+  const entries = [
+    `Selected Rule: ${rule.label}`,
+    `Plan Components: ${componentLabels.join(", ") || "None"}`,
+    `Plans: ${planLabels.join(", ") || "None"}`,
+    `Resolved containment relationships: ${relationshipDescriptions.join("; ") || "None"}`,
+  ];
+  lineageDescriptionEl.replaceChildren(...entries.map((text) => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    return item;
+  }));
+}
+
+function destroyLineageRenderer() {
+  if (state.lineageCy) state.lineageCy.destroy();
+  state.lineageCy = null;
+  lineageGraphEl.replaceChildren();
+  lineageGraphEl.hidden = true;
+  lineageEmptyEl.hidden = true;
+  lineageEmptyEl.textContent = "";
+  lineageSummaryEl.textContent = "Select a Rule to view its resolved containment lineage.";
+  lineageDescriptionEl.replaceChildren();
 }
 
 function hierarchyFor(node) {
@@ -617,6 +815,7 @@ function labelsForIds(ids, nodesById) {
 }
 
 function showEdgeDetails(edge) {
+  clearSelectedRule();
   summaryEl.innerHTML = `
     <dt>Relationship</dt><dd>${escapeHtml(edge.relationship)}</dd>
     <dt>Confidence</dt><dd>${escapeHtml(edge.confidence)}</dd>
