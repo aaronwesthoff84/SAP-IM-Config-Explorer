@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Generic Attribute Plan" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Regression fixture">
+      <COMPONENT_REF NAME="Generic Attribute Component" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT NAME="Generic Attribute Component" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Regression component">
+      <RULE_REFS>
+        <RULE_REF NAME="Generic Attribute Credit Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE NAME="Generic Attribute Credit Rule" TYPE="DIRECT_TRANSACTION_CREDIT" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01">
+      <ACTION_EXPRESSION_SET>
+        <ACTION_EXPRESSION>
+          <FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+            <OUTPUT_REFERENCE NAME="First Credit Output" />
+            <DATA_FIELD>transactionValue</DATA_FIELD>
+            <HOLD_REF NAME="Hold Until Release" PERIOD_TYPE="month" />
+            <CREDIT_TYPE>Revenue Credit</CREDIT_TYPE>
+            <BOOLEAN VALUE="false" />
+            <BOOLEAN VALUE="true" />
+            <STRING_LITERAL>VetSuite Select</STRING_LITERAL>
+            <FUNCTION ID="_toUpperCase">
+              <STRING_LITERAL>F Opportunity Status</STRING_LITERAL>
+            </FUNCTION>
+            <RULE_ELEMENT_REF NAME="Source Rule Element" />
+            <STRING_LITERAL>NULL</STRING_LITERAL>
+            <DATE_LITERAL>2026-01-01</DATE_LITERAL>
+          </FUNCTION>
+        </ACTION_EXPRESSION>
+        <ACTION_EXPRESSION>
+          <FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+            <OUTPUT_REFERENCE NAME="Second Credit Output" />
+            <DATA_FIELD>transactionValue</DATA_FIELD>
+            <HOLD_REF NAME="Hold Until Release" PERIOD_TYPE="month" />
+            <CREDIT_TYPE>Revenue Credit</CREDIT_TYPE>
+            <BOOLEAN VALUE="false" />
+            <BOOLEAN VALUE="true" />
+            <STRING_LITERAL>Second Action Attribute</STRING_LITERAL>
+          </FUNCTION>
+        </ACTION_EXPRESSION>
+      </ACTION_EXPRESSION_SET>
+    </RULE>
+  </RULE_SET>
+</DATA_IMPORT>
