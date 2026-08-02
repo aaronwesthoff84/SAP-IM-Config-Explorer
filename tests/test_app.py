@@ -114,12 +114,26 @@ def test_graph_endpoint_accepts_multiple_uploads():
     payload = response.json()
     assert payload["nodes"]
     assert {node["sourceFile"] for node in payload["nodes"]} == {"first.xml", "second.xml"}
-    assert payload["schemaVersion"] == "1.0"
+    assert payload["schemaVersion"] == "1.1"
     assert payload["snapshots"] == [
         {
             "id": "configuration",
             "role": "configuration",
             "sourceFiles": ["first.xml", "second.xml"],
+            "sourceProfiles": [
+                {
+                    "sourceFile": "first.xml",
+                    "encoding": "utf-8",
+                    "namespaceUri": None,
+                    "exportVersion": "16.0",
+                },
+                {
+                    "sourceFile": "second.xml",
+                    "encoding": "utf-8",
+                    "namespaceUri": None,
+                    "exportVersion": "16.0",
+                },
+            ],
         }
     ]
     assert payload["findings"]

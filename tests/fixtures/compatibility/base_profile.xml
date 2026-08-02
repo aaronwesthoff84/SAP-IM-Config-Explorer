@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Compatibility Plan">
+      <COMPONENT_REF NAME="Compatibility Component" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT NAME="Compatibility Component">
+      <RULE_REF NAME="Compatibility Rule" />
+    </PLANCOMPONENT>
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE NAME="Compatibility Rule" TYPE="COMMISSION" />
+  </RULE_SET>
+</DATA_IMPORT>

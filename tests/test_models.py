@@ -1,9 +1,12 @@
+import pytest
+
 from sap_im_config_graph_explorer.models import (
     GRAPH_SCHEMA_VERSION,
     GraphDocument,
     GraphLink,
     GraphNode,
     Snapshot,
+    SourceProfile,
     ValidationFinding,
 )
 
@@ -41,8 +44,20 @@ def test_versioned_graph_contract_serializes_snapshot_identity_and_findings():
         snapshots=[snapshot], nodes=[node], links=[link], findings=[finding]
     ).to_dict()
 
-    assert payload["schemaVersion"] == GRAPH_SCHEMA_VERSION == "1.0"
+    assert payload["schemaVersion"] == GRAPH_SCHEMA_VERSION == "1.1"
     assert payload["snapshots"][0]["role"] == "non_production"
     assert payload["nodes"][0]["canonicalKey"] == "formula:eligibility"
     assert payload["links"][0]["id"] == "link-1"
     assert payload["findings"][0]["code"] == "missing_reference"
+
+
+def test_source_profile_rejects_encoding_outside_the_public_contract():
+    with pytest.raises(ValueError) as exc_info:
+        SourceProfile(
+            sourceFile="export.xml",
+            encoding="utf-16",
+            namespaceUri=None,
+            exportVersion=None,
+        )
+
+    assert str(exc_info.value) == "Unsupported source profile encoding: utf-16"

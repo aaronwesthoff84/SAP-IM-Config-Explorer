@@ -102,16 +102,24 @@ Reference resolution is scoped to a snapshot. A name in a production snapshot ca
 
 ## Graph JSON Contract
 
-The current schema version is `1.0`:
+The current schema version is `1.1`. Version `1.1` adds ordered per-file compatibility evidence under each snapshot's `sourceProfiles`. See [XML Compatibility Matrix](docs/compatibility-matrix.md) for the supported encodings, namespace behavior, and sanitized regression profiles.
 
 ```json
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "snapshots": [
     {
       "id": "configuration",
       "role": "configuration | non_production | production",
-      "sourceFiles": ["export.xml"]
+      "sourceFiles": ["export.xml"],
+      "sourceProfiles": [
+        {
+          "sourceFile": "export.xml",
+          "encoding": "utf-8",
+          "namespaceUri": null,
+          "exportVersion": "16.0"
+        }
+      ]
     }
   ],
   "nodes": [
@@ -191,6 +199,9 @@ The app reports useful local errors for:
 - malformed XML
 - empty XML files
 - unsupported file types
+- unsupported XML encodings and encoding mismatches
+- malformed encoded byte sequences
+- unsupported XML profiles whose root local name is not `DATA_IMPORT`
 - graph generation failures
 - duplicate snapshot IDs
 - unsupported graph node or relationship types

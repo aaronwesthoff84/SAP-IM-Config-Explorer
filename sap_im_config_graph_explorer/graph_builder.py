@@ -40,6 +40,17 @@ class _SnapshotDocuments:
     documents: list[XmlDocument]
 
 
+def _snapshot_from_documents(
+    snapshot_id: str, role: str, documents: list[XmlDocument]
+) -> Snapshot:
+    return Snapshot(
+        id=snapshot_id,
+        role=role,
+        sourceFiles=[document.source_file for document in documents],
+        sourceProfiles=[document.to_source_profile() for document in documents],
+    )
+
+
 CORE_GRAPH_NODE_TYPES = frozenset({"Plan", "PlanComponent", "Rule"})
 CORE_GRAPH_RELATIONSHIP_TYPES = frozenset(
     {"belongs_to_plan", "belongs_to_plan_component"}
@@ -100,11 +111,7 @@ class GraphBuilder:
         snapshot_id: str = "configuration",
         role: str = "configuration",
     ) -> GraphDocument:
-        snapshot = Snapshot(
-            id=snapshot_id,
-            role=role,
-            sourceFiles=[document.source_file for document in documents],
-        )
+        snapshot = _snapshot_from_documents(snapshot_id, role, documents)
         return self._build([_SnapshotDocuments(snapshot, documents)])
 
     def build_snapshots(self, inputs: list[SnapshotInput]) -> GraphDocument:
@@ -120,10 +127,8 @@ class GraphBuilder:
             ]
             bundles.append(
                 _SnapshotDocuments(
-                    Snapshot(
-                        id=snapshot_input.id,
-                        role=snapshot_input.role,
-                        sourceFiles=[document.source_file for document in documents],
+                    _snapshot_from_documents(
+                        snapshot_input.id, snapshot_input.role, documents
                     ),
                     documents,
                 )
