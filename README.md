@@ -55,15 +55,17 @@ The generated HTML sorts named objects alphabetically, without changing the disp
 6. Hover or click an edge to inspect its relationship.
 7. Click `Export JSON` to download the current graph data.
 
-## Current Graph Scope
+## Graph Topologies
 
-The current graph intentionally starts with the core plan hierarchy only:
+Core is the default topology and preserves the plan hierarchy:
 
 - Plan
 - Plan Component
 - Rule
 
-It shows `Rule -> Plan Component -> Plan` containment, so selecting a Rule also lists its associated plan components and plans in the details panel. References inside rules, including action instructions such as `Release Immediately`, do not create graph nodes or broken-reference findings in this view.
+It shows `Rule -> Plan Component -> Plan` containment, so selecting a Rule also lists its associated plan components and plans in the details panel. References inside rules, including action instructions such as `Release Immediately`, do not create graph nodes or broken-reference findings in Core.
+
+Full enables all 17 approved graph node types and their approved, source-evidenced relationships. Select Core or Full before generating a graph; changing the selection regenerates from the currently selected local files. Validation findings, migration analysis, status counts, and JSON export use the selected topology.
 
 ## Strict Graph Node Allowlist
 
@@ -87,7 +89,7 @@ The graph model accepts only these approved object categories; no unknown XML el
 - Processing Unit
 - Calendar
 
-The default graph builder is stricter than this allowlist and emits only the three core types above. Formula and Rule internals such as `FUNCTION`, `PARAMETER_LIST`, conditions, actions, `RULE_ELEMENT_REF`, and literals remain metadata or reference evidence and never become graph nodes. A caller can provide a custom `ExtractorRegistry`, but `NodeFactory` still rejects node types outside the allowlist.
+The Core graph builder is stricter than this allowlist and emits only the three core types above. Full emits all allowlisted definitions present in the source. Formula and Rule internals such as `FUNCTION`, `PARAMETER_LIST`, conditions, actions, `RULE_ELEMENT_REF`, and literals remain metadata or reference evidence and never become graph nodes. A caller can provide a custom `ExtractorRegistry`, but `NodeFactory` still rejects node types outside the allowlist.
 
 ## Dependency And Containment Direction
 
@@ -102,11 +104,12 @@ Reference resolution is scoped to a snapshot. A name in a production snapshot ca
 
 ## Graph JSON Contract
 
-The current schema version is `1.1`. Version `1.1` adds ordered per-file compatibility evidence under each snapshot's `sourceProfiles`. See [XML Compatibility Matrix](docs/compatibility-matrix.md) for the supported encodings, namespace behavior, and sanitized regression profiles.
+The current schema version is `1.2`. Version `1.2` adds `topologyMode` so every graph identifies whether Core or Full produced it. Version `1.1` added ordered per-file compatibility evidence under each snapshot's `sourceProfiles`. See [XML Compatibility Matrix](docs/compatibility-matrix.md) for the supported encodings, namespace behavior, and sanitized regression profiles.
 
 ```json
 {
-  "schemaVersion": "1.1",
+  "schemaVersion": "1.2",
+  "topologyMode": "core | full",
   "snapshots": [
     {
       "id": "configuration",

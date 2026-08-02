@@ -7,10 +7,14 @@ const state = {
 
 window.state = state;
 
+let latestGraphRequestId = 0;
+let pendingGraphGeneration = null;
+
 const statusEl = document.getElementById("status");
 const themeToggle = document.getElementById("theme-toggle");
 const npFileInput = document.getElementById("np-xml-files");
 const pFileInput = document.getElementById("p-xml-files");
+const topologySelect = document.getElementById("topology-mode");
 const graphEl = document.getElementById("graph");
 const typeFilter = document.getElementById("type-filter");
 const searchInput = document.getElementById("search");
@@ -20,12 +24,19 @@ const findingsEl = document.getElementById("validation-findings");
 const riskContainer = document.getElementById("migration-risk-container");
 const riskReportEl = document.getElementById("migration-risk-report");
 
-document.getElementById("graph-button").addEventListener("click", generateGraph);
+document.getElementById("graph-button").addEventListener("click", requestGraphGeneration);
 document.getElementById("html-button").addEventListener("click", generateHtml);
 document.getElementById("export-button").addEventListener("click", exportGraph);
 themeToggle.addEventListener("click", toggleTheme);
 searchInput.addEventListener("input", renderGraph);
 typeFilter.addEventListener("change", renderGraph);
+topologySelect.addEventListener("change", () => {
+  if (npFileInput.files.length || pFileInput.files.length) {
+    requestGraphGeneration();
+  } else {
+    setStatus(`Selected ${topologyLabel(topologySelect.value)} topology.`);
+  }
+});
 
 initializeTheme();
 
@@ -38,18 +49,37 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
+function requestGraphGeneration() {
+  const generation = generateGraph();
+  pendingGraphGeneration = generation;
+  generation.then(
+    () => {
+      if (pendingGraphGeneration === generation) pendingGraphGeneration = null;
+    },
+    () => {
+      if (pendingGraphGeneration === generation) pendingGraphGeneration = null;
+    },
+  );
+  return generation;
+}
+
 async function generateGraph() {
   const npFiles = [...npFileInput.files];
   const pFiles = [...pFileInput.files];
   if (!npFiles.length && !pFiles.length) return setStatus("Select one or more XML files.");
 
+  const requestId = ++latestGraphRequestId;
+  const topologyMode = topologySelect.value;
+
   const formData = new FormData();
   npFiles.forEach((file) => formData.append("np_files", file));
   pFiles.forEach((file) => formData.append("p_files", file));
+  formData.append("topology_mode", topologyMode);
 
   setStatus("Generating graph...");
   const response = await fetch("/api/graph", { method: "POST", body: formData });
   const payload = await response.json();
+  if (requestId !== latestGraphRequestId) return;
   if (!response.ok) return setStatus(payload.error || "Graph generation failed.");
 
   state.graph = payload;
@@ -366,10 +396,15 @@ function renderRiskReport(risk) {
 
 function graphStatus(payload) {
   const findings = payload.findings || [];
-  if (!findings.length) return `${payload.nodes.length} nodes, ${payload.links.length} links, no findings`;
+  const prefix = `${topologyLabel(payload.topologyMode)} topology: `;
+  if (!findings.length) return `${prefix}${payload.nodes.length} nodes, ${payload.links.length} links, no findings`;
   const errorCount = findings.filter((finding) => finding.severity === "error").length;
   const warningCount = findings.filter((finding) => finding.severity === "warning").length;
-  return `${payload.nodes.length} nodes, ${payload.links.length} links, ${errorCount} error${errorCount === 1 ? "" : "s"}, ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
+  return `${prefix}${payload.nodes.length} nodes, ${payload.links.length} links, ${errorCount} error${errorCount === 1 ? "" : "s"}, ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
+}
+
+function topologyLabel(topologyMode) {
+  return topologyMode === "full" ? "Full" : "Core";
 }
 
 function showNodeDetails(node) {
@@ -446,6 +481,7 @@ function showEdgeDetails(edge) {
 }
 
 async function exportGraph() {
+  while (pendingGraphGeneration) await pendingGraphGeneration;
   const response = await fetch("/api/export/graph-json", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -458,7 +494,7 @@ async function exportGraph() {
   link.download = "sap-im-config-graph.json";
   link.click();
   URL.revokeObjectURL(link.href);
-  setStatus("Exported graph JSON");
+  setStatus(`Exported ${topologyLabel(state.graph.topologyMode)} topology graph JSON`);
 }
 
 function setStatus(message) {

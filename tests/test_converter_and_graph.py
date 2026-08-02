@@ -23,10 +23,7 @@ GENERIC_ATTRIBUTE_ACTIONS_FIXTURE = FIXTURES / "generic_attribute_actions.xml"
 
 
 def full_graph_builder() -> GraphBuilder:
-    return GraphBuilder(
-        node_types=NODE_TYPES,
-        relationship_types=RELATIONSHIP_TYPES,
-    )
+    return GraphBuilder(topology_mode="full")
 
 
 def test_xml_to_html_conversion_still_emits_plan_summary():
@@ -254,6 +251,53 @@ def test_graph_builder_returns_valid_nodes_and_links():
     assert all(link["relationship"] in RELATIONSHIP_TYPES for link in graph["links"])
 
 
+def test_graph_builder_selects_serialized_core_and_full_topologies():
+    default_graph = GraphBuilder().build_from_paths(
+        [FIXTURES / "extractor_families.xml"]
+    ).to_dict()
+    core_graph = GraphBuilder(topology_mode="core").build_from_paths(
+        [FIXTURES / "extractor_families.xml"]
+    ).to_dict()
+    full_graph = GraphBuilder(topology_mode="full").build_from_paths(
+        [FIXTURES / "extractor_families.xml"]
+    ).to_dict()
+
+    assert default_graph["topologyMode"] == core_graph["topologyMode"] == "core"
+    assert {node["type"] for node in default_graph["nodes"]} == {
+        "Plan",
+        "PlanComponent",
+        "Rule",
+    }
+    assert {link["relationship"] for link in default_graph["links"]} == {
+        "belongs_to_plan",
+        "belongs_to_plan_component",
+    }
+    assert full_graph["topologyMode"] == "full"
+    assert {node["type"] for node in full_graph["nodes"]} == NODE_TYPES
+    assert {link["relationship"] for link in full_graph["links"]} == {
+        "belongs_to_plan",
+        "belongs_to_plan_component",
+        "uses_fixed_value",
+        "uses_formula",
+        "uses_lookup",
+        "uses_quota",
+        "uses_rate_table",
+        "uses_territory",
+        "uses_variable",
+        "uses_event_type",
+        "outputs_credit_type",
+        "uses_earning_code",
+        "uses_earning_group",
+        "uses_business_unit",
+        "uses_processing_unit",
+        "uses_calendar",
+    }
+    assert not any(
+        node["metadata"].get("tag") in {"FUNCTION", "PARAMETER_LIST", "UNKNOWN_OBJECT"}
+        for node in full_graph["nodes"]
+    )
+
+
 def test_phase_one_acceptance_covers_exact_allowlist_and_no_logic_nodes():
     graph = full_graph_builder().build_from_paths(
         [FIXTURES / "extractor_families.xml", FIXTURES / "minimal_plan.xml"]
@@ -361,7 +405,14 @@ def test_exported_graph_json_matches_expected_schema():
     graph = GraphBuilder().build_from_paths([FIXTURES / "minimal_plan.xml"]).to_dict()
     reloaded = json.loads(json.dumps(graph))
 
-    assert set(reloaded) == {"schemaVersion", "snapshots", "nodes", "links", "findings"}
+    assert set(reloaded) == {
+        "schemaVersion",
+        "topologyMode",
+        "snapshots",
+        "nodes",
+        "links",
+        "findings",
+    }
     assert all(
         set(node)
         == {

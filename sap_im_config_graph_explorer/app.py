@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
 from sap_im_config_graph_explorer.migration import MigrationRiskEngine
-from sap_im_config_graph_explorer.models import ConversionResult
+from sap_im_config_graph_explorer.models import ConversionResult, TOPOLOGY_MODES
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError
 from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
 
@@ -67,7 +67,14 @@ async def graph(
     files: list[UploadFile] | None = File(None),
     np_files: list[UploadFile] | None = File(None),
     p_files: list[UploadFile] | None = File(None),
+    topology_mode: str = Form("core"),
 ) -> dict[str, object]:
+    if topology_mode not in TOPOLOGY_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported topology mode: {topology_mode}",
+        )
+
     snapshot_inputs: list[SnapshotInput] = []
 
     # Handle legacy 'files' parameter for backward compatibility
@@ -99,7 +106,9 @@ async def graph(
         raise HTTPException(status_code=400, detail="No XML files provided.")
 
     try:
-        doc = GraphBuilder().build_snapshots(snapshot_inputs)
+        doc = GraphBuilder(topology_mode=topology_mode).build_snapshots(
+            snapshot_inputs
+        )
         if np_files and p_files:
             doc.migrationRisk = MigrationRiskEngine().analyze(doc)
         return doc.to_dict()

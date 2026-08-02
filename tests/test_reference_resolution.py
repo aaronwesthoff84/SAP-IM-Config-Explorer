@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
-from sap_im_config_graph_explorer.models import NODE_TYPES, RELATIONSHIP_TYPES
 from sap_im_config_graph_explorer.object_extractors import default_registry
 
 
@@ -11,10 +10,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def full_graph_builder() -> GraphBuilder:
-    return GraphBuilder(
-        node_types=NODE_TYPES,
-        relationship_types=RELATIONSHIP_TYPES,
-    )
+    return GraphBuilder(topology_mode="full")
 
 
 def test_default_registry_uses_domain_extractors_in_integration_order():

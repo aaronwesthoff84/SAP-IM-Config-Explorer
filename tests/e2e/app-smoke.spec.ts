@@ -51,7 +51,7 @@ test('loads a namespace-qualified profile without widening the graph allowlist',
   await page.goto('/');
   await page.locator('#np-xml-files').setInputFiles(namespaceFixture);
   await page.locator('#graph-button').click();
-  await expect(page.locator('#status')).toHaveText('3 nodes, 2 links, no findings');
+  await expect(page.locator('#status')).toHaveText('Core topology: 3 nodes, 2 links, no findings');
   await expect(page.locator('#graph canvas').first()).toBeVisible();
 
   const graphEvidence = await page.evaluate(() => ({
@@ -62,7 +62,7 @@ test('loads a namespace-qualified profile without widening the graph allowlist',
   }));
 
   expect(graphEvidence).toEqual({
-    schemaVersion: '1.1',
+    schemaVersion: '1.2',
     sourceProfiles: [{
       sourceFile: 'namespace_profile.xml',
       encoding: 'utf-8',
