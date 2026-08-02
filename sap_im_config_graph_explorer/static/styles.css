@@ -46,6 +46,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   background: var(--background);
   color: var(--text);
@@ -196,6 +200,32 @@ button.secondary {
   display: grid;
   gap: 8px;
   margin-bottom: 24px;
+}
+
+.filter-summary {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.filter-summary p {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.filter-summary button {
+  width: 100%;
+}
+
+button:disabled,
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .workspace {
