@@ -60,6 +60,33 @@
           <option value="">All types</option>
         </select>
       </label>
+      <label id="source-file-filter-control" hidden>
+        <span>Source file</span>
+        <select id="source-file-filter" disabled>
+          <option value="">All source files</option>
+        </select>
+      </label>
+      <label id="relationship-filter-control" hidden>
+        <span>Relationship</span>
+        <select id="relationship-filter" disabled>
+          <option value="">All relationships</option>
+        </select>
+      </label>
+      <label id="confidence-filter-control" hidden>
+        <span>Confidence</span>
+        <select id="confidence-filter" disabled>
+          <option value="">All confidence levels</option>
+        </select>
+      </label>
+      <label id="effective-date-filter-control" hidden>
+        <span>Effective on</span>
+        <input id="effective-date-filter" type="date" disabled>
+      </label>
+      <div class="filter-summary">
+        <p id="filter-results" aria-live="polite">Showing 0 of 0 nodes and 0 of 0 links</p>
+        <p id="active-filters" aria-live="polite">Active filters: None</p>
+        <button id="clear-filters" class="secondary" type="button" disabled>Clear all filters</button>
+      </div>
     </section>
 
     <section class="workspace">

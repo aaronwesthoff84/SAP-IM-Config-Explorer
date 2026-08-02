@@ -7,6 +7,39 @@ const state = {
 
 window.state = state;
 
+function filterGraphElements(graph, filters) {
+  const term = (filters.search || "").trim().toLowerCase();
+  const effectiveDate = filters.effectiveDate || "";
+  const nodes = graph.nodes.filter((node) => {
+    const startDate = node.metadata?.effectiveStartDate || "";
+    const endDate = node.metadata?.effectiveEndDate || "";
+    const matchesSearch = !term || node.label.toLowerCase().includes(term);
+    const matchesType = !filters.type || node.type === filters.type;
+    const matchesSourceFile = !filters.sourceFile || node.sourceFile === filters.sourceFile;
+    const matchesEffectiveDate = !effectiveDate
+      || ((!startDate || startDate <= effectiveDate) && (!endDate || effectiveDate <= endDate));
+    return matchesSearch && matchesType && matchesSourceFile && matchesEffectiveDate;
+  });
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const links = graph.links.filter(
+    (link) => nodeIds.has(link.source)
+      && nodeIds.has(link.target)
+      && (!filters.relationship || link.relationship === filters.relationship)
+      && (!filters.confidence || link.confidence === filters.confidence)
+  );
+  if (!filters.relationship && !filters.confidence) return { nodes, links };
+
+  const linkedNodeIds = new Set(
+    links.flatMap((link) => [link.source, link.target])
+  );
+  return {
+    nodes: nodes.filter((node) => linkedNodeIds.has(node.id)),
+    links,
+  };
+}
+
+window.filterGraphElements = filterGraphElements;
+
 let latestGraphRequestId = 0;
 let pendingGraphGeneration = null;
 
@@ -18,6 +51,13 @@ const topologySelect = document.getElementById("topology-mode");
 const graphEl = document.getElementById("graph");
 const typeFilter = document.getElementById("type-filter");
 const searchInput = document.getElementById("search");
+const sourceFileFilter = document.getElementById("source-file-filter");
+const relationshipFilter = document.getElementById("relationship-filter");
+const confidenceFilter = document.getElementById("confidence-filter");
+const effectiveDateFilter = document.getElementById("effective-date-filter");
+const filterResultsEl = document.getElementById("filter-results");
+const activeFiltersEl = document.getElementById("active-filters");
+const clearFiltersButton = document.getElementById("clear-filters");
 const rawXmlEl = document.getElementById("raw-xml");
 const summaryEl = document.getElementById("node-summary");
 const findingsEl = document.getElementById("validation-findings");
@@ -30,6 +70,11 @@ document.getElementById("export-button").addEventListener("click", exportGraph);
 themeToggle.addEventListener("click", toggleTheme);
 searchInput.addEventListener("input", renderGraph);
 typeFilter.addEventListener("change", renderGraph);
+sourceFileFilter.addEventListener("change", renderGraph);
+relationshipFilter.addEventListener("change", renderGraph);
+confidenceFilter.addEventListener("change", renderGraph);
+effectiveDateFilter.addEventListener("input", renderGraph);
+clearFiltersButton.addEventListener("click", clearAllFilters);
 topologySelect.addEventListener("change", () => {
   if (npFileInput.files.length || pFileInput.files.length) {
     requestGraphGeneration();
@@ -83,7 +128,7 @@ async function generateGraph() {
   if (!response.ok) return setStatus(payload.error || "Graph generation failed.");
 
   state.graph = payload;
-  populateTypeFilter(payload.nodes);
+  populateFilterControls(payload);
   renderFindings(payload.findings || []);
   renderRiskReport(payload.migrationRisk);
   renderGraph();
@@ -207,21 +252,23 @@ function applyThemeToHtml(html, theme) {
 function renderGraph() {
   if (state.cy) state.cy.destroy();
   const graphTheme = graphThemeColors();
-  const term = searchInput.value.trim().toLowerCase();
-  const type = typeFilter.value;
-  const nodes = state.graph.nodes.filter((node) => {
-    const matchesSearch = !term || node.label.toLowerCase().includes(term);
-    const matchesType = !type || node.type === type;
-    return matchesSearch && matchesType;
+  const { nodes, links } = filterGraphElements(state.graph, {
+    search: searchInput.value,
+    type: typeFilter.value,
+    sourceFile: sourceFileFilter.value,
+    relationship: relationshipFilter.value,
+    confidence: confidenceFilter.value,
+    effectiveDate: effectiveDateFilter.value,
   });
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const links = state.graph.links.filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target));
+  renderFilterSummary(nodes.length, links.length);
   const elements = [
     ...nodes.map((node, index) => ({
       data: { ...node, displayColor: colorForType(node.type) },
       position: initialGraphPosition(index, nodes.length),
     })),
-    ...links.map((link, index) => ({ data: { ...link, id: `edge-${index}` } })),
+    ...links.map((link, index) => ({
+      data: { ...link, id: link.id || `edge-${index}` },
+    })),
   ];
   state.cy = cytoscape({
     container: graphEl,
@@ -338,17 +385,82 @@ function clearHighlighting() {
   }
 }
 
-function populateTypeFilter(nodes) {
-  const selected = typeFilter.value;
-  const types = [...new Set(nodes.map((node) => node.type))].sort();
-  typeFilter.innerHTML = '<option value="">All types</option>';
-  types.forEach((type) => {
+function populateFilterControls(graph) {
+  populateSelect(
+    typeFilter,
+    graph.nodes.map((node) => node.type),
+    "All types"
+  );
+  populateSelect(
+    sourceFileFilter,
+    graph.nodes.map((node) => node.sourceFile),
+    "All source files",
+    "source-file-filter-control"
+  );
+  populateSelect(
+    relationshipFilter,
+    graph.links.map((link) => link.relationship),
+    "All relationships",
+    "relationship-filter-control"
+  );
+  populateSelect(
+    confidenceFilter,
+    graph.links.map((link) => link.confidence),
+    "All confidence levels",
+    "confidence-filter-control"
+  );
+
+  const hasEffectiveDates = graph.nodes.some(
+    (node) => node.metadata?.effectiveStartDate || node.metadata?.effectiveEndDate
+  );
+  effectiveDateFilter.disabled = !hasEffectiveDates;
+  document.getElementById("effective-date-filter-control").hidden = !hasEffectiveDates;
+  if (!hasEffectiveDates) effectiveDateFilter.value = "";
+}
+
+function populateSelect(select, sourceValues, allLabel, controlId = "") {
+  const selected = select.value;
+  const values = [...new Set(sourceValues.filter(Boolean))].sort();
+  select.innerHTML = "";
+  const allOption = document.createElement("option");
+  allOption.value = "";
+  allOption.textContent = allLabel;
+  select.appendChild(allOption);
+  values.forEach((value) => {
     const option = document.createElement("option");
-    option.value = type;
-    option.textContent = type;
-    typeFilter.appendChild(option);
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
   });
-  typeFilter.value = types.includes(selected) ? selected : "";
+  select.value = values.includes(selected) ? selected : "";
+  select.disabled = values.length === 0;
+  if (controlId) document.getElementById(controlId).hidden = values.length === 0;
+}
+
+function renderFilterSummary(visibleNodeCount, visibleLinkCount) {
+  filterResultsEl.textContent = `Showing ${visibleNodeCount} of ${state.graph.nodes.length} nodes and ${visibleLinkCount} of ${state.graph.links.length} links`;
+  const activeFilters = [
+    ["Search", searchInput.value.trim()],
+    ["Object type", typeFilter.value],
+    ["Source file", sourceFileFilter.value],
+    ["Relationship", relationshipFilter.value],
+    ["Confidence", confidenceFilter.value],
+    ["Effective on", effectiveDateFilter.value],
+  ].filter(([, value]) => value);
+  activeFiltersEl.textContent = activeFilters.length
+    ? `Active filters: ${activeFilters.map(([label, value]) => `${label}: ${value}`).join("; ")}`
+    : "Active filters: None";
+  clearFiltersButton.disabled = activeFilters.length === 0;
+}
+
+function clearAllFilters() {
+  searchInput.value = "";
+  typeFilter.value = "";
+  sourceFileFilter.value = "";
+  relationshipFilter.value = "";
+  confidenceFilter.value = "";
+  effectiveDateFilter.value = "";
+  renderGraph();
 }
 
 function renderFindings(findings) {
