@@ -44,7 +44,8 @@ def test_versioned_graph_contract_serializes_snapshot_identity_and_findings():
         snapshots=[snapshot], nodes=[node], links=[link], findings=[finding]
     ).to_dict()
 
-    assert payload["schemaVersion"] == GRAPH_SCHEMA_VERSION == "1.1"
+    assert payload["schemaVersion"] == GRAPH_SCHEMA_VERSION == "1.2"
+    assert payload["topologyMode"] == "core"
     assert payload["snapshots"][0]["role"] == "non_production"
     assert payload["nodes"][0]["canonicalKey"] == "formula:eligibility"
     assert payload["links"][0]["id"] == "link-1"

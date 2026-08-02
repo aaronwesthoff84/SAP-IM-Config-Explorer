@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 from sap_im_config_graph_explorer.models import (
-    NODE_TYPES,
-    RELATIONSHIP_TYPES,
+    GRAPH_TOPOLOGIES,
     GraphDocument,
     GraphNode,
     Snapshot,
@@ -51,10 +49,8 @@ def _snapshot_from_documents(
     )
 
 
-CORE_GRAPH_NODE_TYPES = frozenset({"Plan", "PlanComponent", "Rule"})
-CORE_GRAPH_RELATIONSHIP_TYPES = frozenset(
-    {"belongs_to_plan", "belongs_to_plan_component"}
-)
+CORE_GRAPH_NODE_TYPES = GRAPH_TOPOLOGIES["core"].node_types
+CORE_GRAPH_RELATIONSHIP_TYPES = GRAPH_TOPOLOGIES["core"].relationship_types
 
 
 class GraphBuilder:
@@ -64,23 +60,16 @@ class GraphBuilder:
         self,
         registry: ExtractorRegistry | None = None,
         validation_engine: ValidationEngine | None = None,
-        node_types: Iterable[str] = CORE_GRAPH_NODE_TYPES,
-        relationship_types: Iterable[str] = CORE_GRAPH_RELATIONSHIP_TYPES,
+        topology_mode: str = "core",
     ) -> None:
-        self.node_types = frozenset(node_types)
-        self.relationship_types = frozenset(relationship_types)
-        unsupported_node_types = self.node_types - NODE_TYPES
-        unsupported_relationship_types = self.relationship_types - RELATIONSHIP_TYPES
-        if unsupported_node_types:
-            raise ValueError(
-                "Unsupported graph node types: "
-                f"{', '.join(sorted(unsupported_node_types))}"
-            )
-        if unsupported_relationship_types:
-            raise ValueError(
-                "Unsupported graph relationship types: "
-                f"{', '.join(sorted(unsupported_relationship_types))}"
-            )
+        try:
+            topology = GRAPH_TOPOLOGIES[topology_mode]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported topology mode: {topology_mode}") from exc
+
+        self.topology_mode = topology_mode
+        self.node_types = topology.node_types
+        self.relationship_types = topology.relationship_types
         self.registry = registry if registry is not None else default_registry()
         self.node_factory = NodeFactory()
         self.validation_engine = validation_engine or ValidationEngine()
@@ -180,6 +169,7 @@ class GraphBuilder:
             nodes=nodes,
             links=resolution.links,
             findings=findings,
+            topologyMode=self.topology_mode,
         )
 
     def _reference_is_in_scope(self, reference: ReferenceCandidate) -> bool:

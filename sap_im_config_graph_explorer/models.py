@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-GRAPH_SCHEMA_VERSION = "1.1"
+GRAPH_SCHEMA_VERSION = "1.2"
 SNAPSHOT_ROLES = {"configuration", "non_production", "production"}
 FINDING_SEVERITIES = {"error", "warning", "info"}
 
@@ -59,6 +59,27 @@ RELATIONSHIP_TYPES = {
 
 CONFIDENCE_LEVELS = {"high", "medium", "low"}
 SOURCE_PROFILE_ENCODINGS = frozenset({"utf-8", "utf-16-le", "utf-16-be"})
+
+
+@dataclass(frozen=True)
+class GraphTopology:
+    node_types: frozenset[str]
+    relationship_types: frozenset[str]
+
+
+GRAPH_TOPOLOGIES = {
+    "core": GraphTopology(
+        node_types=frozenset({"Plan", "PlanComponent", "Rule"}),
+        relationship_types=frozenset(
+            {"belongs_to_plan", "belongs_to_plan_component"}
+        ),
+    ),
+    "full": GraphTopology(
+        node_types=frozenset(NODE_TYPES),
+        relationship_types=frozenset(RELATIONSHIP_TYPES),
+    ),
+}
+TOPOLOGY_MODES = frozenset(GRAPH_TOPOLOGIES)
 
 
 @dataclass(frozen=True)
@@ -221,10 +242,16 @@ class GraphDocument:
     findings: list[ValidationFinding] = field(default_factory=list)
     migrationRisk: MigrationRiskReport | None = None
     schemaVersion: str = GRAPH_SCHEMA_VERSION
+    topologyMode: str = "core"
+
+    def __post_init__(self) -> None:
+        if self.topologyMode not in TOPOLOGY_MODES:
+            raise ValueError(f"Unsupported topology mode: {self.topologyMode}")
 
     def to_dict(self) -> dict[str, Any]:
         data = {
             "schemaVersion": self.schemaVersion,
+            "topologyMode": self.topologyMode,
             "snapshots": [snapshot.to_dict() for snapshot in self.snapshots],
             "nodes": [node.to_dict() for node in self.nodes],
             "links": [link.to_dict() for link in self.links],

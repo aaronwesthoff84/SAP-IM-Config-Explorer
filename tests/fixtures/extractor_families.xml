@@ -1,4 +1,34 @@
 <DATA_IMPORT>
+  <PLAN_SET>
+    <PLAN ID="PLAN-1" NAME="Plan"><COMPONENT_REF NAME="Component"/></PLAN>
+  </PLAN_SET>
+  <PLAN_COMPONENT_SET>
+    <PLAN_COMPONENT ID="PC-1" NAME="Component"><RULE_REF NAME="Rule"/></PLAN_COMPONENT>
+  </PLAN_COMPONENT_SET>
+  <RULE_SET>
+    <RULE ID="RULE-1" NAME="Rule" TYPE="DIRECT_TRANSACTION_CREDIT">
+      <FUNCTION ID="ifThenElse">
+        <PARAMETER_LIST>
+          <FIXED_VALUE_REF NAME="Fixed"/>
+          <FORMULA_REF NAME="Formula"/>
+          <MDLT_REF NAME="Lookup"/>
+          <QUOTA_REF NAME="Quota"/>
+          <RATE_TABLE_REF NAME="Rate"/>
+          <TERRITORY_REF NAME="Territory"/>
+          <VARIABLE_REF NAME="Variable"/>
+          <EVENT_TYPE_REF NAME="Event"/>
+          <CREDIT_TYPE_REF NAME="Credit"/>
+          <EARNING_CODE_REF NAME="Earning Code"/>
+          <EARNING_GROUP_REF NAME="Earning Group"/>
+          <BUSINESS_UNIT_REF NAME="Business"/>
+          <PROCESSING_UNIT_REF NAME="Processing"/>
+          <CALENDAR_REF NAME="Calendar"/>
+          <UNKNOWN_OBJECT NAME="Must remain unknown"/>
+        </PARAMETER_LIST>
+      </FUNCTION>
+    </RULE>
+  </RULE_SET>
+  <FORMULA_SET><FORMULA ID="FORMULA-1" NAME="Formula"/></FORMULA_SET>
   <FIXED_VALUE_SET><FIXED_VALUE ID="FV-1" NAME="Fixed" EFFECTIVE_START_DATE="2026-01-01"/></FIXED_VALUE_SET>
   <MD_LOOKUP_TABLE_SET><MD_LOOKUP_TABLE ID="LT-1" NAME="Lookup"/></MD_LOOKUP_TABLE_SET>
   <QUOTA_SET><QUOTA ID="Q-1" NAME="Quota"/></QUOTA_SET>

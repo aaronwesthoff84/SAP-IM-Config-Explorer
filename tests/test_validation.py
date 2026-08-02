@@ -1,7 +1,5 @@
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder
 from sap_im_config_graph_explorer.models import (
-    NODE_TYPES,
-    RELATIONSHIP_TYPES,
     GraphLink,
     GraphNode,
     ValidationFinding,
@@ -117,8 +115,7 @@ def test_validation_findings_are_stable_and_graph_builder_runs_the_engine():
         finding.to_dict() for finding in second
     ]
 
-    graph = GraphBuilder(
-        node_types=NODE_TYPES,
-        relationship_types=RELATIONSHIP_TYPES,
-    ).build_from_paths(["tests/fixtures/duplicate_ids.xml"])
+    graph = GraphBuilder(topology_mode="full").build_from_paths(
+        ["tests/fixtures/duplicate_ids.xml"]
+    )
     assert any(finding.code == "duplicate_object" for finding in graph.findings)

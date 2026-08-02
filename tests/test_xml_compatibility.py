@@ -174,7 +174,7 @@ def test_snapshot_serializes_source_profiles_in_input_order() -> None:
         ]
     ).to_dict()
 
-    assert graph["schemaVersion"] == "1.1"
+    assert graph["schemaVersion"] == "1.2"
     assert graph["snapshots"] == [
         {
             "id": "configuration",
@@ -284,7 +284,7 @@ def test_graph_api_exposes_namespace_profile_and_canonical_graph() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["schemaVersion"] == "1.1"
+    assert payload["schemaVersion"] == "1.2"
     assert payload["snapshots"][0]["sourceProfiles"] == [
         {
             "sourceFile": "namespace.xml",

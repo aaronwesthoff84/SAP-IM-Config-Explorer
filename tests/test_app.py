@@ -7,6 +7,7 @@ from sap_im_config_graph_explorer.app import app
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "minimal_plan.xml"
+EXTRACTOR_FIXTURE = ROOT / "tests" / "fixtures" / "extractor_families.xml"
 VALIDATION_FIXTURE = ROOT / "tests" / "fixtures" / "validation_findings.xml"
 
 
@@ -114,7 +115,8 @@ def test_graph_endpoint_accepts_multiple_uploads():
     payload = response.json()
     assert payload["nodes"]
     assert {node["sourceFile"] for node in payload["nodes"]} == {"first.xml", "second.xml"}
-    assert payload["schemaVersion"] == "1.1"
+    assert payload["schemaVersion"] == "1.2"
+    assert payload["topologyMode"] == "core"
     assert payload["snapshots"] == [
         {
             "id": "configuration",
@@ -144,6 +146,108 @@ def test_graph_endpoint_accepts_multiple_uploads():
         "duplicate_object",
         "unused_object",
         "orphaned_object",
+    }
+
+
+def test_graph_endpoint_selects_core_or_full_topology_from_multipart_form():
+    client = TestClient(app)
+    xml = EXTRACTOR_FIXTURE.read_bytes()
+
+    omitted = client.post(
+        "/api/graph",
+        files={"files": ("extractor_families.xml", xml, "application/xml")},
+    )
+    explicit_core = client.post(
+        "/api/graph",
+        data={"topology_mode": "core"},
+        files={"files": ("extractor_families.xml", xml, "application/xml")},
+    )
+    full = client.post(
+        "/api/graph",
+        data={"topology_mode": "full"},
+        files={"files": ("extractor_families.xml", xml, "application/xml")},
+    )
+
+    assert omitted.status_code == explicit_core.status_code == full.status_code == 200
+    assert omitted.json()["topologyMode"] == explicit_core.json()["topologyMode"] == "core"
+    assert {node["type"] for node in omitted.json()["nodes"]} == {
+        "Plan",
+        "PlanComponent",
+        "Rule",
+    }
+    assert full.json()["topologyMode"] == "full"
+    assert {node["type"] for node in full.json()["nodes"]} == {
+        "FixedValue",
+        "Formula",
+        "LookupTable",
+        "Quota",
+        "RateTable",
+        "Territory",
+        "Variable",
+        "Rule",
+        "Plan",
+        "PlanComponent",
+        "EventType",
+        "CreditType",
+        "EarningCode",
+        "EarningGroup",
+        "BusinessUnit",
+        "ProcessingUnit",
+        "Calendar",
+    }
+
+
+def test_graph_endpoint_rejects_unsupported_topology_mode_with_stable_error():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/graph",
+        data={"topology_mode": "expanded"},
+        files={
+            "files": (
+                "minimal_plan.xml",
+                FIXTURE.read_bytes(),
+                "application/xml",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "Unsupported topology mode: expanded"}
+
+
+def test_graph_endpoint_runs_migration_analysis_on_the_selected_topology():
+    client = TestClient(app)
+    non_production = b"""<DATA_IMPORT>
+      <FORMULA NAME="Eligibility" />
+      <VARIABLE NAME="Gate" />
+    </DATA_IMPORT>"""
+    production = b"""<DATA_IMPORT>
+      <FORMULA NAME="Eligibility"><VARIABLE_REF NAME="Gate" /></FORMULA>
+      <VARIABLE NAME="Gate" />
+    </DATA_IMPORT>"""
+    uploads = [
+        ("np_files", ("np.xml", non_production, "application/xml")),
+        ("p_files", ("p.xml", production, "application/xml")),
+    ]
+
+    core = client.post(
+        "/api/graph",
+        data={"topology_mode": "core"},
+        files=uploads,
+    )
+    full = client.post(
+        "/api/graph",
+        data={"topology_mode": "full"},
+        files=uploads,
+    )
+
+    assert core.status_code == full.status_code == 200
+    assert core.json()["topologyMode"] == "core"
+    assert core.json()["migrationRisk"] == {"score": 0, "factors": []}
+    assert full.json()["topologyMode"] == "full"
+    assert {factor["code"] for factor in full.json()["migrationRisk"]["factors"]} >= {
+        "missing_relationship"
     }
 
 
