@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import path from 'node:path';
 
 const fixture = path.resolve('tests/fixtures/minimal_plan.xml');
+const genericAttributeFixture = path.resolve('tests/fixtures/generic_attribute_actions.xml');
 
 function collectBrowserErrors(page, errors: string[]) {
   page.on('pageerror', error => errors.push(error.message));
@@ -38,6 +39,33 @@ test('uploads XML and generates graph and HTML output', async ({ page }) => {
   await expect(page.locator('#html-output-view')).toHaveClass(/active/);
   await expect(page.locator('#html-output-download')).toBeVisible();
   await expect(page.locator('#html-output-preview')).toHaveAttribute('srcdoc', /SAP|Plan|html/i);
+
+  expect(errors).toEqual([]);
+});
+
+test('numbers generic attributes in the HTML preview by source position', async ({ page }) => {
+  const errors: string[] = [];
+  collectBrowserErrors(page, errors);
+
+  await page.goto('/');
+  await page.locator('#np-xml-files').setInputFiles(genericAttributeFixture);
+  await page.locator('#html-button').click();
+  await expect(page.locator('#status')).toContainText('Generated');
+
+  const preview = page.frameLocator('#html-output-preview');
+  const genericLabels = preview.locator('td.FunctionParameterLineNumber', {
+    hasText: /^Generic Attribute \d+$/,
+  });
+  await expect(genericLabels).toHaveText([
+    'Generic Attribute 1',
+    'Generic Attribute 2',
+    'Generic Attribute 3',
+    'Generic Attribute 5',
+    'Generic Attribute 1',
+  ]);
+  await expect(preview.getByText('VetSuite Select', { exact: true })).toBeVisible();
+  await expect(preview.getByText('Second Action Attribute', { exact: true })).toBeVisible();
+  await expect(preview.locator('body')).not.toContainText('NULL');
 
   expect(errors).toEqual([]);
 });

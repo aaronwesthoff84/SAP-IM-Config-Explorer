@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, rend
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
 HTML_SORTING_FIXTURE = FIXTURES / "html_sorting_comparison.xml"
+GENERIC_ATTRIBUTE_ACTIONS_FIXTURE = FIXTURES / "generic_attribute_actions.xml"
 
 
 def full_graph_builder() -> GraphBuilder:
@@ -121,6 +123,93 @@ def test_rule_actions_omit_null_generic_values():
     assert "5 USD" in html
     assert "2026-01-01" in html
     assert "true" in html
+
+
+def test_create_credit_generic_attributes_keep_source_ordinals():
+    action = ET.fromstring(
+        """<FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+  <OUTPUT_REFERENCE NAME="Credit Output" />
+  <DATA_FIELD>transactionValue</DATA_FIELD>
+  <HOLD_REF NAME="Hold Until Release" PERIOD_TYPE="month" />
+  <CREDIT_TYPE>Revenue Credit</CREDIT_TYPE>
+  <BOOLEAN VALUE="false" />
+  <BOOLEAN VALUE="true" />
+  <STRING_LITERAL>VetSuite Select</STRING_LITERAL>
+  <FUNCTION ID="_toUpperCase">
+    <STRING_LITERAL>F Opportunity Status</STRING_LITERAL>
+  </FUNCTION>
+  <RULE_ELEMENT_REF NAME="Source Rule Element" />
+  <STRING_LITERAL>NULL</STRING_LITERAL>
+  <DATE_LITERAL>2026-01-01</DATE_LITERAL>
+</FUNCTION>"""
+    )
+
+    html = render_action(action)
+
+    labels = re.findall(
+        r'class="FunctionParameterLineNumber">([^<]+)</td>', html
+    )
+    assert labels == [
+        "Credit Output",
+        "Input Value",
+        "Hold Type",
+        "Credit Type",
+        "Allow Duplicates",
+        "Rollable",
+        "Generic Attribute 1",
+        "Generic Attribute 2",
+        "Generic Attribute 3",
+        "Generic Attribute 5",
+    ]
+    parameter_rows = re.findall(
+        r'<tr>\s*<td[^>]*class="FunctionParameterLineNumber">(.*?)</td>'
+        r'\s*<td[^>]*class="FunctionParameter">(.*?)</td>\s*</tr>',
+        html,
+        flags=re.DOTALL,
+    )
+    assert parameter_rows == [
+        ("Credit Output", "<b>[Credit Output, month]</b>"),
+        ("Input Value", "transactionValue"),
+        ("Hold Type", "Hold Until Release ( month )"),
+        ("Credit Type", "Revenue Credit"),
+        ("Allow Duplicates", "false"),
+        ("Rollable", "true"),
+        ("Generic Attribute 1", "VetSuite Select"),
+        (
+            "Generic Attribute 2",
+            "  To Upper Case\n  (\n    F Opportunity Status\n  )",
+        ),
+        (
+            "Generic Attribute 3",
+            "<i>Source Rule Element:month-0"
+            "<sub>[From Current Position:EXPECT_ONE]</sub></i>",
+        ),
+        ("Generic Attribute 5", "2026-01-01"),
+    ]
+    assert "NULL" not in html
+
+
+def test_converter_numbers_generic_attributes_for_each_create_credit_action():
+    transformer = Transformer()
+
+    transformer.parse(str(GENERIC_ATTRIBUTE_ACTIONS_FIXTURE))
+    html = transformer.html()
+
+    labels = re.findall(
+        r'class="FunctionParameterLineNumber">(Generic Attribute \d+)</td>', html
+    )
+    assert labels == [
+        "Generic Attribute 1",
+        "Generic Attribute 2",
+        "Generic Attribute 3",
+        "Generic Attribute 5",
+        "Generic Attribute 1",
+    ]
+    assert "VetSuite Select" in html
+    assert "F Opportunity Status" in html
+    assert "Source Rule Element:month-0" in html
+    assert "Second Action Attribute" in html
+    assert "NULL" not in html
 
 
 def test_legacy_cli_still_accepts_old_argument_shape(tmp_path):

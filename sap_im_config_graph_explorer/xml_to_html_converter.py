@@ -296,13 +296,17 @@ def _r_evtype(ev_elem, depth=0):
 
 def _ap_lbl(fid, idx, child):
     tag=child.tag.lower() if hasattr(child,'tag') else ""
+    fixed_action_label=None
+    if fid=="DIRECT_TRANSACTION_CREDIT_ALLGAs":
+        fixed_action_labels=[None,"Input Value","Hold Type","Credit Type","Allow Duplicates","Rollable"]
+        if idx>=len(fixed_action_labels):
+            return f"Generic Attribute {idx - len(fixed_action_labels) + 1}"
+        fixed_action_label=fixed_action_labels[idx]
     if tag=="output_reference":
         if fid in ("PRIMARY_MEASUREMENT","SECONDARY_MEASUREMENT_GAS"): return "Measurement Output"
         return "Incentive Output" if ("INCENTIVE" in fid or "BULK" in fid) else "Credit Output"
-    if fid=="DIRECT_TRANSACTION_CREDIT_ALLGAs":
-        lbs=[None,"Input Value","Hold Type","Credit Type","Allow Duplicates","Rollable"]
-        if idx<len(lbs) and lbs[idx]: return lbs[idx]
-    elif fid in ("PRIMARY_MEASUREMENT","SECONDARY_MEASUREMENT_GAS"):
+    if fixed_action_label: return fixed_action_label
+    if fid in ("PRIMARY_MEASUREMENT","SECONDARY_MEASUREMENT_GAS"):
         if idx==1: return "Increment Value"
     elif "INCENTIVE" in fid:
         lbs=[None,"Input Amount","Hold Type"]
