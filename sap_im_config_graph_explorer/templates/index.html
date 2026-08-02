@@ -91,11 +91,21 @@
 
     <section class="workspace">
       <div class="tabs">
-        <button class="tab active" data-view="graph-view">Graph</button>
-        <button class="tab" data-view="html-output-view">HTML Output</button>
+        <button class="tab active" type="button" data-view="graph-view">Graph</button>
+        <button id="lineage-tab" class="tab" type="button" data-view="lineage-view" disabled>Lineage</button>
+        <button class="tab" type="button" data-view="html-output-view">HTML Output</button>
       </div>
       <div id="graph-view" class="view active">
         <div id="graph"></div>
+      </div>
+      <div id="lineage-view" class="view">
+        <div class="lineage-actions">
+          <button id="lineage-back-button" class="secondary" type="button">Back to Graph</button>
+          <p id="lineage-summary" aria-live="polite">Select a Rule to view its resolved containment lineage.</p>
+        </div>
+        <div id="lineage-empty" class="lineage-empty" role="status" hidden></div>
+        <ul id="lineage-description" class="visually-hidden" aria-label="Lineage contents"></ul>
+        <div id="lineage-graph" aria-describedby="lineage-summary lineage-description" aria-label="Rule lineage graph" role="img" hidden></div>
       </div>
       <div id="html-output-view" class="view">
         <div class="html-actions">
