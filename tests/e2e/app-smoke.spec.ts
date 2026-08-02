@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const fixture = path.resolve('tests/fixtures/minimal_plan.xml');
 const genericAttributeFixture = path.resolve('tests/fixtures/generic_attribute_actions.xml');
+const namespaceFixture = path.resolve('tests/fixtures/compatibility/namespace_profile.xml');
 
 function collectBrowserErrors(page, errors: string[]) {
   page.on('pageerror', error => errors.push(error.message));
@@ -40,6 +41,38 @@ test('uploads XML and generates graph and HTML output', async ({ page }) => {
   await expect(page.locator('#html-output-download')).toBeVisible();
   await expect(page.locator('#html-output-preview')).toHaveAttribute('srcdoc', /SAP|Plan|html/i);
 
+  expect(errors).toEqual([]);
+});
+
+test('loads a namespace-qualified profile without widening the graph allowlist', async ({ page }) => {
+  const errors: string[] = [];
+  collectBrowserErrors(page, errors);
+
+  await page.goto('/');
+  await page.locator('#np-xml-files').setInputFiles(namespaceFixture);
+  await page.locator('#graph-button').click();
+  await expect(page.locator('#status')).toHaveText('3 nodes, 2 links, no findings');
+  await expect(page.locator('#graph canvas').first()).toBeVisible();
+
+  const graphEvidence = await page.evaluate(() => ({
+    schemaVersion: (window as any).state.graph.schemaVersion,
+    sourceProfiles: (window as any).state.graph.snapshots[0].sourceProfiles,
+    nodeTypes: (window as any).state.graph.nodes.map((node: any) => node.type).sort(),
+    nodeLabels: (window as any).state.graph.nodes.map((node: any) => node.label).sort(),
+  }));
+
+  expect(graphEvidence).toEqual({
+    schemaVersion: '1.1',
+    sourceProfiles: [{
+      sourceFile: 'namespace_profile.xml',
+      encoding: 'utf-8',
+      namespaceUri: 'urn:sap:incentive-management:configuration:16.0',
+      exportVersion: '16.0',
+    }],
+    nodeTypes: ['Plan', 'PlanComponent', 'Rule'],
+    nodeLabels: ['Compatibility Component', 'Compatibility Plan', 'Compatibility Rule'],
+  });
+  expect(graphEvidence.nodeLabels).not.toContain('Must remain unknown');
   expect(errors).toEqual([]);
 });
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-GRAPH_SCHEMA_VERSION = "1.0"
+GRAPH_SCHEMA_VERSION = "1.1"
 SNAPSHOT_ROLES = {"configuration", "non_production", "production"}
 FINDING_SEVERITIES = {"error", "warning", "info"}
 
@@ -58,6 +58,27 @@ RELATIONSHIP_TYPES = {
 }
 
 CONFIDENCE_LEVELS = {"high", "medium", "low"}
+SOURCE_PROFILE_ENCODINGS = frozenset({"utf-8", "utf-16-le", "utf-16-be"})
+
+
+@dataclass(frozen=True)
+class SourceProfile:
+    sourceFile: str
+    encoding: str
+    namespaceUri: str | None
+    exportVersion: str | None
+
+    def __post_init__(self) -> None:
+        if self.encoding not in SOURCE_PROFILE_ENCODINGS:
+            raise ValueError(f"Unsupported source profile encoding: {self.encoding}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "sourceFile": self.sourceFile,
+            "encoding": self.encoding,
+            "namespaceUri": self.namespaceUri,
+            "exportVersion": self.exportVersion,
+        }
 
 
 @dataclass(frozen=True)
@@ -65,13 +86,19 @@ class Snapshot:
     id: str
     role: str
     sourceFiles: list[str] = field(default_factory=list)
+    sourceProfiles: list[SourceProfile] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.role not in SNAPSHOT_ROLES:
             raise ValueError(f"Unsupported snapshot role: {self.role}")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "role": self.role, "sourceFiles": self.sourceFiles}
+        return {
+            "id": self.id,
+            "role": self.role,
+            "sourceFiles": self.sourceFiles,
+            "sourceProfiles": [profile.to_dict() for profile in self.sourceProfiles],
+        }
 
 
 @dataclass

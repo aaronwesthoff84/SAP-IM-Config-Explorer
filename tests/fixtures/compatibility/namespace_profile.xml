@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sap:DATA_IMPORT
+    xmlns:sap="urn:sap:incentive-management:configuration:16.0"
+    sap:VERSION="16.0">
+  <sap:PLAN_SET>
+    <sap:PLAN sap:NAME="Compatibility Plan">
+      <sap:COMPONENT_REF sap:NAME="Compatibility Component" />
+    </sap:PLAN>
+  </sap:PLAN_SET>
+  <sap:PLANCOMPONENT_SET>
+    <sap:PLANCOMPONENT sap:NAME="Compatibility Component">
+      <sap:RULE_REF sap:NAME="Compatibility Rule" />
+    </sap:PLANCOMPONENT>
+  </sap:PLANCOMPONENT_SET>
+  <sap:RULE_SET>
+    <sap:RULE sap:NAME="Compatibility Rule" sap:TYPE="COMMISSION" />
+  </sap:RULE_SET>
+  <sap:FUTURE_OBJECT sap:NAME="Must remain unknown" />
+</sap:DATA_IMPORT>

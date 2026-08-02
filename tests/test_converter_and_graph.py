@@ -271,6 +271,20 @@ def test_phase_one_acceptance_covers_exact_allowlist_and_no_logic_nodes():
             "id": "configuration",
             "role": "configuration",
             "sourceFiles": ["extractor_families.xml", "minimal_plan.xml"],
+            "sourceProfiles": [
+                {
+                    "sourceFile": "extractor_families.xml",
+                    "encoding": "utf-8",
+                    "namespaceUri": None,
+                    "exportVersion": None,
+                },
+                {
+                    "sourceFile": "minimal_plan.xml",
+                    "encoding": "utf-8",
+                    "namespaceUri": None,
+                    "exportVersion": "16.0",
+                },
+            ],
         }
     ]
 
