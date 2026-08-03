@@ -53,7 +53,7 @@ The generated HTML sorts named objects alphabetically, without changing the disp
 4. Search by object name or filter by object type.
 5. Click a node to view its source file, XML path, metadata, and bounded raw XML.
 6. Hover or click an edge to inspect its relationship.
-7. Click `Export JSON` to download the current graph data.
+7. Click an export action to download the complete current graph in JSON, CSV, Markdown, or GraphML.
 
 ## Graph Topologies
 
@@ -183,6 +183,75 @@ references_integration, parent_child, unknown_reference
 ```
 
 Missing and ambiguous references are emitted as structured findings. They do not create placeholder graph nodes or links with non-node endpoints.
+
+## Portable Graph Exports
+
+The export actions serialize the complete current in-memory graph, not the filtered graph view. They run only in the local browser and local application process; no XML, configuration content, or graph data is uploaded to an external service. The input is reconstructed against the versioned graph contract, so unsupported node types and relationship values cannot be exported.
+
+`Export JSON` remains the lossless local graph export, including each node's `rawXml`. The portable CSV, Markdown, and GraphML exports deliberately exclude `rawXml` and contain no source XML bytes.
+
+Every portable format sorts nodes by `(snapshotId, type, canonicalKey, id)`, links by `(source, target, relationship, id)`, and findings by `(snapshotId, severity, code, id)`. Snapshot source files, source profiles, and migration-risk factors are also sorted for stable output.
+
+### CSV ZIP
+
+`Export CSV` downloads `sap-im-config-graph-csv.zip`. It is a deterministic UTF-8 ZIP containing exactly these four members:
+
+- `nodes.csv`
+- `links.csv`
+- `findings.csv`
+- `manifest.json`
+
+The CSV files always use these header columns, in this order. `metadataJson`, `detailsJson`, and `nodeIds` are compact, key-sorted JSON values.
+
+| File | Columns |
+| --- | --- |
+| `nodes.csv` | `id, canonicalKey, snapshotId, type, label, sourceFile, xmlPath, metadataJson` |
+| `links.csv` | `id, source, target, relationship, confidence, metadataJson` |
+| `findings.csv` | `id, code, severity, snapshotId, nodeIds, message, detailsJson` |
+
+To prevent spreadsheet applications from interpreting graph content as a formula, any CSV cell beginning with `=`, `+`, `-`, `@`, tab, carriage return, or line feed is prefixed with a single quote. This neutralization is part of the stable CSV mapping.
+
+`manifest.json` contains the export format identifier, `schemaVersion`, `topologyMode`, node/link/finding counts, sorted snapshots and source profiles, plus local provenance. Provenance includes source profiles and migration-risk data when a migration-risk report is present.
+
+### Markdown
+
+`Export Markdown` downloads `sap-im-config-graph.md`. Table cell backslashes and pipes are escaped, and newlines are rendered as `<br>`, preserving readable one-row-per-object tables. Its stable section mapping is:
+
+| Section | GraphDocument source | Output columns or values |
+| --- | --- | --- |
+| Schema and topology | `schemaVersion`, `topologyMode` | `Field, Value` |
+| Provenance / Migration risk | `migrationRisk.score`, `migrationRisk.factors[]` | `Score, Factor count`; factors use `Code, Severity, Weight, Node IDs, Message` |
+| Snapshots / profile provenance | `snapshots[]`, including `sourceFiles` and `sourceProfiles` | `ID, Role, Source files, Source profiles` |
+| Counts | lengths of `nodes`, `links`, and `findings` | `Object, Count` |
+| Nodes | `nodes[]` | `ID, Canonical key, Snapshot, Type, Label, Source file, XML path, Metadata JSON` |
+| Links | `links[]` | `ID, Source, Target, Relationship, Confidence, Metadata JSON` |
+| Findings | `findings[]` | `ID, Code, Severity, Snapshot, Node IDs, Message, Details JSON` |
+
+### GraphML
+
+`Export GraphML` downloads `sap-im-config-graph.graphml`. It uses each graph node/link ID as the GraphML `node/@id` or `edge/@id`, and each link source/target as `edge/@source` and `edge/@target`. All data keys have `attr.type="string"`; JSON values are compact and key-sorted.
+
+| Scope | GraphDocument source | Key ID | `attr.name` |
+| --- | --- | --- | --- |
+| graph | `schemaVersion` | `graphSchemaVersion` | `schemaVersion` |
+| graph | `topologyMode` | `graphTopologyMode` | `topologyMode` |
+| graph | `snapshots[]` | `graphSnapshotsJson` | `snapshotsJson` |
+| graph | `findings[]` | `graphFindingsJson` | `findingsJson` |
+| graph | source profiles and `migrationRisk` | `graphProvenanceJson` | `provenanceJson` |
+| node | `nodes[].id` | `nodeId` | `id` |
+| node | `nodes[].canonicalKey` | `nodeCanonicalKey` | `canonicalKey` |
+| node | `nodes[].snapshotId` | `nodeSnapshotId` | `snapshotId` |
+| node | `nodes[].type` | `nodeType` | `type` |
+| node | `nodes[].label` | `nodeLabel` | `label` |
+| node | `nodes[].sourceFile` | `nodeSourceFile` | `sourceFile` |
+| node | `nodes[].xmlPath` | `nodeXmlPath` | `xmlPath` |
+| node | `nodes[].metadata` | `nodeMetadataJson` | `metadataJson` |
+| edge | `links[].id` | `edgeId` | `id` |
+| edge | `links[].source` | `edgeSource` | `source` |
+| edge | `links[].target` | `edgeTarget` | `target` |
+| edge | `links[].relationship` | `edgeRelationship` | `relationship` |
+| edge | `links[].confidence` | `edgeConfidence` | `confidence` |
+| edge | `links[].metadata` | `edgeMetadataJson` | `metadataJson` |
 
 ## Validation Findings
 

@@ -1,0 +1,172 @@
+{
+  "schemaVersion": "1.2",
+  "topologyMode": "core",
+  "snapshots": [
+    {
+      "id": "production",
+      "role": "production",
+      "sourceFiles": ["production.xml"],
+      "sourceProfiles": [
+        {
+          "sourceFile": "production.xml",
+          "encoding": "utf-8",
+          "namespaceUri": "urn:sap:incentive-management:configuration:16.0",
+          "exportVersion": "16.0"
+        }
+      ]
+    },
+    {
+      "id": "configuration",
+      "role": "configuration",
+      "sourceFiles": ["zeta.xml", "config|north.xml"],
+      "sourceProfiles": [
+        {
+          "sourceFile": "zeta.xml",
+          "encoding": "utf-8",
+          "namespaceUri": null,
+          "exportVersion": "16.0"
+        },
+        {
+          "sourceFile": "config|north.xml",
+          "encoding": "utf-8",
+          "namespaceUri": null,
+          "exportVersion": "16.0"
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "rule-production",
+      "canonicalKey": "rule:duplicate-label",
+      "snapshotId": "production",
+      "label": "Duplicate Label",
+      "type": "Rule",
+      "sourceFile": "production.xml",
+      "xmlPath": "/DATA_IMPORT/RULE[1]",
+      "rawXml": "<RULE>EXCLUDED_RAW_XML</RULE>",
+      "metadata": {"comment": "production"}
+    },
+    {
+      "id": "plan-configuration",
+      "canonicalKey": "plan:north",
+      "snapshotId": "configuration",
+      "label": "North | Plan\nOne",
+      "type": "Plan",
+      "sourceFile": "config|north.xml",
+      "xmlPath": "/DATA_IMPORT/PLAN[1]",
+      "rawXml": "<PLAN>EXCLUDED_RAW_XML</PLAN>",
+      "metadata": {"note": "one|two\nthree", "priority": 2}
+    },
+    {
+      "id": "rule-configuration",
+      "canonicalKey": "rule:duplicate-label",
+      "snapshotId": "configuration",
+      "label": "Duplicate Label",
+      "type": "Rule",
+      "sourceFile": "config|north.xml",
+      "xmlPath": "/DATA_IMPORT/RULE[1]",
+      "rawXml": "<RULE>EXCLUDED_RAW_XML</RULE>",
+      "metadata": {}
+    },
+    {
+      "id": "component-configuration",
+      "canonicalKey": "plan-component:north",
+      "snapshotId": "configuration",
+      "label": "North Component",
+      "type": "PlanComponent",
+      "sourceFile": "config|north.xml",
+      "xmlPath": "/DATA_IMPORT/PLAN_COMPONENT[1]",
+      "rawXml": "<PLAN_COMPONENT>EXCLUDED_RAW_XML</PLAN_COMPONENT>",
+      "metadata": {}
+    },
+    {
+      "id": "plan-production",
+      "canonicalKey": "plan:north",
+      "snapshotId": "production",
+      "label": "North Plan",
+      "type": "Plan",
+      "sourceFile": "production.xml",
+      "xmlPath": "/DATA_IMPORT/PLAN[1]",
+      "rawXml": "<PLAN>EXCLUDED_RAW_XML</PLAN>",
+      "metadata": {}
+    },
+    {
+      "id": "component-production",
+      "canonicalKey": "plan-component:north",
+      "snapshotId": "production",
+      "label": "North Component",
+      "type": "PlanComponent",
+      "sourceFile": "production.xml",
+      "xmlPath": "/DATA_IMPORT/PLAN_COMPONENT[1]",
+      "rawXml": "<PLAN_COMPONENT>EXCLUDED_RAW_XML</PLAN_COMPONENT>",
+      "metadata": {}
+    }
+  ],
+  "links": [
+    {
+      "id": "edge-production-component-plan",
+      "source": "component-production",
+      "target": "plan-production",
+      "relationship": "belongs_to_plan",
+      "confidence": "high",
+      "metadata": {}
+    },
+    {
+      "id": "edge-configuration-rule-component",
+      "source": "rule-configuration",
+      "target": "component-configuration",
+      "relationship": "belongs_to_plan_component",
+      "confidence": "medium",
+      "metadata": {"evidence": "Rule | Component\nresolved"}
+    },
+    {
+      "id": "edge-production-rule-component",
+      "source": "rule-production",
+      "target": "component-production",
+      "relationship": "belongs_to_plan_component",
+      "confidence": "high",
+      "metadata": {}
+    },
+    {
+      "id": "edge-configuration-component-plan",
+      "source": "component-configuration",
+      "target": "plan-configuration",
+      "relationship": "belongs_to_plan",
+      "confidence": "high",
+      "metadata": {}
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding-production",
+      "code": "unused_object",
+      "severity": "warning",
+      "snapshotId": "production",
+      "nodeIds": ["rule-production"],
+      "message": "Duplicate Label is unused",
+      "details": {"reason": "No semantic dependency"}
+    },
+    {
+      "id": "finding-configuration",
+      "code": "duplicate_object",
+      "severity": "error",
+      "snapshotId": "configuration",
+      "nodeIds": ["rule-configuration", "plan-configuration"],
+      "message": "Pipe | newline\nmessage",
+      "details": {"evidence": "first|second\nthird"}
+    }
+  ],
+  "migrationRisk": {
+    "score": 3.5,
+    "factors": [
+      {
+        "code": "missing_relationship",
+        "severity": "warning",
+        "message": "Review north plan",
+        "weight": 3.5,
+        "nodeIds": ["plan-configuration", "plan-production"]
+      }
+    ]
+  }
+}
