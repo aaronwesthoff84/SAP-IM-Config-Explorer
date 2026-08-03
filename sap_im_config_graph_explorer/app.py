@@ -11,6 +11,16 @@ from fastapi.staticfiles import StaticFiles
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
 from sap_im_config_graph_explorer.migration import MigrationRiskEngine
 from sap_im_config_graph_explorer.models import ConversionResult, TOPOLOGY_MODES
+from sap_im_config_graph_explorer.portable_exports import (
+    CSV_BUNDLE_FILENAME,
+    GRAPHML_FILENAME,
+    MARKDOWN_FILENAME,
+    PortableGraphExportError,
+    graph_document_from_payload,
+    serialize_csv_bundle,
+    serialize_graphml,
+    serialize_markdown,
+)
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError
 from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
 
@@ -128,6 +138,36 @@ async def export_graph_json(payload: dict[str, object]) -> Response:
     )
 
 
+@app.post("/api/export/graph-csv")
+async def export_graph_csv(payload: dict[str, object]) -> Response:
+    document = _portable_graph_document(payload)
+    return Response(
+        content=serialize_csv_bundle(document),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{CSV_BUNDLE_FILENAME}"'},
+    )
+
+
+@app.post("/api/export/graph-markdown")
+async def export_graph_markdown(payload: dict[str, object]) -> Response:
+    document = _portable_graph_document(payload)
+    return Response(
+        content=serialize_markdown(document),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{MARKDOWN_FILENAME}"'},
+    )
+
+
+@app.post("/api/export/graph-graphml")
+async def export_graph_graphml(payload: dict[str, object]) -> Response:
+    document = _portable_graph_document(payload)
+    return Response(
+        content=serialize_graphml(document),
+        media_type="application/graphml+xml",
+        headers={"Content-Disposition": f'attachment; filename="{GRAPHML_FILENAME}"'},
+    )
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_request, exc: HTTPException) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
@@ -143,3 +183,10 @@ def _write_temp_xml(content: bytes, filename: str) -> Path:
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(content)
         return Path(tmp.name)
+
+
+def _portable_graph_document(payload: dict[str, object]):
+    try:
+        return graph_document_from_payload(payload)
+    except PortableGraphExportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

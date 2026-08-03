@@ -147,7 +147,10 @@ const riskReportEl = document.getElementById("migration-risk-report");
 
 document.getElementById("graph-button").addEventListener("click", requestGraphGeneration);
 document.getElementById("html-button").addEventListener("click", generateHtml);
-document.getElementById("export-button").addEventListener("click", exportGraph);
+document.getElementById("export-button").addEventListener("click", () => exportGraph("json"));
+document.getElementById("export-csv-button").addEventListener("click", () => exportGraph("csv"));
+document.getElementById("export-markdown-button").addEventListener("click", () => exportGraph("markdown"));
+document.getElementById("export-graphml-button").addEventListener("click", () => exportGraph("graphml"));
 themeToggle.addEventListener("click", toggleTheme);
 searchInput.addEventListener("input", renderGraphAndHtmlOutput);
 typeFilter.addEventListener("change", renderGraphAndHtmlOutput);
@@ -825,21 +828,68 @@ function showEdgeDetails(edge) {
   rawXmlEl.textContent = JSON.stringify(edge.metadata || {}, null, 2);
 }
 
-async function exportGraph() {
-  while (pendingGraphGeneration) await pendingGraphGeneration;
-  const response = await fetch("/api/export/graph-json", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state.graph),
-  });
-  if (!response.ok) return setStatus("JSON export failed.");
-  const blob = await response.blob();
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "sap-im-config-graph.json";
-  link.click();
-  URL.revokeObjectURL(link.href);
-  setStatus(`Exported ${topologyLabel(state.graph.topologyMode)} topology graph JSON`);
+const graphExportFormats = {
+  json: {
+    endpoint: "/api/export/graph-json",
+    filename: "sap-im-config-graph.json",
+    label: "JSON",
+  },
+  csv: {
+    endpoint: "/api/export/graph-csv",
+    filename: "sap-im-config-graph-csv.zip",
+    label: "CSV",
+  },
+  markdown: {
+    endpoint: "/api/export/graph-markdown",
+    filename: "sap-im-config-graph.md",
+    label: "Markdown",
+  },
+  graphml: {
+    endpoint: "/api/export/graph-graphml",
+    filename: "sap-im-config-graph.graphml",
+    label: "GraphML",
+  },
+};
+
+async function exportGraph(format) {
+  const exportFormat = graphExportFormats[format];
+  if (!exportFormat) return setStatus("Unsupported graph export format.");
+  try {
+    while (pendingGraphGeneration) await pendingGraphGeneration;
+    const response = await fetch(exportFormat.endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.graph),
+    });
+    if (!response.ok) {
+      const detail = await graphExportErrorDetail(response);
+      return setStatus(`${exportFormat.label} export failed: ${detail}`);
+    }
+    const blob = await response.blob();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = exportFormat.filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setStatus(`Exported ${topologyLabel(state.graph.topologyMode)} topology graph ${exportFormat.label}`);
+  } catch (error) {
+    const detail = error instanceof Error && error.message
+      ? error.message
+      : "Unexpected local export error.";
+    setStatus(`${exportFormat.label} export failed: ${detail}`);
+  }
+}
+
+async function graphExportErrorDetail(response) {
+  try {
+    const payload = await response.json();
+    if (typeof payload.error === "string" && payload.error.trim()) {
+      return payload.error.trim();
+    }
+  } catch (_error) {
+    // Fall through to the HTTP status when the local response is not JSON.
+  }
+  return `${response.status} ${response.statusText}`.trim();
 }
 
 function setStatus(message) {
