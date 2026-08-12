@@ -32,7 +32,7 @@ class FormulaExtractor:
         description = element.get("DESCRIPTION")
         if description and description.strip():
             metadata["description"] = description.strip()
-        metadata["expressionTags"] = _ordered_descendant_tags(element)
+        metadata["expressionTags"] = _ordered_descendant_tags(element, context)
 
         return ExtractionBatch(
             objects=[
@@ -47,7 +47,10 @@ class FormulaExtractor:
         )
 
 
-def _ordered_descendant_tags(element: ET.Element) -> list[str]:
+def _ordered_descendant_tags(element: ET.Element, context: ExtractionContext | None = None) -> list[str]:
+    if context is not None and hasattr(context.document, "_formula_expression_tags"):
+        return context.document._formula_expression_tags.get(id(element), [])
+
     tags: list[str] = []
     seen: set[str] = set()
     for descendant in element.iter():

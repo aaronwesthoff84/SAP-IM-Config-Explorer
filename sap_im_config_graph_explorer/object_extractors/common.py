@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import re
 from xml.etree import ElementTree as ET
 
@@ -63,6 +64,7 @@ RELATIONSHIP_BY_TYPE = {
 }
 
 
+@functools.lru_cache(maxsize=131072)
 def normalize_identity(value: str | None) -> str:
     if not value:
         return ""
@@ -163,6 +165,8 @@ def reference_candidates(
     include_untyped: bool = False,
 ) -> list[ReferenceCandidate]:
     """Collect unique semantic references owned by one graph object."""
+    if not include_untyped and hasattr(context.document, "_rule_formula_references"):
+        return context.document._rule_formula_references.get(id(source_element), [])
 
     references: list[ReferenceCandidate] = []
     seen: set[tuple[str, str]] = set()

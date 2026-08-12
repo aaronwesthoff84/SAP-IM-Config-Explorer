@@ -124,6 +124,8 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
 
 def validate_graph_document(document: GraphDocument) -> None:
     """Validate the mutable dataclass contract before a portable serialization."""
+    if getattr(document, "_validated", False):
+        return
 
     if not isinstance(document, GraphDocument):
         raise PortableGraphExportError("Portable exports require a GraphDocument.")
@@ -342,6 +344,7 @@ def validate_graph_document(document: GraphDocument) -> None:
                         f"Migration risk factor {factor.code} references unknown node IDs."
                     )
         _json_value(document.migrationRisk.to_dict(), "migration risk report")
+    document._validated = True
 
 
 def serialize_csv_bundle(document: GraphDocument) -> bytes:
@@ -1065,7 +1068,26 @@ def _optional_string(data: Mapping[str, Any], name: str) -> str | None:
     raise PortableGraphExportError(f"{name} must be a string or null.")
 
 
+def _is_json_serializable_fast(val: object) -> bool:
+    val_type = type(val)
+    if val_type in (str, int, float, bool, type(None)):
+        return True
+    if val_type is dict:
+        for k, v in val.items():
+            if type(k) is not str or not _is_json_serializable_fast(v):
+                return False
+        return True
+    if val_type in (list, tuple):
+        for v in val:
+            if not _is_json_serializable_fast(v):
+                return False
+        return True
+    return False
+
+
 def _json_value(value: object, name: str) -> None:
+    if _is_json_serializable_fast(value):
+        return
     try:
         json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
     except (RecursionError, TypeError, ValueError) as exc:

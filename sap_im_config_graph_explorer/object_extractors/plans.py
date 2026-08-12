@@ -27,7 +27,14 @@ def _descendant_references(
     reference_tag: str,
     expected_type: str,
     relationship: str,
+    context: ExtractionContext | None = None,
 ) -> list[ReferenceCandidate]:
+    if context is not None:
+        if reference_tag == "COMPONENT_REF" and hasattr(context.document, "_plan_component_refs"):
+            return context.document._plan_component_refs.get(id(owner), [])
+        if reference_tag == "RULE_REF" and hasattr(context.document, "_component_rule_refs"):
+            return context.document._component_rule_refs.get(id(owner), [])
+
     references: list[ReferenceCandidate] = []
     for descendant in owner.iter():
         if descendant.tag.upper() != reference_tag:
@@ -77,6 +84,7 @@ class PlanExtractor:
                 "COMPONENT_REF",
                 "PlanComponent",
                 "belongs_to_plan",
+                context,
             ),
         )
 
@@ -105,6 +113,7 @@ class PlanComponentExtractor:
                 "RULE_REF",
                 "Rule",
                 "belongs_to_plan_component",
+                context,
             ),
         )
 
