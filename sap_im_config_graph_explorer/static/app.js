@@ -161,6 +161,7 @@ document.getElementById("export-csv-button").addEventListener("click", () => exp
 document.getElementById("export-markdown-button").addEventListener("click", () => exportGraph("markdown"));
 document.getElementById("export-graphml-button").addEventListener("click", () => exportGraph("graphml"));
 graphJsonInput.addEventListener("change", requestGraphImport);
+document.getElementById("export-neo4j-button").addEventListener("click", () => exportGraph("neo4j"));
 themeToggle.addEventListener("click", toggleTheme);
 searchInput.addEventListener("input", renderGraphAndHtmlOutput);
 typeFilter.addEventListener("change", renderGraphAndHtmlOutput);
@@ -1228,6 +1229,11 @@ const graphExportFormats = {
     endpoint: "/api/export/graph-graphml",
     filename: "sap-im-config-graph.graphml",
     label: "GraphML",
+  },
+  neo4j: {
+    endpoint: "/api/export/graph-neo4j",
+    filename: "sap-im-config-graph-neo4j.zip",
+    label: "Neo4j",
   },
 };
 
