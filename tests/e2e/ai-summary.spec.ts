@@ -51,9 +51,6 @@ test.describe('AI Summary generation', () => {
     await expect(content).toContainText("Summary for PlanComponent 'Core Component'");
     await expect(content).toContainText("disconnected_plans.xml");
 
-    // Take screenshot for verification
-    await page.screenshot({ path: '/home/jules/verification/screenshots/verification.png' });
-
     // Click background to deselect node
     await page.evaluate(() => {
       const cy = (window as any).state.cy;
