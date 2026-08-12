@@ -185,6 +185,15 @@
         <dt>Selection</dt>
         <dd>Select a graph item</dd>
       </dl>
+
+      <div id="ai-summary-container" class="ai-summary-container" style="display: none; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; margin-bottom: 12px;">
+        <h3>AI Summary</h3>
+        <p id="ai-summary-status" style="font-size: 13px; color: var(--text-muted); margin: 6px 0;"></p>
+        <div id="ai-summary-label" style="font-weight: bold; font-size: 12px; text-transform: uppercase; margin-bottom: 4px; display: none; color: var(--forest-green);"></div>
+        <div id="ai-summary-content" style="font-size: 14px; margin-top: 8px; line-height: 1.4; display: none; border-left: 3px solid var(--light-green); padding-left: 8px; margin-bottom: 10px;"></div>
+        <button id="generate-summary-button" class="primary" type="button" style="width: 100%; margin-top: 8px;">Generate Summary</button>
+      </div>
+
       <pre id="raw-xml"></pre>
     </aside>
   </main>

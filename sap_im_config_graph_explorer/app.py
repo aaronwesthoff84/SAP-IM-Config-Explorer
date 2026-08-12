@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import tempfile
+import os
 from pathlib import Path
+import httpx
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -11,7 +13,12 @@ from fastapi.staticfiles import StaticFiles
 from sap_im_config_graph_explorer import graph_import
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
 from sap_im_config_graph_explorer.migration import MigrationRiskEngine
-from sap_im_config_graph_explorer.models import ConversionResult, TOPOLOGY_MODES
+from sap_im_config_graph_explorer.models import (
+    ConversionResult,
+    TOPOLOGY_MODES,
+    SummaryRequest,
+    SummaryResponse,
+)
 from sap_im_config_graph_explorer.portable_exports import (
     CSV_BUNDLE_FILENAME,
     GRAPHML_FILENAME,
@@ -42,6 +49,163 @@ def index() -> HTMLResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def _get_ai_config() -> dict[str, str]:
+    provider = os.getenv("AI_PROVIDER")
+    if not provider:
+        provider = "openai" if os.getenv("OPENAI_API_KEY") else "stub"
+
+    return {
+        "provider": provider.lower(),
+        "api_key": os.getenv("OPENAI_API_KEY", ""),
+        "api_base": os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
+        "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    }
+
+
+@app.get("/api/ai/status")
+def ai_status() -> dict[str, object]:
+    cfg = _get_ai_config()
+    provider = cfg["provider"]
+    if provider == "stub":
+        return {
+            "enabled": True,
+            "provider": "stub",
+            "configured": True,
+            "message": "Deterministic local stub provider is ready."
+        }
+    elif provider == "openai":
+        has_key = bool(cfg["api_key"])
+        return {
+            "enabled": has_key,
+            "provider": "openai",
+            "configured": has_key,
+            "message": "OpenAI provider is active and configured." if has_key else "OpenAI provider is enabled but OPENAI_API_KEY is missing."
+        }
+    else:
+        return {
+            "enabled": False,
+            "provider": provider,
+            "configured": False,
+            "message": f"AI provider '{provider}' is not supported or not configured."
+        }
+
+
+@app.post("/api/ai/summary", response_model=SummaryResponse)
+async def ai_summary(req: SummaryRequest) -> SummaryResponse:
+    cfg = _get_ai_config()
+    provider = cfg["provider"]
+
+    if provider == "stub":
+        summary = _generate_stub_summary(req)
+        return SummaryResponse(summary=summary, provider="stub")
+
+    elif provider == "openai":
+        if not cfg["api_key"]:
+            raise HTTPException(
+                status_code=400,
+                detail="AI provider is configured to use OpenAI, but OPENAI_API_KEY is not set. Please set the OPENAI_API_KEY environment variable."
+            )
+        summary = await _generate_openai_summary(req, cfg)
+        return SummaryResponse(summary=summary, provider="openai")
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"AI Summary Provider '{provider}' is not supported or not configured."
+        )
+
+
+def _generate_stub_summary(req: SummaryRequest) -> str:
+    parts = []
+    parts.append(f"Summary for {req.type} '{req.label}' (Source: {req.sourceFile}).")
+    parts.append(f"Located at XML path '{req.xmlPath}'.")
+    if req.metadata:
+        meta_summary = ", ".join(f"{k}={v}" for k, v in req.metadata.items() if v is not None)
+        if meta_summary:
+            parts.append(f"Metadata properties include: {meta_summary}.")
+
+    assoc = []
+    if req.associatedPlans:
+        assoc.append(f"associated Plan(s): {', '.join(req.associatedPlans)}")
+    if req.associatedPlanComponents:
+        assoc.append(f"associated Plan Component(s): {', '.join(req.associatedPlanComponents)}")
+    if req.associatedRules:
+        assoc.append(f"associated Rule(s): {', '.join(req.associatedRules)}")
+
+    if assoc:
+        parts.append(f"The object has these resolved relationships: {'; '.join(assoc)}.")
+    else:
+        parts.append("No resolved containment relationships were found for this object.")
+
+    xml_len = len(req.rawXml or "")
+    parts.append(f"Raw XML definition is {xml_len} characters long.")
+
+    return " ".join(parts)
+
+
+async def _generate_openai_summary(req: SummaryRequest, cfg: dict[str, str]) -> str:
+    raw_xml = req.rawXml or ""
+    truncated_note = ""
+    if len(raw_xml) > 8000:
+        raw_xml = raw_xml[:8000] + "\n... [TRUNCATED DUE TO SIZE] ..."
+        truncated_note = " (Note: The raw XML was truncated due to size constraints.)"
+
+    system_prompt = (
+        "You are a professional SAP Incentive Management systems assistant. "
+        "Your task is to generate a concise, professional, source-grounded summary of the provided configuration object. "
+        "You MUST only base your summary on the provided object attributes, XML, and relationships. "
+        "Do NOT make unsupported claims or speculate on undocumented behaviors. "
+        "Explicitly identify the source object's name, type, and source file in the summary."
+    )
+
+    user_content = (
+        f"Please summarize the following SAP Incentive Management configuration object:\n"
+        f"Name: {req.label}\n"
+        f"Type: {req.type}\n"
+        f"Source File: {req.sourceFile}\n"
+        f"XML Path: {req.xmlPath}\n"
+        f"Metadata: {req.metadata or {}}\n"
+        f"Associated Plans: {req.associatedPlans or []}\n"
+        f"Associated Plan Components: {req.associatedPlanComponents or []}\n"
+        f"Associated Rules: {req.associatedRules or []}\n"
+        f"Raw XML:\n```xml\n{raw_xml}\n```\n{truncated_note}"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {cfg['api_key']}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": cfg["model"],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ],
+        "temperature": 0.2
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{cfg['api_base']}/chat/completions",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result["choices"][0]["message"]["content"].strip()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"OpenAI API error: {exc.response.text}"
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI summary provider is unavailable: {exc}"
+        ) from exc
 
 
 @app.post("/api/convert/html")

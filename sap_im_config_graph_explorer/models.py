@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from pydantic import BaseModel, Field
 
 
 GRAPH_SCHEMA_VERSION = "1.3"
@@ -317,3 +318,21 @@ class AppError:
 
     def to_dict(self) -> dict[str, Any]:
         return {"error": self.message, "code": self.code, "details": self.details}
+
+
+class SummaryRequest(BaseModel):
+    nodeId: str
+    label: str
+    type: str
+    sourceFile: str
+    xmlPath: str
+    rawXml: str | None = ""
+    metadata: dict[str, Any] | None = Field(default_factory=dict)
+    associatedPlans: list[str] | None = Field(default_factory=list)
+    associatedPlanComponents: list[str] | None = Field(default_factory=list)
+    associatedRules: list[str] | None = Field(default_factory=list)
+
+
+class SummaryResponse(BaseModel):
+    summary: str
+    provider: str
