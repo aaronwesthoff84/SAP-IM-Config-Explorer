@@ -3,6 +3,7 @@ const state = {
   cy: null,
   lineageCy: null,
   selectedRule: null,
+  selectedNode: null,
   html: null,
   htmlDownloadUrl: "",
   sessions: [], // List of saved sessions
@@ -321,6 +322,10 @@ function switchWorkspace(viewId) {
       const rect = container.getBoundingClientRect();
       state.graph3DInstance.width(rect.width || 800).height(rect.height || 600);
     }
+  } else if (viewId === "ai-docs-view") {
+    if (typeof updateAiDocsPanel === "function") {
+      updateAiDocsPanel();
+    }
   }
 }
 
@@ -408,6 +413,10 @@ function loadGraphWorkspace(payload) {
   renderRiskReport(payload.migrationRisk);
   renderWorkspaceOrigin(payload.provenance);
   renderGraph();
+  if (typeof updateAiDocsPanel === "function") {
+    updateAiDocsPanel();
+  }
+  setStatus(graphStatus(payload));
 }
 
 function renderWorkspaceOrigin(provenance) {
@@ -421,6 +430,7 @@ function renderWorkspaceOrigin(provenance) {
 function resetDetails() {
   summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
   rawXmlEl.textContent = "";
+  hideAiSummary();
 }
 
 async function generateHtml() {
@@ -1287,7 +1297,12 @@ function showNodeDetails(node) {
     state.selectedRule = { id: node.id, snapshotId: node.snapshotId };
     lineageTab.disabled = false;
   } else {
-    clearSelectedRule();
+    state.selectedRule = null;
+    lineageTab.disabled = true;
+  }
+  state.selectedNode = node;
+  if (typeof updateAiSummaryPanel === "function") {
+    updateAiSummaryPanel();
   }
   const hierarchy = hierarchyFor(node);
   const riskFactor = state.graph.migrationRisk?.factors?.find((f) => f.nodeIds?.includes(node.id));
@@ -1362,7 +1377,11 @@ function showNodeDetails(node) {
 
 function clearSelectedRule() {
   state.selectedRule = null;
+  state.selectedNode = null;
   lineageTab.disabled = true;
+  if (typeof updateAiSummaryPanel === "function") {
+    updateAiSummaryPanel();
+  }
 }
 
 function openRuleLineage(rule) {
@@ -1893,48 +1912,102 @@ async function fetchAiStatus() {
 let currentSelectedNodeForSummary = null;
 
 function setupAiSummaryForNode(node, hierarchy) {
-  currentSelectedNodeForSummary = { node, hierarchy };
+  currentSelectedNodeForSummary = { node, hierarchy: hierarchy || {} };
+  const actionsEl = document.getElementById("ai-summary-actions");
+  const unconfiguredEl = document.getElementById("ai-summary-unconfigured");
+  const generateAiBtn = document.getElementById("generate-ai-summary-button");
+
   aiSummaryLabel.style.display = "none";
   aiSummaryContent.style.display = "none";
-  aiSummaryContent.textContent = "";
+  aiSummaryContent.innerHTML = '<p class="empty-summary">Select a node to generate an AI summary.</p>';
 
+  if (actionsEl) actionsEl.hidden = false;
+
+  // If aiConfig is disabled, show unconfigured warning and hide the Phase 6 generate button
+  if (aiConfig && !aiConfig.enabled) {
+    if (unconfiguredEl) {
+      unconfiguredEl.hidden = false;
+      unconfiguredEl.style.display = "block";
+      unconfiguredEl.textContent = aiConfig.message || "AI features are unconfigured or disabled on this workstation.";
+    }
+    if (generateAiBtn) {
+      generateAiBtn.style.display = "none";
+    }
+  } else {
+    if (unconfiguredEl) {
+      unconfiguredEl.hidden = true;
+      unconfiguredEl.style.display = "none";
+    }
+    if (generateAiBtn) {
+      generateAiBtn.disabled = false;
+      generateAiBtn.style.display = "inline-block";
+    }
+  }
+
+  // Handle local stub / status summary button
   if (!state.aiStatus) {
     generateSummaryButton.disabled = true;
     aiSummaryStatus.textContent = "AI status is loading...";
-  } else if (!state.aiStatus.enabled) {
+  } else if (!state.aiStatus.enabled && (!aiConfig || !aiConfig.enabled)) {
     generateSummaryButton.disabled = true;
+    generateSummaryButton.style.display = "none";
     aiSummaryStatus.textContent = state.aiStatus.message || "AI summary is not configured.";
   } else {
     generateSummaryButton.disabled = false;
-    const provName = state.aiStatus.provider === "stub" ? "local stub" : "OpenAI";
+    generateSummaryButton.style.display = "inline-block";
+    const provName = state.aiStatus?.provider === "stub" ? "local stub" : (aiConfig?.model === "mock" ? "mock" : "OpenAI");
     aiSummaryStatus.textContent = `Ready to generate summary via ${provName} provider.`;
   }
+
   aiSummaryContainer.style.display = "block";
 }
 
 function hideAiSummary() {
   currentSelectedNodeForSummary = null;
+  const actionsEl = document.getElementById("ai-summary-actions");
+  const unconfiguredEl = document.getElementById("ai-summary-unconfigured");
+  const generateAiBtn = document.getElementById("generate-ai-summary-button");
+
   if (aiSummaryContainer) {
     aiSummaryContainer.style.display = "none";
     aiSummaryLabel.style.display = "none";
     aiSummaryContent.style.display = "none";
-    aiSummaryContent.textContent = "";
+    aiSummaryContent.innerHTML = '<p class="empty-summary">Select a node to generate an AI summary.</p>';
     aiSummaryStatus.textContent = "";
+  }
+  if (actionsEl) actionsEl.hidden = true;
+  if (unconfiguredEl) {
+    unconfiguredEl.hidden = true;
+    unconfiguredEl.style.display = "none";
+  }
+  if (generateAiBtn) generateAiBtn.style.display = "none";
+}
+
+function updateAiSummaryPanel() {
+  if (state.selectedNode) {
+    setupAiSummaryForNode(state.selectedNode, {});
+  } else {
+    hideAiSummary();
   }
 }
 
 async function handleGenerateSummaryClick() {
-  if (!currentSelectedNodeForSummary) return;
-  const { node, hierarchy } = currentSelectedNodeForSummary;
+  const node = (currentSelectedNodeForSummary && currentSelectedNodeForSummary.node) || state.selectedNode;
+  if (!node) return;
+  const hierarchy = (currentSelectedNodeForSummary && currentSelectedNodeForSummary.hierarchy) || {};
 
   generateSummaryButton.disabled = true;
+  const generateAiBtn = document.getElementById("generate-ai-summary-button");
+  if (generateAiBtn) generateAiBtn.disabled = true;
+
   aiSummaryStatus.textContent = "Generating summary...";
   aiSummaryLabel.style.display = "none";
   aiSummaryContent.style.display = "none";
-  aiSummaryContent.textContent = "";
+  aiSummaryContent.innerHTML = '<p class="empty-summary">Generating local AI summary...</p>';
 
   try {
     const payload = {
+      id: node.id,
       nodeId: node.id,
       label: node.label,
       type: node.type,
@@ -1958,18 +2031,25 @@ async function handleGenerateSummaryClick() {
       throw new Error(data.error || `Failed with status ${response.status}`);
     }
 
-    const providerLabel = data.provider === "stub" ? "Stub" : "OpenAI";
+    const providerLabel = data.provider === "stub" ? "Stub" : (data.provider || "OpenAI");
     aiSummaryLabel.textContent = `AI-Generated Summary (${providerLabel} Provider)`;
     aiSummaryLabel.style.display = "block";
-    aiSummaryContent.textContent = data.summary;
+
+    const summaryText = data.text || data.summary || "";
+    const disclaimerHtml = data.disclaimer ? `<div class="ai-disclaimer">${escapeHtml(data.disclaimer)}</div>` : "";
+    const formattedHtml = formatMarkdown(summaryText);
+    const metaHtml = `<div class="ai-metadata-footer">Model: ${escapeHtml(data.model || "stub")} | Provider: ${escapeHtml(data.provider || "Local Mock Provider")}<br>Generated at: ${escapeHtml(new Date(data.timestamp || Date.now()).toLocaleString())}</div>`;
+
+    aiSummaryContent.innerHTML = `${disclaimerHtml}<div class="markdown-preview">${formattedHtml}</div>${metaHtml}`;
     aiSummaryContent.style.display = "block";
     aiSummaryStatus.textContent = "Summary generated successfully.";
   } catch (error) {
     aiSummaryStatus.textContent = "Error generating summary.";
-    aiSummaryContent.textContent = error.message || "An unexpected error occurred.";
+    aiSummaryContent.innerHTML = `<p class="empty-summary" style="color:var(--error);">${escapeHtml(error.message || "An unexpected error occurred.")}</p>`;
     aiSummaryContent.style.display = "block";
   } finally {
     generateSummaryButton.disabled = false;
+    if (generateAiBtn) generateAiBtn.disabled = false;
   }
 }
 
@@ -2305,3 +2385,141 @@ function restoreGraphAndLayout(session) {
     }
   }
 }
+
+/* AI Features Integration */
+let aiConfig = { enabled: false, message: "" };
+
+async function fetchAiConfig() {
+  try {
+    const res = await fetch("/api/ai/config");
+    if (res.ok) {
+      aiConfig = await res.json();
+    }
+  } catch (err) {
+    console.error("Failed to fetch AI configuration:", err);
+  }
+}
+
+async function updateAiDocsPanel() {
+  const actionsEl = document.querySelector(".ai-docs-actions");
+  const unconfiguredEl = document.getElementById("ai-docs-unconfigured");
+  const containerEl = document.getElementById("ai-docs-content-container");
+  const statusEl = document.getElementById("ai-docs-status");
+  const generateBtn = document.getElementById("generate-ai-docs-button");
+
+  if (!actionsEl || !unconfiguredEl) return;
+
+  if (aiConfig.enabled) {
+    unconfiguredEl.hidden = true;
+    unconfiguredEl.style.display = "none";
+    actionsEl.style.display = "flex";
+    if (!state.graph || !state.graph.nodes || state.graph.nodes.length === 0) {
+      if (generateBtn) generateBtn.disabled = true;
+      if (statusEl) statusEl.textContent = "Generate a graph first to enable documentation.";
+    } else {
+      if (generateBtn) generateBtn.disabled = false;
+      if (statusEl) statusEl.textContent = "Ready to generate full system documentation.";
+    }
+  } else {
+    unconfiguredEl.hidden = false;
+    unconfiguredEl.style.display = "block";
+    unconfiguredEl.textContent = aiConfig.message || "AI features are unconfigured or disabled on this workstation.";
+    actionsEl.style.display = "none";
+    if (containerEl) containerEl.hidden = true;
+  }
+}
+
+let docDownloadUrl = "";
+
+async function handleGenerateAiDocs() {
+  const textEl = document.getElementById("ai-docs-text");
+  const metadataEl = document.getElementById("ai-docs-metadata");
+  const containerEl = document.getElementById("ai-docs-content-container");
+  const generateBtn = document.getElementById("generate-ai-docs-button");
+  const downloadLink = document.getElementById("download-ai-docs");
+  const statusEl = document.getElementById("ai-docs-status");
+
+  generateBtn.disabled = true;
+  if (statusEl) statusEl.textContent = "Generating local AI documentation...";
+  if (containerEl) containerEl.hidden = false;
+  if (textEl) textEl.innerHTML = '<p class="empty-summary">Running local model to generate comprehensive documentation...</p>';
+  if (metadataEl) metadataEl.innerHTML = "";
+  if (downloadLink) downloadLink.hidden = true;
+
+  try {
+    const response = await fetch("/api/ai/documentation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.graph || {})
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      if (textEl) textEl.innerHTML = `<p class="empty-summary" style="color:var(--error);">${escapeHtml(payload.error || "AI documentation generation failed.")}</p>`;
+      if (statusEl) statusEl.textContent = "Generation failed.";
+      return;
+    }
+
+    if (statusEl) statusEl.textContent = "Generated successfully.";
+    if (textEl) textEl.innerHTML = formatMarkdown(payload.text);
+    if (metadataEl) {
+      metadataEl.innerHTML = `
+        <div class="ai-disclaimer">${escapeHtml(payload.disclaimer)}</div>
+        Model: ${escapeHtml(payload.model)} | Provider: ${escapeHtml(payload.provider)}<br>
+        Generated at: ${escapeHtml(new Date(payload.timestamp).toLocaleString())}
+      `;
+    }
+
+    if (docDownloadUrl) {
+      URL.revokeObjectURL(docDownloadUrl);
+    }
+    docDownloadUrl = URL.createObjectURL(
+      new Blob([payload.text], { type: "text/markdown" })
+    );
+    if (downloadLink) {
+      downloadLink.href = docDownloadUrl;
+      downloadLink.hidden = false;
+    }
+  } catch (err) {
+    if (textEl) textEl.innerHTML = `<p class="empty-summary" style="color:var(--error);">Network or connection failure: ${escapeHtml(err.message)}</p>`;
+    if (statusEl) statusEl.textContent = "Network failure.";
+  } finally {
+    generateBtn.disabled = false;
+  }
+}
+
+function formatMarkdown(text) {
+  if (!text) return "";
+  let formatted = escapeHtml(text);
+
+  formatted = formatted.replace(/^### (.*?)$/gm, "<h3>$1</h3>");
+  formatted = formatted.replace(/^## (.*?)$/gm, "<h2>$1</h2>");
+  formatted = formatted.replace(/^# (.*?)$/gm, "<h1>$1</h1>");
+
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  formatted = formatted.replace(/`(.*?)`/g, "<code>$1</code>");
+  formatted = formatted.replace(/^- (.*?)$/gm, "<li>$1</li>");
+  formatted = formatted.replace(/(<li>.*?<\/li>)+/gs, "<ul>$&</ul>");
+
+  const blocks = formatted.split(/\n\n+/);
+  formatted = blocks.map(block => {
+    block = block.trim();
+    if (!block) return "";
+    if (block.startsWith("<h") || block.startsWith("<ul") || block.startsWith("<li")) {
+      return block;
+    }
+    return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+  }).join("\n");
+
+  return formatted;
+}
+
+// Initial AI triggers
+fetchAiConfig().then(() => {
+  updateAiSummaryPanel();
+  updateAiDocsPanel();
+});
+fetchAiStatus();
+
+document.getElementById("generate-summary-button")?.addEventListener("click", handleGenerateSummaryClick);
+document.getElementById("generate-ai-summary-button")?.addEventListener("click", handleGenerateSummaryClick);
+document.getElementById("generate-ai-docs-button")?.addEventListener("click", handleGenerateAiDocs);
