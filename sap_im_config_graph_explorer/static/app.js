@@ -270,16 +270,19 @@ async function generateGraph() {
 
   const totalNodes = payload.nodes ? payload.nodes.length : 0;
   const totalLinks = payload.links ? payload.links.length : 0;
-  setStatus(`Rendering graph with ${totalNodes} nodes and ${totalLinks} links...`);
 
-  setTimeout(() => {
-    renderGraph();
-    let statusMsg = graphStatus(payload);
-    if (totalNodes > 5000 || totalLinks > 15000) {
+  if (totalNodes > 5000 || totalLinks > 15000) {
+    setStatus(`Rendering graph with ${totalNodes} nodes and ${totalLinks} links...`);
+    setTimeout(() => {
+      renderGraph();
+      let statusMsg = graphStatus(payload);
       statusMsg += ". (Warning: Large graph may experience slight rendering lag)";
-    }
-    setStatus(statusMsg);
-  }, 50);
+      setStatus(statusMsg);
+    }, 50);
+  } else {
+    renderGraph();
+    setStatus(graphStatus(payload));
+  }
 }
 
 async function generateHtml() {
@@ -458,6 +461,8 @@ function renderGraph() {
     const allNodes = state.graph.nodes;
     const allLinks = state.graph.links;
 
+    state.savedPositions = {};
+
     const elements = [
       ...allNodes.map((node, index) => ({
         data: { ...node, displayColor: colorForType(node.type) },
@@ -501,32 +506,61 @@ function renderGraph() {
 
     state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
     state.cyNeedsRebuild = false;
+
+    state.cy.nodes().forEach(node => {
+      state.savedPositions[node.id()] = { ...node.position() };
+    });
   }
 
   const visibleNodeIds = new Set(nodes.map(n => n.id));
-  const visibleLinkIds = new Set(links.map(l => l.id || `edge-${state.graph.links.indexOf(l)}`));
+  const visibleLinksWithIds = links.map((l, index) => ({
+    ...l,
+    id: l.id || `edge-${state.graph.links.indexOf(l)}`
+  }));
+  const visibleLinkIds = new Set(visibleLinksWithIds.map(l => l.id));
+
+  state.cy.nodes().forEach(node => {
+    state.savedPositions[node.id()] = { ...node.position() };
+  });
 
   state.cy.batch(() => {
+    const toRemove = [];
     state.cy.elements().forEach(ele => {
       if (ele.isNode()) {
-        if (visibleNodeIds.has(ele.id())) {
-          ele.show();
-        } else {
-          ele.hide();
+        if (!visibleNodeIds.has(ele.id())) {
+          toRemove.push(ele);
         }
       } else {
-        const edgeId = ele.id();
-        const edgeData = ele.data();
-        const link = state.graph.links.find(l => l.id === edgeId || (l.source === edgeData.source && l.target === edgeData.target && l.relationship === edgeData.relationship));
-        const matchesLink = link && visibleLinkIds.has(link.id || `edge-${state.graph.links.indexOf(link)}`);
-
-        if (matchesLink) {
-          ele.show();
-        } else {
-          ele.hide();
+        if (!visibleLinkIds.has(ele.id())) {
+          toRemove.push(ele);
         }
       }
     });
+
+    if (toRemove.length > 0) {
+      state.cy.remove(state.cy.collection(toRemove));
+    }
+
+    const currentNodesInCy = new Set(state.cy.nodes().map(n => n.id()));
+    const currentLinksInCy = new Set(state.cy.edges().map(e => e.id()));
+
+    const nodesToAdd = nodes.filter(n => !currentNodesInCy.has(n.id));
+    const linksToAdd = visibleLinksWithIds.filter(l => !currentLinksInCy.has(l.id));
+
+    if (nodesToAdd.length > 0) {
+      state.cy.add(nodesToAdd.map((node, index) => ({
+        group: "nodes",
+        data: { ...node, displayColor: colorForType(node.type) },
+        position: state.savedPositions[node.id] || initialGraphPosition(index, nodes.length),
+      })));
+    }
+
+    if (linksToAdd.length > 0) {
+      state.cy.add(linksToAdd.map(link => ({
+        group: "edges",
+        data: link,
+      })));
+    }
   });
 }
 
