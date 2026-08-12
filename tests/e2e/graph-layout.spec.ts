@@ -109,7 +109,7 @@ test('preserves graph viewport controls and item selection', async ({ page }) =>
   expect(edgeSelected).toBe(true);
   await expect(page.locator('#node-summary')).toContainText('Relationship');
 
-  await page.evaluate(() => (window as any).state.cy.fit(undefined, 48));
+  await page.evaluate(() => { (window as any).state.cy.fit(undefined, 48); });
   const viewportStateIsFinite = await page.evaluate(() => {
     const cy = (window as any).state.cy;
     return Number.isFinite(cy.zoom())

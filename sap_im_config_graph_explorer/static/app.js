@@ -9,6 +9,25 @@ const state = {
 
 window.state = state;
 
+// Monkey-patch Cytoscape prototype fit to handle undefined/null/empty collections safely
+if (typeof cytoscape !== "undefined" && cytoscape.prototype) {
+  const originalFit = cytoscape.prototype.fit;
+  cytoscape.prototype.fit = function(eles, padding) {
+    let targetEles = eles;
+    let targetPadding = padding;
+    if (targetEles === undefined || targetEles === null) {
+      targetEles = this.elements();
+    } else if (typeof targetEles === "number") {
+      targetPadding = targetEles;
+      targetEles = this.elements();
+    }
+    if (!targetEles || targetEles.length === 0) {
+      return this;
+    }
+    return originalFit.call(this, targetEles, targetPadding);
+  };
+}
+
 function filterGraphElements(graph, filters) {
   const term = (filters.search || "").trim().toLowerCase();
   const effectiveDate = filters.effectiveDate || "";
