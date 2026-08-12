@@ -168,6 +168,104 @@ async def export_graph_graphml(payload: dict[str, object]) -> Response:
     )
 
 
+@app.post("/api/session/export")
+async def export_session(
+    session_data: str = Form(...),
+    graph_image: str = Form(...),
+) -> Response:
+    import base64
+    import io
+    import zipfile
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr("session.json", session_data)
+
+        if "," in graph_image:
+            _, base64_data = graph_image.split(",", 1)
+        else:
+            base64_data = graph_image
+        image_bytes = base64.b64decode(base64_data)
+        zip_file.writestr("graph.png", image_bytes)
+
+    zip_buffer.seek(0)
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="sap-im-config-graph-session.zip"'},
+    )
+
+
+@app.post("/api/session/import")
+async def import_session(file: UploadFile = File(...)) -> dict[str, object]:
+    import io
+    import zipfile
+
+    content = await file.read()
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only .zip session files are supported.")
+
+    try:
+        zip_buffer = io.BytesIO(content)
+        with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+            namelist = zip_file.namelist()
+            if len(namelist) != 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid session ZIP: expected exactly 2 members, found {len(namelist)}."
+                )
+
+            if set(namelist) != {"session.json", "graph.png"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid session ZIP: members must be exactly 'session.json' and 'graph.png'."
+                )
+
+            for info in zip_file.infolist():
+                if info.filename == "session.json" and info.file_size > 52_428_800:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid session ZIP: 'session.json' exceeds the maximum allowed size of 50MB."
+                    )
+                if info.filename == "graph.png" and info.file_size > 10_485_760:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid session ZIP: 'graph.png' exceeds the maximum allowed size of 10MB."
+                    )
+
+            try:
+                session_bytes = zip_file.read("session.json")
+                session_text = session_bytes.decode("utf-8")
+                session_json = json.loads(session_text)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Malformed session.json: {exc}"
+                )
+
+            schema_version = session_json.get("schemaVersion")
+            if schema_version != "1.2":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported session schema version: {schema_version}. Only version 1.2 is supported."
+                )
+
+            if "graph" not in session_json or "activeView" not in session_json:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid session JSON: missing required structure."
+                )
+
+            return session_json
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to parse session ZIP: {exc}"
+        )
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_request, exc: HTTPException) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})

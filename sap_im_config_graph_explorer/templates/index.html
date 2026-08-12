@@ -49,7 +49,12 @@
           <button type="button" id="export-csv-button">Export CSV</button>
           <button type="button" id="export-markdown-button">Export Markdown</button>
           <button type="button" id="export-graphml-button">Export GraphML</button>
+          <button type="button" id="export-session-button">Export Session</button>
         </div>
+        <label class="file-picker session-picker">
+          <span>Import Session ZIP</span>
+          <input id="session-file" type="file" accept=".zip,application/zip,application/x-zip-compressed">
+        </label>
       </form>
 
       <h2>Filters</h2>
@@ -99,7 +104,12 @@
         <button class="tab" type="button" data-view="html-output-view">HTML Output</button>
       </div>
       <div id="graph-view" class="view active">
+        <div class="graph-toggle-bar">
+          <button id="toggle-2d" class="toggle-button active" type="button">2D View</button>
+          <button id="toggle-3d" class="toggle-button" type="button">3D View</button>
+        </div>
         <div id="graph"></div>
+        <div id="graph-3d" hidden></div>
       </div>
       <div id="lineage-view" class="view">
         <div class="lineage-actions">
@@ -138,6 +148,7 @@
   </main>
 
   <script src="/static/vendor/cytoscape.min.js"></script>
+  <script src="/static/vendor/3d-force-graph.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

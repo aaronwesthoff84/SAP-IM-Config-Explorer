@@ -530,3 +530,45 @@ pre {
     border-bottom: 1px solid var(--border);
   }
 }
+
+.graph-toggle-bar {
+  display: flex;
+  gap: 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.toggle-button {
+  background: var(--surface-muted);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.toggle-button:hover {
+  background: var(--border);
+}
+
+.toggle-button.active {
+  background: var(--forest-green);
+  color: var(--neutral-white);
+  border-color: var(--forest-green);
+}
+
+#graph-view.active {
+  display: flex;
+  flex-direction: column;
+}
+
+#graph-3d {
+  flex: 1;
+  min-height: 596px;
+  position: relative;
+}

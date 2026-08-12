@@ -311,3 +311,135 @@ def test_graph_endpoint_reports_malformed_xml():
 
     assert response.status_code == 400
     assert "Malformed XML" in response.json()["error"]
+
+
+def test_session_export_and_import_cycle():
+    client = TestClient(app)
+    import base64
+    import io
+    import json
+    import zipfile
+
+    # 1. Export session
+    session_data = json.dumps({
+        "schemaVersion": "1.2",
+        "graph": {"nodes": [], "links": []},
+        "activeView": "graph-view",
+    })
+    dummy_image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+    export_response = client.post(
+        "/api/session/export",
+        data={"session_data": session_data, "graph_image": dummy_image},
+    )
+
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"] == "application/zip"
+
+    zip_bytes = export_response.content
+    zip_buffer = io.BytesIO(zip_bytes)
+    with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+        assert set(zip_file.namelist()) == {"session.json", "graph.png"}
+        assert zip_file.read("session.json").decode("utf-8") == session_data
+        assert zip_file.read("graph.png") == base64.b64decode(dummy_image.split(",", 1)[1])
+
+    # 2. Import back
+    import_response = client.post(
+        "/api/session/import",
+        files={"file": ("sap-im-config-graph-session.zip", zip_bytes, "application/zip")},
+    )
+    assert import_response.status_code == 200
+    assert import_response.json()["schemaVersion"] == "1.2"
+    assert import_response.json()["activeView"] == "graph-view"
+
+
+def test_session_import_rejections_and_security_safeguards():
+    client = TestClient(app)
+    import io
+    import json
+    import zipfile
+
+    # Helper to create memory ZIP bytes
+    def make_zip(members: dict[str, bytes]) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            for name, content in members.items():
+                z.writestr(name, content)
+        return buf.getvalue()
+
+    # Rejection: wrong file extension
+    r_ext = client.post(
+        "/api/session/import",
+        files={"file": ("session.txt", b"not-a-zip", "text/plain")},
+    )
+    assert r_ext.status_code == 400
+    assert "Only .zip session files are supported" in r_ext.json()["error"]
+
+    # Rejection: wrong member count (1 file)
+    z1 = make_zip({"session.json": b"{}"})
+    r_count = client.post(
+        "/api/session/import",
+        files={"file": ("session.zip", z1, "application/zip")},
+    )
+    assert r_count.status_code == 400
+    assert "expected exactly 2 members" in r_count.json()["error"]
+
+    # Rejection: wrong names / directory traversal path
+    z_paths = make_zip({
+        "../../session.json": b"{}",
+        "graph.png": b"image-data",
+    })
+    r_paths = client.post(
+        "/api/session/import",
+        files={"file": ("session.zip", z_paths, "application/zip")},
+    )
+    assert r_paths.status_code == 400
+    assert "members must be exactly 'session.json' and 'graph.png'" in r_paths.json()["error"]
+
+    # Rejection: oversized session.json (simulate by writing 51MB dummy string)
+    z_size = make_zip({
+        "session.json": b" " * 53_000_000,
+        "graph.png": b"image-data",
+    })
+    r_size = client.post(
+        "/api/session/import",
+        files={"file": ("session.zip", z_size, "application/zip")},
+    )
+    assert r_size.status_code == 400
+    assert "exceeds the maximum allowed size" in r_size.json()["error"]
+
+    # Rejection: malformed JSON
+    z_malformed = make_zip({
+        "session.json": b"not json!",
+        "graph.png": b"image-data",
+    })
+    r_malformed = client.post(
+        "/api/session/import",
+        files={"file": ("session.zip", z_malformed, "application/zip")},
+    )
+    assert r_malformed.status_code == 400
+    assert "Malformed session.json" in r_malformed.json()["error"]
+
+    # Rejection: unsupported schema version
+    z_version = make_zip({
+        "session.json": json.dumps({"schemaVersion": "1.3"}).encode("utf-8"),
+        "graph.png": b"image-data",
+    })
+    r_version = client.post(
+        "/api/session/import",
+        files={"file": ("session.zip", z_version, "application/zip")},
+    )
+    assert r_version.status_code == 400
+    assert "Unsupported session schema version: 1.3" in r_version.json()["error"]
+
+    # Rejection: missing structure
+    z_structure = make_zip({
+        "session.json": json.dumps({"schemaVersion": "1.2"}).encode("utf-8"),
+        "graph.png": b"image-data",
+    })
+    r_structure = client.post(
+        "/api/session/import",
+        files={"file": ("session.zip", z_structure, "application/zip")},
+    )
+    assert r_structure.status_code == 400
+    assert "missing required structure" in r_structure.json()["error"]

@@ -5,9 +5,22 @@ const state = {
   selectedRule: null,
   html: null,
   htmlDownloadUrl: "",
+  view3D: false,
+  graph3dInstance: null,
+  highlightedNodes3D: null,
+  highlightedLinks3D: null,
+  cyNeedsRebuild: true,
 };
 
 window.state = state;
+
+function debounce(fn, delay) {
+  let timeoutId;
+  return function(...args) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
 
 function filterGraphElements(graph, filters) {
   const term = (filters.search || "").trim().toLowerCase();
@@ -151,8 +164,10 @@ document.getElementById("export-button").addEventListener("click", () => exportG
 document.getElementById("export-csv-button").addEventListener("click", () => exportGraph("csv"));
 document.getElementById("export-markdown-button").addEventListener("click", () => exportGraph("markdown"));
 document.getElementById("export-graphml-button").addEventListener("click", () => exportGraph("graphml"));
+document.getElementById("export-session-button").addEventListener("click", exportSession);
+document.getElementById("session-file").addEventListener("change", importSession);
 themeToggle.addEventListener("click", toggleTheme);
-searchInput.addEventListener("input", renderGraphAndHtmlOutput);
+searchInput.addEventListener("input", debounce(renderGraphAndHtmlOutput, 250));
 typeFilter.addEventListener("change", renderGraphAndHtmlOutput);
 sourceFileFilter.addEventListener("change", renderGraph);
 relationshipFilter.addEventListener("change", renderGraph);
@@ -160,8 +175,27 @@ confidenceFilter.addEventListener("change", renderGraph);
 effectiveDateFilter.addEventListener("input", renderGraph);
 clearFiltersButton.addEventListener("click", clearAllFilters);
 document.getElementById("lineage-back-button").addEventListener("click", () => switchWorkspace("graph-view"));
+
+const toggle2DButton = document.getElementById("toggle-2d");
+const toggle3DButton = document.getElementById("toggle-3d");
+
+toggle2DButton.addEventListener("click", () => {
+  state.view3D = false;
+  toggle2DButton.classList.add("active");
+  toggle3DButton.classList.remove("active");
+  renderGraph();
+});
+
+toggle3DButton.addEventListener("click", () => {
+  state.view3D = true;
+  toggle2DButton.classList.remove("active");
+  toggle3DButton.classList.add("active");
+  renderGraph();
+});
+
 topologySelect.addEventListener("change", () => {
   if (npFileInput.files.length || pFileInput.files.length) {
+    state.cyNeedsRebuild = true;
     requestGraphGeneration();
   } else {
     setStatus(`Selected ${topologyLabel(topologySelect.value)} topology.`);
@@ -227,13 +261,25 @@ async function generateGraph() {
   if (!response.ok) return setStatus(payload.error || "Graph generation failed.");
 
   state.graph = payload;
+  state.cyNeedsRebuild = true;
   clearSelectedRule();
   destroyLineageRenderer();
   populateFilterControls(payload);
   renderFindings(payload.findings || []);
   renderRiskReport(payload.migrationRisk);
-  renderGraph();
-  setStatus(graphStatus(payload));
+
+  const totalNodes = payload.nodes ? payload.nodes.length : 0;
+  const totalLinks = payload.links ? payload.links.length : 0;
+  setStatus(`Rendering graph with ${totalNodes} nodes and ${totalLinks} links...`);
+
+  setTimeout(() => {
+    renderGraph();
+    let statusMsg = graphStatus(payload);
+    if (totalNodes > 5000 || totalLinks > 15000) {
+      statusMsg += ". (Warning: Large graph may experience slight rendering lag)";
+    }
+    setStatus(statusMsg);
+  }, 50);
 }
 
 async function generateHtml() {
@@ -385,7 +431,6 @@ function renderGraphAndHtmlOutput() {
 }
 
 function renderGraph() {
-  if (state.cy) state.cy.destroy();
   const graphTheme = graphThemeColors();
   const { nodes, links } = filterGraphElements(state.graph, {
     search: searchInput.value,
@@ -396,44 +441,195 @@ function renderGraph() {
     effectiveDate: effectiveDateFilter.value,
   });
   renderFilterSummary(nodes.length, links.length);
-  const elements = [
-    ...nodes.map((node, index) => ({
-      data: { ...node, displayColor: colorForType(node.type) },
-      position: initialGraphPosition(index, nodes.length),
-    })),
-    ...links.map((link, index) => ({
-      data: { ...link, id: link.id || `edge-${index}` },
-    })),
-  ];
-  state.cy = cytoscape({
-    container: graphEl,
-    elements,
-    style: cytoscapeStyles(graphTheme),
-    layout: {
-      name: "cose",
-      animate: false,
-      componentSpacing: 48,
-      fit: true,
-      idealEdgeLength: 88,
-      nodeOverlap: 16,
-      padding: 24,
-      randomize: false,
-    },
+
+  if (state.view3D) {
+    document.getElementById("graph").hidden = true;
+    document.getElementById("graph-3d").hidden = false;
+    render3DGraph(nodes, links);
+    return;
+  } else {
+    document.getElementById("graph").hidden = false;
+    document.getElementById("graph-3d").hidden = true;
+  }
+
+  if (state.cyNeedsRebuild || !state.cy) {
+    if (state.cy) state.cy.destroy();
+
+    const allNodes = state.graph.nodes;
+    const allLinks = state.graph.links;
+
+    const elements = [
+      ...allNodes.map((node, index) => ({
+        data: { ...node, displayColor: colorForType(node.type) },
+        position: initialGraphPosition(index, allNodes.length),
+      })),
+      ...allLinks.map((link, index) => ({
+        data: { ...link, id: link.id || `edge-${index}` },
+      })),
+    ];
+
+    state.cy = cytoscape({
+      container: graphEl,
+      elements,
+      style: cytoscapeStyles(graphTheme),
+      layout: {
+        name: "cose",
+        animate: false,
+        componentSpacing: 48,
+        fit: true,
+        idealEdgeLength: 88,
+        nodeOverlap: 16,
+        padding: 24,
+        randomize: false,
+      },
+    });
+
+    state.cy.on("tap", "node", (event) => {
+      const node = event.target;
+      highlightDependencies(node);
+      showNodeDetails(node.data());
+    });
+
+    state.cy.on("tap", (event) => {
+      if (event.target === state.cy || event.target.length === 0) {
+        clearHighlighting();
+        clearSelectedRule();
+        summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
+        rawXmlEl.textContent = "";
+      }
+    });
+
+    state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
+    state.cyNeedsRebuild = false;
+  }
+
+  const visibleNodeIds = new Set(nodes.map(n => n.id));
+  const visibleLinkIds = new Set(links.map(l => l.id || `edge-${state.graph.links.indexOf(l)}`));
+
+  state.cy.batch(() => {
+    state.cy.elements().forEach(ele => {
+      if (ele.isNode()) {
+        if (visibleNodeIds.has(ele.id())) {
+          ele.show();
+        } else {
+          ele.hide();
+        }
+      } else {
+        const edgeId = ele.id();
+        const edgeData = ele.data();
+        const link = state.graph.links.find(l => l.id === edgeId || (l.source === edgeData.source && l.target === edgeData.target && l.relationship === edgeData.relationship));
+        const matchesLink = link && visibleLinkIds.has(link.id || `edge-${state.graph.links.indexOf(link)}`);
+
+        if (matchesLink) {
+          ele.show();
+        } else {
+          ele.hide();
+        }
+      }
+    });
   });
-  state.cy.on("tap", "node", (event) => {
-    const node = event.target;
-    highlightDependencies(node);
-    showNodeDetails(node.data());
-  });
-  state.cy.on("tap", (event) => {
-    if (event.target === state.cy || event.target.length === 0) {
-      clearHighlighting();
-      clearSelectedRule();
-      summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
-      rawXmlEl.textContent = "";
-    }
-  });
-  state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
+}
+
+function render3DGraph(nodes, links) {
+  if (!window.ForceGraph3D) {
+    console.error("ForceGraph3D is not loaded.");
+    return;
+  }
+  const theme = currentTheme();
+  const bgColor = theme === "dark" ? "#252b26" : "#ffffff";
+
+  if (!state.graph3dInstance) {
+    const container = document.getElementById("graph-3d");
+    state.graph3dInstance = ForceGraph3D({ rendererConfig: { preserveDrawingBuffer: true } })(container)
+      .nodeLabel(node => `${node.label} (${node.type})`)
+      .nodeColor(node => {
+        if (!state.highlightedNodes3D) return colorForType(node.type);
+        return state.highlightedNodes3D.has(node.id) ? colorForType(node.type) : 'rgba(128,128,128,0.15)';
+      })
+      .linkLabel(link => `${link.relationship} (${link.confidence})`)
+      .linkColor(link => {
+        if (!state.highlightedLinks3D) return theme === "dark" ? "#748076" : "#708174";
+        return state.highlightedLinks3D.has(link.id) ? "#2e7d32" : 'rgba(128,128,128,0.05)';
+      })
+      .linkWidth(link => {
+        if (!state.highlightedLinks3D) return 1.5;
+        return state.highlightedLinks3D.has(link.id) ? 3.0 : 0.5;
+      })
+      .linkDirectionalArrowLength(3.5)
+      .linkDirectionalArrowRelPos(1)
+      .onNodeClick(node => {
+        if (state.highlightedNodes3D && state.highlightedNodes3D.has(node.id)) {
+          state.highlightedNodes3D = null;
+          state.highlightedLinks3D = null;
+          clearSelectedRule();
+          summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
+          rawXmlEl.textContent = "";
+        } else {
+          const highlightedNodes = new Set([node.id]);
+          const highlightedLinks = new Set();
+
+          // Downstream (successors)
+          const downstreamQueue = [node.id];
+          const downstreamVisited = new Set([node.id]);
+          while (downstreamQueue.length > 0) {
+            const curr = downstreamQueue.shift();
+            state.graph.links.forEach(link => {
+              if (link.source === curr && !downstreamVisited.has(link.target)) {
+                downstreamVisited.add(link.target);
+                highlightedNodes.add(link.target);
+                highlightedLinks.add(link.id || `edge-${state.graph.links.indexOf(link)}`);
+                downstreamQueue.push(link.target);
+              }
+            });
+          }
+
+          // Upstream (predecessors)
+          const upstreamQueue = [node.id];
+          const upstreamVisited = new Set([node.id]);
+          while (upstreamQueue.length > 0) {
+            const curr = upstreamQueue.shift();
+            state.graph.links.forEach(link => {
+              if (link.target === curr && !upstreamVisited.has(link.source)) {
+                upstreamVisited.add(link.source);
+                highlightedNodes.add(link.source);
+                highlightedLinks.add(link.id || `edge-${state.graph.links.indexOf(link)}`);
+                upstreamQueue.push(link.source);
+              }
+            });
+          }
+
+          state.highlightedNodes3D = highlightedNodes;
+          state.highlightedLinks3D = highlightedLinks;
+          showNodeDetails(node);
+        }
+
+        state.graph3dInstance.nodeColor(state.graph3dInstance.nodeColor());
+        state.graph3dInstance.linkColor(state.graph3dInstance.linkColor());
+        state.graph3dInstance.linkWidth(state.graph3dInstance.linkWidth());
+      })
+      .onBackgroundClick(() => {
+        state.highlightedNodes3D = null;
+        state.highlightedLinks3D = null;
+        clearSelectedRule();
+        summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
+        rawXmlEl.textContent = "";
+        state.graph3dInstance.nodeColor(state.graph3dInstance.nodeColor());
+        state.graph3dInstance.linkColor(state.graph3dInstance.linkColor());
+        state.graph3dInstance.linkWidth(state.graph3dInstance.linkWidth());
+      });
+  }
+
+  state.graph3dInstance.backgroundColor(bgColor);
+
+  const copiedNodes = nodes.map(n => ({ ...n }));
+  const copiedLinks = links.map((l, index) => ({
+    ...l,
+    id: l.id || `edge-${index}`,
+    source: typeof l.source === 'object' ? l.source.id : l.source,
+    target: typeof l.target === 'object' ? l.target.id : l.target,
+  }));
+
+  state.graph3dInstance.graphData({ nodes: copiedNodes, links: copiedLinks });
 }
 
 function cytoscapeStyles(graphTheme) {
@@ -938,4 +1134,168 @@ function graphThemeColors() {
     labelBackground: color("--graph-label-background"),
     text: color("--graph-label-text"),
   };
+}
+
+async function exportSession() {
+  if (!state.graph || !state.graph.nodes || state.graph.nodes.length === 0) {
+    return setStatus("No active graph to export session.");
+  }
+
+  setStatus("Preparing session export...");
+
+  let imgBase64 = "";
+  try {
+    if (state.view3D && state.graph3dInstance) {
+      const canvas = state.graph3dInstance.renderer().domElement;
+      imgBase64 = canvas.toDataURL("image/png");
+    } else if (state.cy) {
+      imgBase64 = state.cy.png({ full: true });
+    }
+  } catch (error) {
+    console.error("Failed to capture graph image:", error);
+  }
+
+  const layoutPositions = {};
+  if (state.cy) {
+    state.cy.nodes().forEach(node => {
+      layoutPositions[node.id()] = node.position();
+    });
+  }
+
+  const sessionObj = {
+    schemaVersion: "1.2",
+    graph: state.graph,
+    filters: {
+      search: searchInput.value,
+      type: typeFilter.value,
+      sourceFile: sourceFileFilter.value,
+      relationship: relationshipFilter.value,
+      confidence: confidenceFilter.value,
+      effectiveDate: effectiveDateFilter.value,
+    },
+    layoutPositions,
+    activeView: document.querySelector(".tab.active")?.dataset.view || "graph-view",
+    selectedItem: state.selectedRule ? { type: "Rule", id: state.selectedRule.id, snapshotId: state.selectedRule.snapshotId } : null,
+    theme: currentTheme(),
+    view3D: state.view3D,
+  };
+
+  try {
+    const formData = new FormData();
+    formData.append("session_data", JSON.stringify(sessionObj));
+    formData.append("graph_image", imgBase64 || "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+
+    const response = await fetch("/api/session/export", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return setStatus(`Session export failed: ${errorText}`);
+    }
+
+    const blob = await response.blob();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "sap-im-config-graph-session.zip";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setStatus("Session exported successfully.");
+  } catch (error) {
+    setStatus(`Session export failed: ${error.message || error}`);
+  }
+}
+
+async function importSession(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  setStatus("Importing session ZIP...");
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await fetch("/api/session/import", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      return setStatus(payload.error || "Session import failed.");
+    }
+
+    state.graph = payload.graph;
+    state.view3D = !!payload.view3D;
+
+    const filters = payload.filters || {};
+    searchInput.value = filters.search || "";
+    typeFilter.value = filters.type || "";
+    sourceFileFilter.value = filters.sourceFile || "";
+    relationshipFilter.value = filters.relationship || "";
+    confidenceFilter.value = filters.confidence || "";
+    effectiveDateFilter.value = filters.effectiveDate || "";
+
+    populateFilterControls(state.graph);
+    renderFindings(state.graph.findings || []);
+    renderRiskReport(state.graph.migrationRisk);
+
+    state.cyNeedsRebuild = true;
+    renderGraph();
+
+    if (!state.view3D && state.cy && payload.layoutPositions) {
+      state.cy.batch(() => {
+        state.cy.nodes().forEach(node => {
+          const pos = payload.layoutPositions[node.id()];
+          if (pos) {
+            node.position(pos);
+          }
+        });
+      });
+    }
+
+    if (state.view3D) {
+      toggle2DButton.classList.remove("active");
+      toggle3DButton.classList.add("active");
+    } else {
+      toggle2DButton.classList.add("active");
+      toggle3DButton.classList.remove("active");
+    }
+
+    if (payload.theme && payload.theme !== currentTheme()) {
+      applyTheme(payload.theme);
+    }
+
+    if (payload.activeView) {
+      switchWorkspace(payload.activeView);
+    }
+
+    if (payload.selectedItem && payload.selectedItem.id) {
+      const selectedId = payload.selectedItem.id;
+      const snapshotId = payload.selectedItem.snapshotId;
+      const matchedNode = state.graph.nodes.find(n => n.id === selectedId && n.snapshotId === snapshotId);
+      if (matchedNode) {
+        showNodeDetails(matchedNode);
+        if (state.cy) {
+          const cyNode = state.cy.getElementById(selectedId);
+          if (cyNode.length > 0) {
+            cyNode.select();
+            highlightDependencies(cyNode);
+          }
+        }
+      }
+    } else {
+      clearSelectedRule();
+      summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
+      rawXmlEl.textContent = "";
+    }
+
+    setStatus(`Session imported successfully from ${file.name}.`);
+  } catch (error) {
+    setStatus(`Session import failed: ${error.message || error}`);
+  } finally {
+    event.target.value = "";
+  }
 }
