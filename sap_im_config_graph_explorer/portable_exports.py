@@ -61,6 +61,7 @@ CSV_FINDING_COLUMNS = (
 CSV_BUNDLE_FILENAME = "sap-im-config-graph-csv.zip"
 MARKDOWN_FILENAME = "sap-im-config-graph.md"
 GRAPHML_FILENAME = "sap-im-config-graph.graphml"
+NEO4J_BUNDLE_FILENAME = "sap-im-config-graph-neo4j.zip"
 
 _ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 _GRAPHML_NAMESPACE = "http://graphml.graphdrawing.org/xmlns"
@@ -416,6 +417,91 @@ def serialize_graphml(document: GraphDocument) -> bytes:
 
     ET.indent(root, space="  ")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True) + b"\n"
+
+
+def serialize_neo4j_bundle(document: GraphDocument) -> bytes:
+    """Return a byte-stable Neo4j ZIP bundle containing CSVs, Cypher script, and import README."""
+    validate_graph_document(document)
+
+    nodes_csv = _nodes_csv(document)
+    relationships_csv = _relationships_csv(document)
+
+    cypher_script = (
+        "// Neo4j Cypher Import Script\n"
+        "// Use this script to load the SAP IM Config graph into a Neo4j database.\n\n"
+        "// 1. Create constraints and indexes\n"
+        "CREATE CONSTRAINT unique_node_id FOR (n:ConfigNode) REQUIRE n.id IS UNIQUE;\n"
+        "CREATE INDEX node_type_idx FOR (n:ConfigNode) ON (n.type);\n"
+        "CREATE INDEX node_canonical_key_idx FOR (n:ConfigNode) ON (n.canonicalKey);\n\n"
+        "// 2. Load nodes\n"
+        "LOAD CSV WITH HEADERS FROM 'file:///nodes.csv' AS row\n"
+        "MERGE (n:ConfigNode {id: row.id})\n"
+        "SET n.canonicalKey = row.canonicalKey,\n"
+        "    n.snapshotId = row.snapshotId,\n"
+        "    n.type = row.type,\n"
+        "    n.label = row.label,\n"
+        "    n.sourceFile = row.sourceFile,\n"
+        "    n.xmlPath = row.xmlPath,\n"
+        "    n.metadataJson = row.metadataJson;\n\n"
+        "// 3. Load relationships\n"
+        "LOAD CSV WITH HEADERS FROM 'file:///relationships.csv' AS row\n"
+        "MATCH (source:ConfigNode {id: row.source})\n"
+        "MATCH (target:ConfigNode {id: row.target})\n"
+        "MERGE (source)-[r:RELATED_TO {id: row.id}]->(target)\n"
+        "SET r.relationship = row.relationship,\n"
+        "    r.confidence = row.confidence,\n"
+        "    r.metadataJson = row.metadataJson;\n"
+    )
+
+    readme_md = (
+        "# SAP IM Config Graph Neo4j Import\n\n"
+        "This import bundle contains the offline representation of the SAP IM Config graph, formatted for import into a Neo4j graph database.\n\n"
+        "## Contents\n"
+        "- `nodes.csv`: Extracted configuration objects.\n"
+        "- `relationships.csv`: Directed dependency and containment links.\n"
+        "- `import.cypher`: Cypher script containing constraints, indexes, and import logic.\n\n"
+        "## Import Instructions\n\n"
+        "1. Copy `nodes.csv` and `relationships.csv` to your Neo4j database's `import` directory.\n"
+        "   - For Neo4j Desktop or local installations, the `import` directory is usually found under the database path (e.g. `<neo4j-home>/import/`).\n"
+        "   - For Neo4j Aura or remote servers, make sure these CSV files are accessible via an HTTP/HTTPS URL, and modify the URLs in `import.cypher` accordingly.\n\n"
+        "2. Open the Neo4j Browser or Cypher Shell.\n\n"
+        "3. Run the commands in `import.cypher` to create constraints, indexes, and import the nodes and relationships.\n\n"
+        "   Alternatively, you can run the Cypher shell command directly:\n"
+        "   ```bash\n"
+        "   bin/cypher-shell -u neo4j -p <password> -f import.cypher\n"
+        "   ```\n\n"
+        "4. Verify the import by running:\n"
+        "   ```cypher\n"
+        "   MATCH (n:ConfigNode) RETURN count(n) AS NodeCount;\n"
+        "   MATCH ()-[r:RELATED_TO]->() RETURN count(r) AS RelationshipCount;\n"
+        "   ```\n"
+    )
+
+    members = (
+        ("nodes.csv", nodes_csv),
+        ("relationships.csv", relationships_csv),
+        ("import.cypher", cypher_script),
+        ("README.md", readme_md),
+    )
+
+    output = io.BytesIO()
+    with zipfile.ZipFile(
+        output,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for name, content in members:
+            entry = zipfile.ZipInfo(name, date_time=_ZIP_TIMESTAMP)
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            entry.create_system = 3
+            entry.external_attr = 0o100644 << 16
+            archive.writestr(entry, content.encode("utf-8"), compresslevel=9)
+    return output.getvalue()
+
+
+def _relationships_csv(document: GraphDocument) -> str:
+    return _links_csv(document)
 
 
 def _nodes_csv(document: GraphDocument) -> str:

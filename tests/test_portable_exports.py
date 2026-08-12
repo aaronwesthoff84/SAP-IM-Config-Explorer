@@ -17,6 +17,7 @@ from sap_im_config_graph_explorer.portable_exports import (
     serialize_csv_bundle,
     serialize_graphml,
     serialize_markdown,
+    serialize_neo4j_bundle,
 )
 
 
@@ -61,6 +62,33 @@ def test_csv_bundle_is_deterministic_and_uses_the_documented_members_and_columns
 
     assert manifest["counts"] == {"nodes": 6, "links": 4, "findings": 2}
     assert [snapshot["id"] for snapshot in manifest["snapshots"]] == ["configuration", "production"]
+
+
+def test_neo4j_bundle_is_deterministic_and_contains_expected_files():
+    document = _document()
+    first = serialize_neo4j_bundle(document)
+    second = serialize_neo4j_bundle(document)
+
+    assert first == second
+    with zipfile.ZipFile(io.BytesIO(first)) as archive:
+        assert sorted(archive.namelist()) == sorted(["nodes.csv", "relationships.csv", "import.cypher", "README.md"])
+
+        # Verify CSV contents
+        nodes_csv = archive.read("nodes.csv").decode("utf-8")
+        assert "id,canonicalKey,snapshotId,type,label,sourceFile,xmlPath,metadataJson" in nodes_csv
+
+        relationships_csv = archive.read("relationships.csv").decode("utf-8")
+        assert "id,source,target,relationship,confidence,metadataJson" in relationships_csv
+
+        # Verify Cypher script
+        cypher = archive.read("import.cypher").decode("utf-8")
+        assert "CREATE CONSTRAINT unique_node_id FOR (n:ConfigNode) REQUIRE n.id IS UNIQUE;" in cypher
+        assert "LOAD CSV WITH HEADERS FROM 'file:///nodes.csv' AS row" in cypher
+        assert "LOAD CSV WITH HEADERS FROM 'file:///relationships.csv' AS row" in cypher
+
+        # Verify README
+        readme = archive.read("README.md").decode("utf-8")
+        assert "SAP IM Config Graph Neo4j Import" in readme
 
 
 def test_markdown_is_stable_readable_and_escapes_table_cells():
@@ -198,6 +226,7 @@ def test_portable_routes_return_local_downloads_and_reject_non_allowlisted_nodes
         "csv": client.post("/api/export/graph-csv", json=payload),
         "markdown": client.post("/api/export/graph-markdown", json=payload),
         "graphml": client.post("/api/export/graph-graphml", json=payload),
+        "neo4j": client.post("/api/export/graph-neo4j", json=payload),
     }
 
     assert responses["csv"].headers["content-type"].startswith("application/zip")
@@ -206,6 +235,8 @@ def test_portable_routes_return_local_downloads_and_reject_non_allowlisted_nodes
     assert "sap-im-config-graph.md" in responses["markdown"].headers["content-disposition"]
     assert responses["graphml"].headers["content-type"].startswith("application/graphml+xml")
     assert "sap-im-config-graph.graphml" in responses["graphml"].headers["content-disposition"]
+    assert responses["neo4j"].headers["content-type"].startswith("application/zip")
+    assert "sap-im-config-graph-neo4j.zip" in responses["neo4j"].headers["content-disposition"]
     assert all(b"rawXml" not in response.content for response in responses.values())
     assert all(b"EXCLUDED_RAW_XML" not in response.content for response in responses.values())
 

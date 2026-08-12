@@ -15,11 +15,13 @@ from sap_im_config_graph_explorer.portable_exports import (
     CSV_BUNDLE_FILENAME,
     GRAPHML_FILENAME,
     MARKDOWN_FILENAME,
+    NEO4J_BUNDLE_FILENAME,
     PortableGraphExportError,
     graph_document_from_payload,
     serialize_csv_bundle,
     serialize_graphml,
     serialize_markdown,
+    serialize_neo4j_bundle,
 )
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError
 from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
@@ -165,6 +167,16 @@ async def export_graph_graphml(payload: dict[str, object]) -> Response:
         content=serialize_graphml(document),
         media_type="application/graphml+xml",
         headers={"Content-Disposition": f'attachment; filename="{GRAPHML_FILENAME}"'},
+    )
+
+
+@app.post("/api/export/graph-neo4j")
+async def export_graph_neo4j(payload: dict[str, object]) -> Response:
+    document = _portable_graph_document(payload)
+    return Response(
+        content=serialize_neo4j_bundle(document),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{NEO4J_BUNDLE_FILENAME}"'},
     )
 
 
