@@ -5,6 +5,7 @@ const state = {
   selectedRule: null,
   html: null,
   htmlDownloadUrl: "",
+  sessions: [], // List of saved sessions
 };
 
 window.state = state;
@@ -120,6 +121,12 @@ let latestGraphRequestId = 0;
 let pendingGraphGeneration = null;
 
 const statusEl = document.getElementById("status");
+const sessionNameInput = document.getElementById("session-name-input");
+const saveSessionButton = document.getElementById("save-session-button");
+const sessionMessageBox = document.getElementById("session-message-box");
+const sessionExplanation = document.getElementById("session-explanation");
+const requiredFilesList = document.getElementById("required-files-list");
+const savedSessionsList = document.getElementById("saved-sessions-list");
 const themeToggle = document.getElementById("theme-toggle");
 const npFileInput = document.getElementById("np-xml-files");
 const pFileInput = document.getElementById("p-xml-files");
@@ -167,8 +174,10 @@ topologySelect.addEventListener("change", () => {
     setStatus(`Selected ${topologyLabel(topologySelect.value)} topology.`);
   }
 });
+saveSessionButton.addEventListener("click", handleSaveSession);
 
 initializeTheme();
+loadSessionsFromStorage();
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
@@ -938,4 +947,325 @@ function graphThemeColors() {
     labelBackground: color("--graph-label-background"),
     text: color("--graph-label-text"),
   };
+}
+
+// Saved Graph Exploration Sessions implementation
+
+function showSessionMessage(text, type = "success") {
+  sessionMessageBox.textContent = text;
+  sessionMessageBox.className = `session-message-box ${type}`;
+  sessionMessageBox.hidden = false;
+}
+
+function hideSessionMessage() {
+  sessionMessageBox.hidden = true;
+  sessionMessageBox.textContent = "";
+}
+
+function loadSessionsFromStorage() {
+  try {
+    const raw = localStorage.getItem("sap-im-config-explorer-sessions");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        state.sessions = parsed.filter(validateSessionData);
+      } else {
+        state.sessions = [];
+      }
+    } else {
+      state.sessions = [];
+    }
+  } catch (e) {
+    state.sessions = [];
+    showSessionMessage("Failed to load saved sessions from localStorage.", "error");
+  }
+  renderSessionsList();
+}
+
+function saveSessionsToStorage() {
+  try {
+    localStorage.setItem("sap-im-config-explorer-sessions", JSON.stringify(state.sessions));
+  } catch (e) {
+    showSessionMessage("Failed to persist sessions to localStorage: " + e.message, "error");
+  }
+}
+
+function validateSessionData(session) {
+  if (!session || typeof session !== "object") return false;
+  if (typeof session.id !== "string" || !session.id) return false;
+  if (typeof session.name !== "string" || !session.name) return false;
+  if (typeof session.createdAt !== "string") return false;
+  if (typeof session.themePreference !== "string") return false;
+  if (!session.files || typeof session.files !== "object") return false;
+  if (!Array.isArray(session.files.nonProduction) || !Array.isArray(session.files.production)) return false;
+  if (!session.filters || typeof session.filters !== "object") return false;
+  if (!session.graph || typeof session.graph !== "object") return false;
+  return true;
+}
+
+window.validateSessionData = validateSessionData;
+
+function serializeSession(name) {
+  const npFiles = [...npFileInput.files].map(f => f.name);
+  const pFiles = [...pFileInput.files].map(f => f.name);
+
+  // Layout info: zoom, pan, and position of all nodes
+  const layout = {
+    zoom: state.cy ? state.cy.zoom() : 1,
+    pan: state.cy ? state.cy.pan() : { x: 0, y: 0 },
+    nodes: state.cy ? state.cy.nodes().map(node => ({
+      id: node.id(),
+      position: { ...node.position() }
+    })) : []
+  };
+
+  const selectedItem = state.selectedRule ? {
+    id: state.selectedRule.id,
+    snapshotId: state.selectedRule.snapshotId,
+    type: "Rule"
+  } : (state.cy && state.cy.nodes(":selected").length ? {
+    id: state.cy.nodes(":selected").first().id(),
+    snapshotId: state.cy.nodes(":selected").first().data("snapshotId"),
+    type: state.cy.nodes(":selected").first().data("type")
+  } : (state.cy && state.cy.edges(":selected").length ? {
+    id: state.cy.edges(":selected").first().id(),
+    type: "Edge",
+    data: state.cy.edges(":selected").first().data()
+  } : null));
+
+  return {
+    id: "session-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9),
+    name: name,
+    createdAt: new Date().toISOString(),
+    themePreference: currentTheme(),
+    topologyMode: topologySelect.value,
+    files: {
+      nonProduction: npFiles,
+      production: pFiles
+    },
+    filters: {
+      search: searchInput.value,
+      type: typeFilter.value,
+      sourceFile: sourceFileFilter.value,
+      relationship: relationshipFilter.value,
+      confidence: confidenceFilter.value,
+      effectiveDate: effectiveDateFilter.value
+    },
+    layout: layout,
+    selectedItem: selectedItem,
+    graph: {
+      nodes: state.graph.nodes,
+      links: state.graph.links,
+      findings: state.graph.findings,
+      migrationRisk: state.graph.migrationRisk
+    }
+  };
+}
+
+window.serializeSession = serializeSession;
+
+function handleSaveSession() {
+  const name = sessionNameInput.value.trim();
+  if (!name) {
+    showSessionMessage("Please enter a valid session name.", "error");
+    return;
+  }
+  const session = serializeSession(name);
+  state.sessions.push(session);
+  saveSessionsToStorage();
+  renderSessionsList();
+  sessionNameInput.value = "";
+  showSessionMessage(`Session "${name}" saved successfully.`, "success");
+}
+
+window.handleSaveSession = handleSaveSession;
+
+function renderSessionsList() {
+  savedSessionsList.innerHTML = "";
+  if (state.sessions.length === 0) {
+    savedSessionsList.innerHTML = '<li class="status">No saved sessions.</li>';
+    return;
+  }
+  state.sessions.forEach(session => {
+    const li = document.createElement("li");
+    li.className = "session-item";
+    li.setAttribute("data-session-id", session.id);
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "session-item-name";
+    nameSpan.textContent = session.name;
+
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "session-item-actions";
+
+    const restoreBtn = document.createElement("button");
+    restoreBtn.type = "button";
+    restoreBtn.className = "secondary";
+    restoreBtn.textContent = "Restore";
+    restoreBtn.addEventListener("click", () => handleRestoreSession(session.id));
+
+    const renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.className = "secondary";
+    renameBtn.textContent = "Rename";
+    renameBtn.addEventListener("click", () => handleRenameSession(session.id));
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "secondary";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", () => handleDeleteSession(session.id));
+
+    actionsDiv.appendChild(restoreBtn);
+    actionsDiv.appendChild(renameBtn);
+    actionsDiv.appendChild(deleteBtn);
+
+    li.appendChild(nameSpan);
+    li.appendChild(actionsDiv);
+    savedSessionsList.appendChild(li);
+  });
+}
+
+function handleRenameSession(id) {
+  const session = state.sessions.find(s => s.id === id);
+  if (!session) return;
+  const newName = prompt("Enter new name for the session:", session.name);
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed) {
+    showSessionMessage("Session name cannot be empty.", "error");
+    return;
+  }
+  session.name = trimmed;
+  saveSessionsToStorage();
+  renderSessionsList();
+  showSessionMessage(`Session renamed to "${trimmed}".`, "success");
+}
+
+function handleDeleteSession(id) {
+  const session = state.sessions.find(s => s.id === id);
+  if (!session) return;
+  if (!confirm(`Are you sure you want to delete session "${session.name}"?`)) return;
+  state.sessions = state.sessions.filter(s => s.id !== id);
+  saveSessionsToStorage();
+  renderSessionsList();
+  showSessionMessage(`Session "${session.name}" deleted.`, "success");
+}
+
+function handleRestoreSession(id) {
+  hideSessionMessage();
+  const session = state.sessions.find(s => s.id === id);
+  if (!session) {
+    showSessionMessage("Session not found.", "error");
+    return;
+  }
+  if (!validateSessionData(session)) {
+    showSessionMessage("Invalid or outdated session data. Cannot restore.", "error");
+    return;
+  }
+
+  // Restore Theme Preference
+  applyTheme(session.themePreference || "light");
+
+  // Restore Active Filters
+  searchInput.value = session.filters?.search || "";
+  if (session.topologyMode) {
+    topologySelect.value = session.topologyMode;
+  }
+
+  // Determine if XML files are matching
+  const currentNpFiles = [...npFileInput.files].map(f => f.name);
+  const currentPFiles = [...pFileInput.files].map(f => f.name);
+
+  const savedNpFiles = session.files?.nonProduction || [];
+  const savedPFiles = session.files?.production || [];
+
+  const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+  const filesMatch = arraysEqual(currentNpFiles, savedNpFiles) && arraysEqual(currentPFiles, savedPFiles);
+
+  if (filesMatch) {
+    sessionExplanation.hidden = true;
+    requiredFilesList.textContent = "";
+    // If files match, directly restore the full serialized graph, layout, filters, and selection
+    restoreGraphAndLayout(session);
+    showSessionMessage(`Session "${session.name}" restored successfully.`, "success");
+  } else {
+    // Show explanation warning and required files
+    sessionExplanation.hidden = false;
+    const npList = savedNpFiles.length ? `Non-Prod: [${savedNpFiles.join(", ")}]` : "";
+    const pList = savedPFiles.length ? `Prod: [${savedPFiles.join(", ")}]` : "";
+    requiredFilesList.innerHTML = `<strong>Required files:</strong><br>${npList ? npList + "<br>" : ""}${pList}`;
+
+    // Fallback: we cannot fully restore graph viewport/node positions since files don't match,
+    // but we can restore what's possible, or let user know to reselect files first.
+    // If we want to be safe, we fail restoration of graph layout but restore inputs/filters.
+    showSessionMessage(`Please reselect the original XML files to restore the graph for "${session.name}".`, "error");
+  }
+}
+
+window.handleRestoreSession = handleRestoreSession;
+
+function restoreGraphAndLayout(session) {
+  // Restore State Graph Data
+  state.graph = session.graph || { nodes: [], links: [], findings: [] };
+  clearSelectedRule();
+  destroyLineageRenderer();
+  populateFilterControls(state.graph);
+  renderFindings(state.graph.findings || []);
+  renderRiskReport(state.graph.migrationRisk);
+
+  // Restore Filters to input elements before rendering
+  typeFilter.value = session.filters?.type || "";
+  sourceFileFilter.value = session.filters?.sourceFile || "";
+  relationshipFilter.value = session.filters?.relationship || "";
+  confidenceFilter.value = session.filters?.confidence || "";
+  effectiveDateFilter.value = session.filters?.effectiveDate || "";
+
+  renderGraph();
+  setStatus(graphStatus(state.graph));
+
+  // Now apply the saved graph layout (zoom, pan, node positions)
+  if (state.cy && session.layout) {
+    const layout = session.layout;
+    if (layout.nodes) {
+      layout.nodes.forEach(savedNode => {
+        const node = state.cy.getElementById(savedNode.id);
+        if (node.length && savedNode.position) {
+          node.position(savedNode.position);
+        }
+      });
+    }
+    if (typeof layout.zoom === "number") {
+      state.cy.zoom(layout.zoom);
+    }
+    if (layout.pan) {
+      state.cy.pan(layout.pan);
+    }
+  }
+
+  // Restore Selected Item
+  if (state.cy && session.selectedItem) {
+    const sel = session.selectedItem;
+    if (sel.type === "Rule") {
+      state.selectedRule = { id: sel.id, snapshotId: sel.snapshotId };
+      lineageTab.disabled = false;
+      const node = state.cy.getElementById(sel.id);
+      if (node.length) {
+        node.select();
+        showNodeDetails(node.data());
+      }
+    } else if (sel.type === "Edge") {
+      const edge = state.cy.getElementById(sel.id);
+      if (edge.length) {
+        edge.select();
+        showEdgeDetails(sel.data || edge.data());
+      }
+    } else {
+      const node = state.cy.getElementById(sel.id);
+      if (node.length) {
+        node.select();
+        showNodeDetails(node.data());
+      }
+    }
+  }
 }
