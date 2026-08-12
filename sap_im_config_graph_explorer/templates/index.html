@@ -97,6 +97,7 @@
         <button class="tab active" type="button" data-view="graph-view">Graph</button>
         <button id="lineage-tab" class="tab" type="button" data-view="lineage-view" disabled>Lineage</button>
         <button class="tab" type="button" data-view="html-output-view">HTML Output</button>
+        <button id="ai-doc-tab" class="tab" type="button" data-view="ai-doc-view">AI Documentation</button>
       </div>
       <div id="graph-view" class="view active">
         <div id="graph"></div>
@@ -116,6 +117,45 @@
           <span id="html-output-meta" class="html-meta">Select an XML file and generate HTML.</span>
         </div>
         <iframe id="html-output-preview" title="HTML output preview"></iframe>
+      </div>
+      <div id="ai-doc-view" class="view">
+        <div class="ai-doc-container">
+          <h2>AI-Generated Documentation Draft</h2>
+          <div id="ai-doc-setup-info" class="ai-info-box" hidden>
+            <h3>AI Features Disabled</h3>
+            <p>The AI-Generated Documentation feature is currently disabled. To enable it, please configure a local or online provider.</p>
+            <h4>Configuration Instructions</h4>
+            <ol>
+              <li>Set the environment variable <code>SAP_IM_AI_PROVIDER</code> to <code>stub</code> or <code>openai</code>.</li>
+              <li>If using <code>openai</code>, set <code>SAP_IM_AI_ENDPOINT</code> to your loopback/local API endpoint (e.g., <code>http://127.0.0.1:11434/v1/chat/completions</code>) and <code>SAP_IM_AI_MODEL</code> to your desired model.</li>
+              <li>Restart the application server.</li>
+            </ol>
+            <h4>Privacy Behavior & Data Flow</h4>
+            <ul>
+              <li><strong>Local-First:</strong> By default, all configuration content and XML files stay entirely on your workstation. No data is sent to external cloud services unless explicitly configured and consented to.</li>
+              <li><strong>Loopback API Restriction:</strong> If an online provider is configured, the system strictly enforces loopback/local API endpoints (e.g. localhost/127.0.0.1) by default to prevent data leakage. Non-loopback endpoints are rejected.</li>
+              <li><strong>User Consent:</strong> Data is only sent to the configured AI endpoint when you click the "Generate AI Documentation" button.</li>
+            </ul>
+          </div>
+          <div id="ai-doc-interactive" class="ai-interactive-box" hidden>
+            <div class="ai-warning-disclaimer">
+              <p><strong>Privacy Warning:</strong> Generating AI Documentation will send extracted configuration node metadata to your configured local/online AI endpoint: <span id="ai-configured-endpoint-display"></span>.</p>
+              <p>No XML content or graph data is sent without your explicit action.</p>
+            </div>
+            <div class="button-row">
+              <button id="generate-ai-doc-button" type="button">Generate AI Documentation</button>
+            </div>
+            <div id="ai-doc-status" class="ai-status-message" role="status"></div>
+            <div id="ai-doc-output-container" class="ai-output-container" hidden>
+              <div class="ai-metadata-bar">
+                <span><strong>Model:</strong> <span id="ai-doc-meta-model"></span></span> |
+                <span><strong>Generated:</strong> <span id="ai-doc-meta-timestamp"></span></span>
+              </div>
+              <div class="ai-draft-label">AI DRAFT - REQUIRES HUMAN REVIEW</div>
+              <div id="ai-doc-output-text" class="ai-output-markdown"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

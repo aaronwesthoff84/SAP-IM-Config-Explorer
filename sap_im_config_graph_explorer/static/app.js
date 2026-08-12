@@ -5,6 +5,8 @@ const state = {
   selectedRule: null,
   html: null,
   htmlDownloadUrl: "",
+  aiConfig: null,
+  aiDoc: null,
 };
 
 window.state = state;
@@ -145,7 +147,19 @@ const findingsEl = document.getElementById("validation-findings");
 const riskContainer = document.getElementById("migration-risk-container");
 const riskReportEl = document.getElementById("migration-risk-report");
 
+const aiDocTab = document.getElementById("ai-doc-tab");
+const aiDocSetupInfo = document.getElementById("ai-doc-setup-info");
+const aiDocInteractive = document.getElementById("ai-doc-interactive");
+const generateAiDocButton = document.getElementById("generate-ai-doc-button");
+const aiConfiguredEndpointDisplay = document.getElementById("ai-configured-endpoint-display");
+const aiDocStatus = document.getElementById("ai-doc-status");
+const aiDocOutputContainer = document.getElementById("ai-doc-output-container");
+const aiDocMetaModel = document.getElementById("ai-doc-meta-model");
+const aiDocMetaTimestamp = document.getElementById("ai-doc-meta-timestamp");
+const aiDocOutputText = document.getElementById("ai-doc-output-text");
+
 document.getElementById("graph-button").addEventListener("click", requestGraphGeneration);
+generateAiDocButton.addEventListener("click", handleGenerateAiDoc);
 document.getElementById("html-button").addEventListener("click", generateHtml);
 document.getElementById("export-button").addEventListener("click", () => exportGraph("json"));
 document.getElementById("export-csv-button").addEventListener("click", () => exportGraph("csv"));
@@ -177,6 +191,9 @@ document.querySelectorAll(".tab").forEach((tab) => {
         (node) => node.id === state.selectedRule.id && node.snapshotId === state.selectedRule.snapshotId
       );
       if (rule) return openRuleLineage(rule);
+    }
+    if (tab.dataset.view === "ai-doc-view") {
+      loadAiConfig();
     }
     switchWorkspace(tab.dataset.view);
   });
@@ -890,6 +907,86 @@ async function graphExportErrorDetail(response) {
     // Fall through to the HTTP status when the local response is not JSON.
   }
   return `${response.status} ${response.statusText}`.trim();
+}
+
+async function loadAiConfig() {
+  aiDocStatus.textContent = "Loading AI configuration...";
+  try {
+    const response = await fetch("/api/ai/config");
+    if (!response.ok) {
+      throw new Error("Failed to fetch AI configuration.");
+    }
+    const config = await response.json();
+    state.aiConfig = config;
+    renderAiDocView();
+  } catch (err) {
+    aiDocStatus.textContent = `Error loading AI configuration: ${err.message}`;
+  }
+}
+
+function renderAiDocView() {
+  const config = state.aiConfig;
+  if (!config) return;
+
+  if (config.enabled) {
+    aiDocSetupInfo.hidden = true;
+    aiDocInteractive.hidden = false;
+    const providerName = config.provider || "openai";
+    const endpointText = providerName === "stub" ? "Local Stub Provider" : "Local OpenAI Provider";
+    aiConfiguredEndpointDisplay.textContent = `${endpointText} (Model: ${config.model || "default"})`;
+    aiDocStatus.textContent = "AI features are enabled. Select an XML file below or configure a file to generate a documentation draft.";
+  } else {
+    aiDocSetupInfo.hidden = false;
+    aiDocInteractive.hidden = true;
+    aiDocStatus.textContent = "";
+  }
+}
+
+async function handleGenerateAiDoc() {
+  const npFiles = [...npFileInput.files];
+  const pFiles = [...pFileInput.files];
+  const file = npFiles[0] || pFiles[0];
+  if (!file) {
+    aiDocStatus.textContent = "Please select an XML file under 'Files' first.";
+    return;
+  }
+
+  const confirmed = confirm(`Are you sure you want to send configuration node metadata of ${file.name} to the AI provider?`);
+  if (!confirmed) {
+    aiDocStatus.textContent = "Generation canceled by user.";
+    return;
+  }
+
+  aiDocStatus.textContent = "Generating AI documentation draft. Please wait...";
+  generateAiDocButton.disabled = true;
+  aiDocOutputContainer.hidden = true;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await fetch("/api/ai/generate-document", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Documentation generation failed.");
+    }
+
+    state.aiDoc = payload;
+    aiDocStatus.textContent = "Documentation draft generated successfully.";
+
+    aiDocMetaModel.textContent = payload.model || "Unknown";
+    aiDocMetaTimestamp.textContent = payload.timestamp ? new Date(payload.timestamp).toLocaleString() : "N/A";
+    aiDocOutputText.textContent = payload.draft || "";
+    aiDocOutputContainer.hidden = false;
+  } catch (err) {
+    aiDocStatus.textContent = `Generation error: ${err.message}`;
+  } finally {
+    generateAiDocButton.disabled = false;
+  }
 }
 
 function setStatus(message) {
