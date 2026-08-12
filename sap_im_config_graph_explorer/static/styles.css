@@ -114,6 +114,16 @@ dt {
   font-size: 14px;
 }
 
+.status.imported {
+  background: var(--surface-muted);
+  border: 1px dashed var(--forest-green);
+  border-radius: 4px;
+  color: var(--forest-green);
+  font-weight: 700;
+  padding: 4px 8px;
+  display: inline-block;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 280px minmax(420px, 1fr) 340px;

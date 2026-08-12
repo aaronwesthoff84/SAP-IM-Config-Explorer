@@ -752,19 +752,75 @@ def _snapshot_from_payload(value: object) -> Snapshot:
         raise PortableGraphExportError(str(exc)) from exc
 
 
+def import_and_migrate_graph_document(payload: Mapping[str, Any]) -> GraphDocument:
+    """Import and migrate a previously exported Graph JSON to version 1.2.
+
+    Validates schema version, node and relationship vocabulary, endpoint closure,
+    and snapshot metadata. Reject unsupported future schemas and malformed payloads.
+    """
+    if not isinstance(payload, Mapping):
+        raise PortableGraphExportError("Malformed or dangerous payload: Payload must be a JSON object.")
+
+    # Get schema version, default to "1.0" if missing (legacy)
+    schema_version = payload.get("schemaVersion")
+    if schema_version is None:
+        schema_version = "1.0"
+
+    if not isinstance(schema_version, str):
+        raise PortableGraphExportError(f"Invalid schema version: {schema_version}")
+
+    try:
+        version_float = float(schema_version)
+    except ValueError:
+        raise PortableGraphExportError(f"Invalid schema version format: {schema_version}")
+
+    if version_float > 1.2:
+        raise PortableGraphExportError(f"Unsupported future schema version: {schema_version}")
+    if version_float < 1.0:
+        raise PortableGraphExportError(f"Unsupported schema version: {schema_version}")
+
+    # Copy the payload to avoid mutating the original dictionary/JSON file
+    migrated_payload = dict(payload)
+
+    # 1. Migrate older schemas (1.0 and 1.1) to 1.2
+    if version_float < 1.2:
+        # Default topologyMode to "core" if missing
+        if "topologyMode" not in migrated_payload:
+            migrated_payload["topologyMode"] = "core"
+
+    if version_float < 1.1:
+        # Ensure sourceProfiles are present (default to empty list) in snapshots
+        if "snapshots" in migrated_payload and isinstance(migrated_payload["snapshots"], list):
+            migrated_snapshots = []
+            for snapshot_item in migrated_payload["snapshots"]:
+                if isinstance(snapshot_item, dict):
+                    snap = dict(snapshot_item)
+                    if "sourceProfiles" not in snap:
+                        snap["sourceProfiles"] = []
+                    migrated_snapshots.append(snap)
+                else:
+                    migrated_snapshots.append(snapshot_item)
+            migrated_payload["snapshots"] = migrated_snapshots
+
+    migrated_payload["schemaVersion"] = "1.2"
+
+    # 2. Reconstruct and validate the graph document using the stable schema
+    return graph_document_from_payload(migrated_payload)
+
+
 def _node_from_payload(value: object) -> GraphNode:
     data = _mapping(value, "node")
     try:
         return GraphNode(
             id=_string(data, "id"),
-            canonicalKey=_string(data, "canonicalKey"),
-            snapshotId=_string(data, "snapshotId"),
+            canonicalKey=_string(data, "canonicalKey") if "canonicalKey" in data else "",
+            snapshotId=_string(data, "snapshotId") if "snapshotId" in data else "configuration",
             label=_string(data, "label"),
             type=_string(data, "type"),
             sourceFile=_string(data, "sourceFile"),
             xmlPath=_string(data, "xmlPath"),
             rawXml=_string(data, "rawXml"),
-            metadata=_object(data, "metadata"),
+            metadata=_object(data, "metadata") if "metadata" in data else {},
         )
     except ValueError as exc:
         raise PortableGraphExportError(str(exc)) from exc
@@ -774,12 +830,12 @@ def _link_from_payload(value: object) -> GraphLink:
     data = _mapping(value, "link")
     try:
         return GraphLink(
-            id=_string(data, "id"),
+            id=_string(data, "id") if "id" in data else "",
             source=_string(data, "source"),
             target=_string(data, "target"),
             relationship=_string(data, "relationship"),
             confidence=_string(data, "confidence"),
-            metadata=_object(data, "metadata"),
+            metadata=_object(data, "metadata") if "metadata" in data else {},
         )
     except ValueError as exc:
         raise PortableGraphExportError(str(exc)) from exc
@@ -795,7 +851,7 @@ def _finding_from_payload(value: object) -> ValidationFinding:
             snapshotId=_string(data, "snapshotId"),
             nodeIds=tuple(_string_list(data, "nodeIds")),
             message=_string(data, "message"),
-            details=_object(data, "details"),
+            details=_object(data, "details") if "details" in data else {},
         )
     except ValueError as exc:
         raise PortableGraphExportError(str(exc)) from exc

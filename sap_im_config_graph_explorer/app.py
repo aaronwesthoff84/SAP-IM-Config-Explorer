@@ -20,6 +20,7 @@ from sap_im_config_graph_explorer.portable_exports import (
     serialize_csv_bundle,
     serialize_graphml,
     serialize_markdown,
+    import_and_migrate_graph_document,
 )
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError
 from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
@@ -126,6 +127,56 @@ async def graph(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Graph generation failed: {exc}") from exc
+
+
+@app.post("/api/import/graph-json")
+async def import_graph_json(
+    file: UploadFile = File(...),
+) -> dict[str, object]:
+    filename = file.filename or "upload.json"
+    if not filename.lower().endswith(".json"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {filename}. Only .json files are supported."
+        )
+
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail="Oversized document: File size exceeds the maximum limit of 20MB."
+        )
+
+    if not content.strip():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Empty JSON file: {filename}"
+        )
+
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Malformed or dangerous payload: Invalid JSON. {exc}"
+        )
+
+    try:
+        document = import_and_migrate_graph_document(payload)
+
+        total_elements = len(document.nodes) + len(document.links)
+        if total_elements > 100000:
+            raise PortableGraphExportError(
+                f"Oversized document: Total elements count ({total_elements}) exceeds limit of 100,000."
+            )
+
+        doc_dict = document.to_dict()
+        doc_dict["imported"] = True
+        return doc_dict
+    except PortableGraphExportError as exc:
+        raise HTTPException(status_code=400, detail=f"Validation failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Graph import failed: {exc}")
 
 
 @app.post("/api/export/graph-json")

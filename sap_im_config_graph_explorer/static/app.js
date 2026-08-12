@@ -123,6 +123,7 @@ const statusEl = document.getElementById("status");
 const themeToggle = document.getElementById("theme-toggle");
 const npFileInput = document.getElementById("np-xml-files");
 const pFileInput = document.getElementById("p-xml-files");
+const importJsonInput = document.getElementById("import-graph-json");
 const topologySelect = document.getElementById("topology-mode");
 const graphEl = document.getElementById("graph");
 const lineageGraphEl = document.getElementById("lineage-graph");
@@ -152,6 +153,7 @@ document.getElementById("export-csv-button").addEventListener("click", () => exp
 document.getElementById("export-markdown-button").addEventListener("click", () => exportGraph("markdown"));
 document.getElementById("export-graphml-button").addEventListener("click", () => exportGraph("graphml"));
 themeToggle.addEventListener("click", toggleTheme);
+importJsonInput.addEventListener("change", importGraphJson);
 searchInput.addEventListener("input", renderGraphAndHtmlOutput);
 typeFilter.addEventListener("change", renderGraphAndHtmlOutput);
 sourceFileFilter.addEventListener("change", renderGraph);
@@ -211,6 +213,8 @@ async function generateGraph() {
   const npFiles = [...npFileInput.files];
   const pFiles = [...pFileInput.files];
   if (!npFiles.length && !pFiles.length) return setStatus("Select one or more XML files.");
+
+  importJsonInput.value = "";
 
   const requestId = ++latestGraphRequestId;
   const topologyMode = topologySelect.value;
@@ -646,9 +650,52 @@ function renderRiskReport(risk) {
   `;
 }
 
+async function importGraphJson() {
+  const file = importJsonInput.files[0];
+  if (!file) return;
+
+  setStatus("Importing graph JSON...");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await fetch("/api/import/graph-json", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      return setStatus(payload.error || "Graph JSON import failed.");
+    }
+
+    // Success! Clear the XML files to keep the state clean & clear selection
+    npFileInput.value = "";
+    pFileInput.value = "";
+    clearSelectedRule();
+    destroyLineageRenderer();
+
+    state.graph = payload;
+    populateFilterControls(payload);
+    renderFindings(payload.findings || []);
+    renderRiskReport(payload.migrationRisk);
+    renderGraph();
+    setStatus(graphStatus(payload));
+  } catch (error) {
+    setStatus("Graph JSON import failed: " + (error.message || "Unknown error"));
+  }
+}
+
 function graphStatus(payload) {
   const findings = payload.findings || [];
-  const prefix = `${topologyLabel(payload.topologyMode)} topology: `;
+  const label = topologyLabel(payload.topologyMode);
+  const prefix = payload.imported ? `[Imported] ${label} topology: ` : `${label} topology: `;
+
+  if (payload.imported) {
+    statusEl.classList.add("imported");
+  } else {
+    statusEl.classList.remove("imported");
+  }
+
   if (!findings.length) return `${prefix}${payload.nodes.length} nodes, ${payload.links.length} links, no findings`;
   const errorCount = findings.filter((finding) => finding.severity === "error").length;
   const warningCount = findings.filter((finding) => finding.severity === "warning").length;
