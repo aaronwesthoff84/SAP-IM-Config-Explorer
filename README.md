@@ -54,6 +54,7 @@ The generated HTML sorts named objects alphabetically, without changing the disp
 5. Click a node to view its source file, XML path, metadata, and bounded raw XML.
 6. Hover or click an edge to inspect its relationship.
 7. Click an export action to download the complete current graph in JSON, CSV, Markdown, or GraphML.
+8. Switch to `3D` visualization mode in the Files controls panel to explore the graph in 3D. The 3D view is completely local-first and utilizes a dynamically loaded, locally vendored `3d-force-graph.min.js` dependency in `sap_im_config_graph_explorer/static/vendor/`.
 
 Alternatively, select a local `.json` file with `Import Graph JSON` to reopen a
 previous lossless Graph JSON export without reprocessing its source XML files.
@@ -318,7 +319,7 @@ Duplicate source IDs remain separate node instances with stable generated IDs. D
 
 ## Future Roadmap
 
-1. Locally vendored 3D graph mode.
+1. Locally vendored 3D graph mode (Completed).
 2. Non-production vs production XML comparison.
 3. Oracle vs HANA XML export comparison.
 4. Impact analysis for upstream and downstream dependencies.
