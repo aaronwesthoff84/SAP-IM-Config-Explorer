@@ -100,77 +100,9 @@ class ReferenceResolver:
         node_by_id = {node.id: node for node in self.nodes}
 
         for reference in self.references:
-            source_id = self.node_id_by_element.get(id(reference.source_element))
-            source = node_by_id.get(source_id or "")
-            if source is None:
-                continue
-
-            candidates = self._candidates(reference, source.snapshotId, index)
-            if not candidates:
-                ctx.append_finding(
-                    FindingSpec(
-                        code="missing_reference",
-                        source=source,
-                        reference=reference,
-                    )
-                )
-                continue
-            if len(candidates) > 1:
-                ctx.append_finding(
-                    FindingSpec(
-                        code="ambiguous_reference",
-                        source=source,
-                        reference=reference,
-                        candidates=tuple(candidates),
-                    )
-                )
-                continue
-
-            target = candidates[0]
-            relationship = reference.relationship or relationship_for_reference(
-                reference.hint,
-                target.type,
-            )
-            link_source, link_target = (
-                (target.id, source.id)
-                if reference.reverse
-                else (source.id, target.id)
-            )
-            semantic_key = (
-                link_source,
-                link_target,
-                relationship,
-                reference.origin,
-            )
-            if semantic_key in ctx.seen_links:
-                continue
-            ctx.seen_links.add(semantic_key)
-            ctx.result.links.append(
-                GraphLink(
-                    id=_stable_id(
-                        "link",
-                        source.snapshotId,
-                        link_source,
-                        link_target,
-                        relationship,
-                        reference.origin,
-                    ),
-                    source=link_source,
-                    target=link_target,
-                    relationship=relationship,
-                    confidence="high",
-                    metadata={
-                        "reference": reference.value,
-                        "hint": reference.hint,
-                        "origin": reference.origin,
-                        **(
-                            {"expectedType": reference.expected_type}
-                            if reference.expected_type
-                            else {}
-                        ),
-                    },
-                )
-            )
+            source = self._get_source_node(reference, node_by_id)
+            if source is not None:
+                self._resolve_reference(reference, source, index, ctx)
 
         return ctx.result
 
@@ -178,6 +110,97 @@ class ReferenceResolver:
         """Compatibility helper for callers that only need resolved links."""
 
         return self.resolve().links
+
+    def _get_source_node(
+        self,
+        reference: ReferenceCandidate,
+        node_by_id: dict[str, GraphNode],
+    ) -> GraphNode | None:
+        source_id = self.node_id_by_element.get(id(reference.source_element))
+        return node_by_id.get(source_id or "")
+
+    def _resolve_reference(
+        self,
+        reference: ReferenceCandidate,
+        source: GraphNode,
+        index: dict[tuple[str, str], list[GraphNode]],
+        ctx: _ResolutionContext,
+    ) -> None:
+        candidates = self._candidates(reference, source.snapshotId, index)
+        if not candidates:
+            ctx.append_finding(
+                FindingSpec(
+                    code="missing_reference",
+                    source=source,
+                    reference=reference,
+                )
+            )
+            return
+        if len(candidates) > 1:
+            ctx.append_finding(
+                FindingSpec(
+                    code="ambiguous_reference",
+                    source=source,
+                    reference=reference,
+                    candidates=tuple(candidates),
+                )
+            )
+            return
+
+        target = candidates[0]
+        self._add_link(reference, source, target, ctx)
+
+    def _add_link(
+        self,
+        reference: ReferenceCandidate,
+        source: GraphNode,
+        target: GraphNode,
+        ctx: _ResolutionContext,
+    ) -> None:
+        relationship = reference.relationship or relationship_for_reference(
+            reference.hint,
+            target.type,
+        )
+        link_source, link_target = (
+            (target.id, source.id)
+            if reference.reverse
+            else (source.id, target.id)
+        )
+        semantic_key = (
+            link_source,
+            link_target,
+            relationship,
+            reference.origin,
+        )
+        if semantic_key in ctx.seen_links:
+            return
+        ctx.seen_links.add(semantic_key)
+
+        metadata = {
+            "reference": reference.value,
+            "hint": reference.hint,
+            "origin": reference.origin,
+        }
+        if reference.expected_type:
+            metadata["expectedType"] = reference.expected_type
+
+        ctx.result.links.append(
+            GraphLink(
+                id=_stable_id(
+                    "link",
+                    source.snapshotId,
+                    link_source,
+                    link_target,
+                    relationship,
+                    reference.origin,
+                ),
+                source=link_source,
+                target=link_target,
+                relationship=relationship,
+                confidence="high",
+                metadata=metadata,
+            )
+        )
 
     def _build_index(self) -> dict[tuple[str, str], list[GraphNode]]:
         index: dict[tuple[str, str], list[GraphNode]] = {}
