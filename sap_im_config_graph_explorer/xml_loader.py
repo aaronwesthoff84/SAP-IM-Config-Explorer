@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import defusedxml.ElementTree as DefusedET
+from defusedxml.common import DefusedXmlException
+
 from sap_im_config_graph_explorer.models import SourceProfile
 
 
@@ -70,8 +73,8 @@ def load_xml_text(raw_text: str | bytes, source_file: str) -> XmlDocument:
     if not raw_text.strip():
         raise XmlLoadError(f"Empty XML file: {source_file}")
     try:
-        root = ET.fromstring(raw_text)
-    except ET.ParseError as exc:
+        root = DefusedET.fromstring(raw_text)
+    except (ET.ParseError, DefusedXmlException) as exc:
         raise XmlLoadError(f"Malformed XML in {source_file}: {exc}") from exc
     namespace_uri, root_name = _qualified_name(root.tag)
     if root_name != "DATA_IMPORT":
