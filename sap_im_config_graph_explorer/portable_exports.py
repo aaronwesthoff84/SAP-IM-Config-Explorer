@@ -122,11 +122,7 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
     return document
 
 
-def validate_graph_document(document: GraphDocument) -> None:
-    """Validate the mutable dataclass contract before a portable serialization."""
-    if getattr(document, "_validated", False):
-        return
-
+def _validate_document_header(document: GraphDocument) -> GraphTopology:
     if not isinstance(document, GraphDocument):
         raise PortableGraphExportError("Portable exports require a GraphDocument.")
     if document.schemaVersion != GRAPH_SCHEMA_VERSION:
@@ -162,9 +158,12 @@ def validate_graph_document(document: GraphDocument) -> None:
         raise PortableGraphExportError(
             f"Unsupported graph provenance origin: {document.provenance.origin}"
         )
+    return topology
 
+
+def _validate_snapshots(snapshots: Sequence[Snapshot]) -> set[str]:
     snapshot_ids: set[str] = set()
-    for snapshot in document.snapshots:
+    for snapshot in snapshots:
         if not isinstance(snapshot, Snapshot):
             raise PortableGraphExportError("snapshots must contain only objects.")
         _non_empty_model_string(snapshot.id, "snapshot.id")
@@ -213,10 +212,18 @@ def validate_graph_document(document: GraphDocument) -> None:
                 )
             profile_files.add(profile.sourceFile)
         _json_value(snapshot.to_dict(), "snapshot")
+    return snapshot_ids
 
+
+def _validate_nodes(
+    nodes: Sequence[GraphNode],
+    topology: GraphTopology,
+    topology_mode: str,
+    snapshot_ids: set[str],
+) -> tuple[set[str], dict[str, str]]:
     node_ids: set[str] = set()
     node_snapshot_ids: dict[str, str] = {}
-    for node in document.nodes:
+    for node in nodes:
         if not isinstance(node, GraphNode):
             raise PortableGraphExportError("nodes must contain only objects.")
         _non_empty_model_string(node.id, "node.id")
@@ -224,7 +231,7 @@ def validate_graph_document(document: GraphDocument) -> None:
             raise PortableGraphExportError(f"Unsupported graph node type: {node.type}")
         if node.type not in topology.node_types:
             raise PortableGraphExportError(
-                f"Node type {node.type} is not allowed in {document.topologyMode} topology."
+                f"Node type {node.type} is not allowed in {topology_mode} topology."
             )
         if node.id in node_ids:
             raise PortableGraphExportError(f"Duplicate graph node ID: {node.id}")
@@ -247,9 +254,18 @@ def validate_graph_document(document: GraphDocument) -> None:
         if not isinstance(node.metadata, dict):
             raise PortableGraphExportError(f"node metadata for {node.id} must be an object.")
         _json_value(node.metadata, f"node metadata for {node.id}")
+    return node_ids, node_snapshot_ids
 
+
+def _validate_links(
+    links: Sequence[GraphLink],
+    topology: GraphTopology,
+    topology_mode: str,
+    node_ids: set[str],
+    node_snapshot_ids: dict[str, str],
+) -> None:
     link_ids: set[str] = set()
-    for link in document.links:
+    for link in links:
         if not isinstance(link, GraphLink):
             raise PortableGraphExportError("links must contain only objects.")
         _non_empty_model_string(link.id, "link.id")
@@ -260,7 +276,7 @@ def validate_graph_document(document: GraphDocument) -> None:
         if link.relationship not in topology.relationship_types:
             raise PortableGraphExportError(
                 f"Relationship {link.relationship} is not allowed in "
-                f"{document.topologyMode} topology."
+                f"{topology_mode} topology."
             )
         if link.confidence not in CONFIDENCE_LEVELS:
             raise PortableGraphExportError(
@@ -283,8 +299,15 @@ def validate_graph_document(document: GraphDocument) -> None:
             raise PortableGraphExportError(f"link metadata for {link.id} must be an object.")
         _json_value(link.metadata, f"link metadata for {link.id}")
 
+
+def _validate_findings(
+    findings: Sequence[ValidationFinding],
+    snapshot_ids: set[str],
+    node_ids: set[str],
+    node_snapshot_ids: dict[str, str],
+) -> None:
     finding_ids: set[str] = set()
-    for finding in document.findings:
+    for finding in findings:
         if not isinstance(finding, ValidationFinding):
             raise PortableGraphExportError("findings must contain only objects.")
         _non_empty_model_string(finding.id, "finding.id")
@@ -320,12 +343,18 @@ def validate_graph_document(document: GraphDocument) -> None:
         if not isinstance(finding.details, dict):
             raise PortableGraphExportError(f"finding details for {finding.id} must be an object.")
         _json_value(finding.details, f"finding details for {finding.id}")
-    if document.migrationRisk is not None:
-        if not isinstance(document.migrationRisk, MigrationRiskReport):
+
+
+def _validate_migration_risk(
+    migration_risk: MigrationRiskReport | None,
+    node_ids: set[str],
+) -> None:
+    if migration_risk is not None:
+        if not isinstance(migration_risk, MigrationRiskReport):
             raise PortableGraphExportError("migrationRisk must be an object.")
-        if not _finite_number(document.migrationRisk.score):
+        if not _finite_number(migration_risk.score):
             raise PortableGraphExportError("migrationRisk.score must be a finite number.")
-        for factor in document.migrationRisk.factors:
+        for factor in migration_risk.factors:
             if not isinstance(factor, MigrationRiskFactor):
                 raise PortableGraphExportError(
                     "migrationRisk.factors must contain only objects."
@@ -343,7 +372,26 @@ def validate_graph_document(document: GraphDocument) -> None:
                     raise PortableGraphExportError(
                         f"Migration risk factor {factor.code} references unknown node IDs."
                     )
-        _json_value(document.migrationRisk.to_dict(), "migration risk report")
+        _json_value(migration_risk.to_dict(), "migration risk report")
+
+
+def validate_graph_document(document: GraphDocument) -> None:
+    """Validate the mutable dataclass contract before a portable serialization."""
+    if getattr(document, "_validated", False):
+        return
+
+    topology = _validate_document_header(document)
+    snapshot_ids = _validate_snapshots(document.snapshots)
+    node_ids, node_snapshot_ids = _validate_nodes(
+        document.nodes, topology, document.topologyMode, snapshot_ids
+    )
+    _validate_links(
+        document.links, topology, document.topologyMode, node_ids, node_snapshot_ids
+    )
+    _validate_findings(
+        document.findings, snapshot_ids, node_ids, node_snapshot_ids
+    )
+    _validate_migration_risk(document.migrationRisk, node_ids)
     document._validated = True
 
 
