@@ -88,7 +88,7 @@ class ValidationEngine:
         duplicate_groups: dict[tuple[str, str], list[GraphNode]],
     ) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
-        for (snapshot_id, canonical_key), members in sorted(duplicate_groups.items()):
+        for (snapshot_id, canonical_key), members in duplicate_groups.items():
             if len(members) < 2:
                 continue
             ordered_members = sorted(members, key=lambda node: node.id)
