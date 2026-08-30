@@ -8,8 +8,11 @@ from fastapi.testclient import TestClient
 
 from sap_im_config_graph_explorer.app import app
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder
+from xml.etree import ElementTree as ET
+
 from sap_im_config_graph_explorer.xml_loader import (
     XmlLoadError,
+    _build_paths,
     load_xml_file,
     load_xml_text,
 )
@@ -365,3 +368,34 @@ def test_graph_api_rejects_xxe_upload_safely() -> None:
     assert response.status_code == 400
     assert "Malformed XML in exploit.xml:" in response.json()["error"]
     assert "EntitiesForbidden" in response.json()["error"]
+
+
+def test_build_paths_single_root_element() -> None:
+    root = ET.fromstring("<DATA_IMPORT />")
+    paths = _build_paths(root)
+    assert len(paths) == 1
+    assert paths[id(root)] == "/DATA_IMPORT[1]"
+
+
+def test_build_paths_identical_and_mixed_siblings() -> None:
+    root = ET.fromstring("<ITEM><A/><A/><B/><A/></ITEM>")
+    paths = _build_paths(root)
+    children = list(root)
+    assert len(paths) == 5
+    assert paths[id(root)] == "/ITEM[1]"
+    assert paths[id(children[0])] == "/ITEM[1]/A[1]"
+    assert paths[id(children[1])] == "/ITEM[1]/A[2]"
+    assert paths[id(children[2])] == "/ITEM[1]/B[1]"
+    assert paths[id(children[3])] == "/ITEM[1]/A[3]"
+
+
+def test_build_paths_deeply_nested_structure() -> None:
+    root = ET.fromstring("<ROOT><PARENT><CHILD><SUB/></CHILD></PARENT></ROOT>")
+    paths = _build_paths(root)
+    parent = root[0]
+    child = parent[0]
+    sub = child[0]
+    assert paths[id(root)] == "/ROOT[1]"
+    assert paths[id(parent)] == "/ROOT[1]/PARENT[1]"
+    assert paths[id(child)] == "/ROOT[1]/PARENT[1]/CHILD[1]"
+    assert paths[id(sub)] == "/ROOT[1]/PARENT[1]/CHILD[1]/SUB[1]"
