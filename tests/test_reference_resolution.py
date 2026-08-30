@@ -96,3 +96,19 @@ def test_snapshot_ids_must_be_unique():
                 SnapshotInput("same", "production", []),
             ]
         )
+
+
+def test_normalize_identity_and_normalize_ref_handle_none_empty_and_edge_cases():
+    from sap_im_config_graph_explorer.object_extractors.common import normalize_identity
+    from sap_im_config_graph_explorer.reference_resolver import normalize_ref
+
+    assert normalize_identity(None) == ""
+    assert normalize_identity("") == ""
+    assert normalize_identity("   ") == ""
+    assert normalize_identity("  Plan A : Component/1  ") == "plan-a:component-1"
+    assert normalize_identity("Formula_Name! @2026") == "formula-name-2026"
+
+    assert normalize_ref(None) == ""
+    assert normalize_ref("") == ""
+    assert normalize_ref("   ") == ""
+    assert normalize_ref("  Test Ref  ") == "test-ref"

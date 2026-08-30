@@ -63,7 +63,9 @@ RELATIONSHIP_BY_TYPE = {
 }
 
 
-def normalize_identity(value: str) -> str:
+def normalize_identity(value: str | None) -> str:
+    if not value:
+        return ""
     segments = value.split(":")
     return ":".join(
         re.sub(r"[^a-z0-9]+", "-", segment.strip().lower()).strip("-")
