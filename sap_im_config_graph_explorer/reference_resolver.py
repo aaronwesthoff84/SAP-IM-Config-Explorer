@@ -23,17 +23,81 @@ class ResolutionResult:
 
 
 @dataclass
+class FindingSpec:
+    code: str
+    source: GraphNode
+    reference: ReferenceCandidate
+    candidates: tuple[GraphNode, ...] = ()
+
+
+@dataclass
+class _ResolutionContext:
+    result: ResolutionResult = field(default_factory=ResolutionResult)
+    seen_links: set[tuple[str, str, str, str]] = field(default_factory=set)
+    seen_findings: set[tuple[str, str, str, str]] = field(default_factory=set)
+
+    def append_finding(self, spec: FindingSpec) -> None:
+        semantic_key = (
+            spec.code,
+            spec.source.id,
+            spec.reference.value.casefold(),
+            spec.reference.origin,
+        )
+        if semantic_key in self.seen_findings:
+            return
+        self.seen_findings.add(semantic_key)
+
+        candidate_ids = tuple(candidate.id for candidate in spec.candidates)
+        expected = spec.reference.expected_type or "graph object"
+        if spec.code == "missing_reference":
+            message = f"Missing {expected} reference: {spec.reference.value}"
+        else:
+            message = f"Ambiguous {expected} reference: {spec.reference.value}"
+        self.result.findings.append(
+            ValidationFinding(
+                id=_stable_id(
+                    "finding",
+                    spec.source.snapshotId,
+                    spec.source.id,
+                    spec.code,
+                    spec.reference.value,
+                    spec.reference.origin,
+                    *candidate_ids,
+                ),
+                code=spec.code,
+                severity="error",
+                snapshotId=spec.source.snapshotId,
+                nodeIds=(spec.source.id, *candidate_ids),
+                message=message,
+                details={
+                    "reference": spec.reference.value,
+                    "hint": spec.reference.hint,
+                    "origin": spec.reference.origin,
+                    **(
+                        {"expectedType": spec.reference.expected_type}
+                        if spec.reference.expected_type
+                        else {}
+                    ),
+                    **(
+                        {"candidateNodeIds": list(candidate_ids)}
+                        if candidate_ids
+                        else {}
+                    ),
+                },
+            )
+        )
+
+
+@dataclass
 class ReferenceResolver:
     nodes: list[GraphNode]
     references: list[ReferenceCandidate]
     node_id_by_element: dict[int, str]
 
     def resolve(self) -> ResolutionResult:
-        result = ResolutionResult()
+        ctx = _ResolutionContext()
         index = self._build_index()
         node_by_id = {node.id: node for node in self.nodes}
-        seen_links: set[tuple[str, str, str, str]] = set()
-        seen_findings: set[tuple[str, str, str, str]] = set()
 
         for reference in self.references:
             source_id = self.node_id_by_element.get(id(reference.source_element))
@@ -43,23 +107,22 @@ class ReferenceResolver:
 
             candidates = self._candidates(reference, source.snapshotId, index)
             if not candidates:
-                self._append_finding(
-                    result,
-                    seen_findings,
-                    "missing_reference",
-                    source,
-                    reference,
-                    (),
+                ctx.append_finding(
+                    FindingSpec(
+                        code="missing_reference",
+                        source=source,
+                        reference=reference,
+                    )
                 )
                 continue
             if len(candidates) > 1:
-                self._append_finding(
-                    result,
-                    seen_findings,
-                    "ambiguous_reference",
-                    source,
-                    reference,
-                    tuple(candidates),
+                ctx.append_finding(
+                    FindingSpec(
+                        code="ambiguous_reference",
+                        source=source,
+                        reference=reference,
+                        candidates=tuple(candidates),
+                    )
                 )
                 continue
 
@@ -79,10 +142,10 @@ class ReferenceResolver:
                 relationship,
                 reference.origin,
             )
-            if semantic_key in seen_links:
+            if semantic_key in ctx.seen_links:
                 continue
-            seen_links.add(semantic_key)
-            result.links.append(
+            ctx.seen_links.add(semantic_key)
+            ctx.result.links.append(
                 GraphLink(
                     id=_stable_id(
                         "link",
@@ -109,7 +172,7 @@ class ReferenceResolver:
                 )
             )
 
-        return result
+        return ctx.result
 
     def build_links(self) -> list[GraphLink]:
         """Compatibility helper for callers that only need resolved links."""
@@ -147,65 +210,6 @@ class ReferenceResolver:
                 if candidate.type == reference.expected_type
             ]
         return sorted(candidates, key=lambda candidate: candidate.id)
-
-    @staticmethod
-    def _append_finding(
-        result: ResolutionResult,
-        seen: set[tuple[str, str, str, str]],
-        code: str,
-        source: GraphNode,
-        reference: ReferenceCandidate,
-        candidates: tuple[GraphNode, ...],
-    ) -> None:
-        semantic_key = (
-            code,
-            source.id,
-            reference.value.casefold(),
-            reference.origin,
-        )
-        if semantic_key in seen:
-            return
-        seen.add(semantic_key)
-
-        candidate_ids = tuple(candidate.id for candidate in candidates)
-        expected = reference.expected_type or "graph object"
-        if code == "missing_reference":
-            message = f"Missing {expected} reference: {reference.value}"
-        else:
-            message = f"Ambiguous {expected} reference: {reference.value}"
-        result.findings.append(
-            ValidationFinding(
-                id=_stable_id(
-                    "finding",
-                    source.snapshotId,
-                    source.id,
-                    code,
-                    reference.value,
-                    reference.origin,
-                    *candidate_ids,
-                ),
-                code=code,
-                severity="error",
-                snapshotId=source.snapshotId,
-                nodeIds=(source.id, *candidate_ids),
-                message=message,
-                details={
-                    "reference": reference.value,
-                    "hint": reference.hint,
-                    "origin": reference.origin,
-                    **(
-                        {"expectedType": reference.expected_type}
-                        if reference.expected_type
-                        else {}
-                    ),
-                    **(
-                        {"candidateNodeIds": list(candidate_ids)}
-                        if candidate_ids
-                        else {}
-                    ),
-                },
-            )
-        )
 
 
 def _stable_id(prefix: str, *parts: str) -> str:
