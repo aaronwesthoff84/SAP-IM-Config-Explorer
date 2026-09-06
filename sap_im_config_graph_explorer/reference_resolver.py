@@ -214,7 +214,7 @@ def _stable_id(prefix: str, *parts: str) -> str:
     return f"{prefix}-{digest}"
 
 
-def normalize_ref(value: str) -> str:
+def normalize_ref(value: str | None) -> str:
     return normalize_identity(value)
 
 
