@@ -169,6 +169,56 @@ relationshipFilter.addEventListener("change", renderGraph);
 confidenceFilter.addEventListener("change", renderGraph);
 effectiveDateFilter.addEventListener("input", renderGraph);
 clearFiltersButton.addEventListener("click", clearAllFilters);
+
+function navigateToHtmlSectionForNode(node) {
+  if (!state.html) {
+    setStatus("HTML representation unavailable: No HTML generated yet.");
+    return;
+  }
+  if (node.sourceFile !== state.html.inputName) {
+    setStatus(`HTML representation unavailable: Node is in file '${node.sourceFile}', but HTML was generated for '${state.html.inputName}'.`);
+    return;
+  }
+
+  const anchors = getHtmlAnchorsForNode(node);
+  if (anchors.length === 0) {
+    setStatus(`HTML representation unavailable for ${node.type}: ${node.label}`);
+    return;
+  }
+
+  switchWorkspace("html-output-view");
+  const anchor = anchors[0];
+  const preview = document.getElementById("html-output-preview");
+  const doc = preview.contentDocument || preview.contentWindow.document;
+  if (doc) {
+    const element = doc.getElementsByName(anchor)[0] || doc.getElementById(anchor);
+    if (element) {
+      element.scrollIntoView({ block: "start", behavior: "smooth" });
+      setStatus(`Navigated to HTML section for ${node.label}`);
+    } else {
+      setStatus(`HTML representation unavailable: Anchor '${anchor}' not found in preview.`);
+    }
+  }
+}
+
+findingsEl.addEventListener("click", (event) => {
+  const btn = event.target.closest(".finding-action-btn");
+  if (!btn) return;
+  const nodeId = btn.dataset.nodeId;
+  const node = state.graph.nodes.find((n) => n.id === nodeId);
+  if (!node) return;
+
+  if (btn.classList.contains("go-to-node")) {
+    selectAndFocusNode(node);
+    switchWorkspace("graph-view");
+  } else if (btn.classList.contains("view-xml")) {
+    selectAndFocusNode(node);
+  } else if (btn.classList.contains("view-html")) {
+    selectAndFocusNode(node);
+    navigateToHtmlSectionForNode(node);
+  }
+});
+
 document.getElementById("lineage-back-button").addEventListener("click", () => switchWorkspace("graph-view"));
 topologySelect.addEventListener("change", () => {
   if (npFileInput.files.length || pFileInput.files.length) {
@@ -337,12 +387,109 @@ async function convertHtml(file, variant) {
   };
 }
 
+window.sapImExplorer_navigateToGraphNode = (type, label) => {
+  if (!state.graph || !state.graph.nodes) {
+    setStatus("Graph representation unavailable: No graph generated yet.");
+    return;
+  }
+
+  const sourceFile = state.html ? state.html.inputName : null;
+  let node = state.graph.nodes.find(
+    (n) => n.type === type && n.label === label && (!sourceFile || n.sourceFile === sourceFile)
+  );
+
+  if (!node) {
+    node = state.graph.nodes.find((n) => n.type === type && n.label === label);
+  }
+
+  if (!node) {
+    setStatus(`Graph representation unavailable for ${type}: ${label}`);
+    return;
+  }
+
+  selectAndFocusNode(node);
+  switchWorkspace("graph-view");
+  setStatus(`Navigated to graph node for ${label}`);
+};
+
+function enhanceHtmlPreviewForGraphNavigation(preview) {
+  const doc = preview.contentDocument || preview.contentWindow.document;
+  if (!doc) return;
+
+  const style = doc.createElement("style");
+  style.textContent = `
+    .view-in-graph-link {
+      color: var(--forest-green, #2e7d32);
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .view-in-graph-link:hover {
+      color: var(--light-green, #81c784);
+      text-decoration: underline;
+    }
+    .view-in-graph-entry-link {
+      color: var(--forest-green, #2e7d32);
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 6px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .view-in-graph-entry-link:hover {
+      color: var(--light-green, #81c784);
+      text-decoration: underline;
+    }
+  `;
+  doc.head.appendChild(style);
+
+  doc.querySelectorAll("section[data-object-type][data-object-label]").forEach((section) => {
+    const type = section.getAttribute("data-object-type");
+    const label = section.getAttribute("data-object-label");
+    const heading = section.querySelector("h1, h2, h3");
+    if (heading) {
+      const link = doc.createElement("a");
+      link.className = "view-in-graph-link";
+      link.textContent = "[View in Graph]";
+      link.href = "#";
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetWindow = window.parent.sapImExplorer_navigateToGraphNode ? window.parent : window;
+        targetWindow.sapImExplorer_navigateToGraphNode(type, label);
+      });
+      heading.appendChild(link);
+    }
+  });
+
+  doc.querySelectorAll("span[data-object-entry='true'][data-object-type][data-object-label]").forEach((entry) => {
+    const type = entry.getAttribute("data-object-type");
+    const label = entry.getAttribute("data-object-label");
+    const link = doc.createElement("a");
+    link.className = "view-in-graph-entry-link";
+    link.textContent = "[Graph]";
+    link.href = "#";
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      const targetWindow = window.parent.sapImExplorer_navigateToGraphNode ? window.parent : window;
+      targetWindow.sapImExplorer_navigateToGraphNode(type, label);
+    });
+    entry.appendChild(link);
+  });
+}
+
 function renderHtmlOutput() {
   const output = state.html;
   const preview = document.getElementById("html-output-preview");
   const download = document.getElementById("html-output-download");
   const meta = document.getElementById("html-output-meta");
-  preview.onload = () => enableHtmlPreviewAnchors(preview);
+  preview.onload = () => {
+    enableHtmlPreviewAnchors(preview);
+    enhanceHtmlPreviewForGraphNavigation(preview);
+  };
 
   if (!output) {
     preview.srcdoc = emptyHtmlOutputMessage();
@@ -678,12 +825,35 @@ function renderFindings(findings) {
   const errorCount = findings.filter((finding) => finding.severity === "error").length;
   const warningCount = findings.filter((finding) => finding.severity === "warning").length;
   const summary = `${errorCount} error${errorCount === 1 ? "" : "s"}, ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
-  const items = findings.map((finding) => `
-    <li class="finding ${escapeHtml(finding.severity || "warning")}">
-      <strong class="finding-title">${escapeHtml(finding.code || "validation finding")}</strong>
-      <p class="finding-message">${escapeHtml(finding.message || "No message supplied.")}</p>
-    </li>
-  `).join("");
+  const items = findings.map((finding) => {
+    let actionButtons = '';
+    if (finding.nodeIds && finding.nodeIds.length > 0) {
+      const linksHtml = finding.nodeIds.map((nodeId) => {
+        const node = state.graph.nodes.find((n) => n.id === nodeId);
+        if (!node) return '';
+        return `
+          <div class="finding-node-links" style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11px; font-weight: bold; color: var(--text);">${escapeHtml(node.label)} (${escapeHtml(node.type)}):</div>
+            <div class="button-row" style="margin-top: 4px; display: flex; gap: 4px;">
+              <button class="finding-action-btn go-to-node" data-node-id="${escapeHtml(node.id)}" type="button" style="padding: 2px 6px; font-size: 11px; cursor: pointer;">Go to Node</button>
+              <button class="finding-action-btn view-xml" data-node-id="${escapeHtml(node.id)}" type="button" style="padding: 2px 6px; font-size: 11px; cursor: pointer;">View XML</button>
+              <button class="finding-action-btn view-html" data-node-id="${escapeHtml(node.id)}" type="button" style="padding: 2px 6px; font-size: 11px; cursor: pointer;">View HTML</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      if (linksHtml) {
+        actionButtons = `<div class="finding-actions" style="margin-top: 6px;">${linksHtml}</div>`;
+      }
+    }
+    return `
+      <li class="finding ${escapeHtml(finding.severity || "warning")}">
+        <strong class="finding-title">${escapeHtml(finding.code || "validation finding")}</strong>
+        <p class="finding-message">${escapeHtml(finding.message || "No message supplied.")}</p>
+        ${actionButtons}
+      </li>
+    `;
+  }).join("");
 
   findingsEl.innerHTML = `<p class="findings-summary">${escapeHtml(summary)}</p><ul class="findings-list">${items}</ul>`;
 }
@@ -749,6 +919,77 @@ function topologyLabel(topologyMode) {
   return topologyMode === "full" ? "Full" : "Core";
 }
 
+function getHtmlAnchorsForNode(node) {
+  let anchors = [];
+  if (!state.graph || !state.graph.nodes) return [];
+  const nodesById = new Map(state.graph.nodes.map((item) => [item.id, item]));
+  const links = state.graph.links || [];
+
+  if (node.type === "Plan") {
+    anchors = [`${node.label}-plan`];
+  } else if (node.type === "PlanComponent") {
+    const planLinks = links.filter(
+      (link) => link.relationship === "belongs_to_plan" && link.source === node.id
+    );
+    if (planLinks.length > 0) {
+      anchors = planLinks.map((link) => {
+        const plan = nodesById.get(link.target);
+        const planLabel = plan ? plan.label : "";
+        return `${node.label}-plan-${planLabel}`;
+      });
+    }
+  } else if (node.type === "Rule") {
+    const componentLinks = links.filter(
+      (link) => link.relationship === "belongs_to_plan_component" && link.source === node.id
+    );
+    componentLinks.forEach((cLink) => {
+      const comp = nodesById.get(cLink.target);
+      if (comp) {
+        const planLinks = links.filter(
+          (link) => link.relationship === "belongs_to_plan" && link.source === comp.id
+        );
+        if (planLinks.length > 0) {
+          planLinks.forEach((pLink) => {
+            const plan = nodesById.get(pLink.target);
+            if (plan) {
+              anchors.push(`${node.label}-rule-${comp.label}-${plan.label}`);
+            }
+          });
+        }
+      }
+    });
+  } else if (["Formula", "Variable", "LookupTable", "FixedValue", "Quota", "Territory"].includes(node.type)) {
+    const suffix = {
+      Formula: "-formula",
+      Variable: "-var",
+      LookupTable: "-mdlt",
+      FixedValue: "-fv",
+      Quota: "-quota",
+      Territory: "-terr",
+    }[node.type];
+    anchors = [`${node.label}${suffix}`];
+  }
+  return anchors.sort((a, b) => a.localeCompare(b));
+}
+
+function selectAndFocusNode(node) {
+  if (!state.cy) return;
+  const cyNode = state.cy.getElementById(node.id);
+  if (cyNode && cyNode.length > 0) {
+    state.cy.elements().unselect();
+    cyNode.select();
+    highlightDependencies(cyNode);
+    showNodeDetails(node);
+    state.cy.animate({
+      center: { eles: cyNode },
+      zoom: Math.max(state.cy.zoom(), 1.2),
+      duration: 500,
+    });
+  } else {
+    showNodeDetails(node);
+  }
+}
+
 function showNodeDetails(node) {
   if (node.type === "Rule") {
     state.selectedRule = { id: node.id, snapshotId: node.snapshotId };
@@ -760,11 +1001,41 @@ function showNodeDetails(node) {
   const riskFactor = state.graph.migrationRisk?.factors?.find((f) => f.nodeIds?.includes(node.id));
   const riskHtml = riskFactor ? `<dt>Migration risk</dt><dd class="risk-factor ${riskFactor.severity}"><strong>${riskFactor.code}</strong>: ${riskFactor.message}</dd>` : "";
 
+  // Get HTML anchors and generate HTML links
+  let htmlLinksHtml = "";
+  if (!state.html) {
+    htmlLinksHtml = '<span style="color: var(--muted-text); font-style: italic;">Unavailable (HTML not generated)</span>';
+  } else if (node.sourceFile !== state.html.inputName) {
+    htmlLinksHtml = `<span style="color: var(--muted-text); font-style: italic;" title="This node belongs to '${escapeHtml(node.sourceFile)}', but HTML is generated for '${escapeHtml(state.html.inputName)}'">Unavailable (File mismatch)</span>`;
+  } else {
+    const anchors = getHtmlAnchorsForNode(node);
+    if (anchors.length === 0) {
+      htmlLinksHtml = '<span style="color: var(--muted-text); font-style: italic;">Unavailable (No HTML section)</span>';
+    } else {
+      htmlLinksHtml = anchors.map((anchor) => {
+        let label = "View in HTML";
+        if (node.type === "Rule" || node.type === "PlanComponent") {
+          const parts = anchor.split("-");
+          if (node.type === "Rule" && parts.length >= 4) {
+            const planName = parts[parts.length - 1];
+            const compName = parts[parts.length - 2];
+            label = `View in HTML (under ${escapeHtml(compName)} / ${escapeHtml(planName)})`;
+          } else if (node.type === "PlanComponent" && parts.length >= 3) {
+            const planName = parts[parts.length - 1];
+            label = `View in HTML (under ${escapeHtml(planName)})`;
+          }
+        }
+        return `<button class="view-html-anchor-btn" data-anchor="${escapeHtml(anchor)}" type="button" style="display: block; margin-top: 4px; text-align: left; padding: 4px 8px; font-size: 12px; cursor: pointer; width: 100%;">${label}</button>`;
+      }).join("");
+    }
+  }
+
   summaryEl.innerHTML = `
     <dt>Name</dt><dd>${escapeHtml(node.label)}</dd>
     ${riskHtml}
     <dt>Type</dt><dd>${escapeHtml(node.type)}</dd>
     ${node.type === "Rule" ? '<dt>Lineage</dt><dd><button id="open-lineage-button" type="button">Open lineage</button></dd>' : ""}
+    <dt>HTML Preview</dt><dd>${htmlLinksHtml}</dd>
     <dt>Associated plans</dt><dd>${escapeHtml(hierarchy.plans.join(", ") || "None")}</dd>
     <dt>Associated plan components</dt><dd>${escapeHtml(hierarchy.components.join(", ") || "None")}</dd>
     <dt>Associated rules</dt><dd>${escapeHtml(hierarchy.rules.join(", ") || "None")}</dd>
@@ -774,6 +1045,25 @@ function showNodeDetails(node) {
   `;
   rawXmlEl.textContent = node.rawXml || "";
   document.getElementById("open-lineage-button")?.addEventListener("click", () => openRuleLineage(node));
+
+  // Add listeners for any HTML preview anchor buttons inside the summary
+  summaryEl.querySelectorAll(".view-html-anchor-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const anchor = btn.dataset.anchor;
+      switchWorkspace("html-output-view");
+      const preview = document.getElementById("html-output-preview");
+      const doc = preview.contentDocument || preview.contentWindow.document;
+      if (doc) {
+        const element = doc.getElementsByName(anchor)[0] || doc.getElementById(anchor);
+        if (element) {
+          element.scrollIntoView({ block: "start", behavior: "smooth" });
+          setStatus(`Navigated to HTML section for ${node.label}`);
+        } else {
+          setStatus(`HTML representation unavailable: Anchor '${anchor}' not found in preview.`);
+        }
+      }
+    });
+  });
 }
 
 function clearSelectedRule() {
