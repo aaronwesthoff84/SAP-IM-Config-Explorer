@@ -526,6 +526,80 @@ pre {
   z-index: 1;
 }
 
+.session-controls {
+  margin-bottom: 24px;
+}
+
+.session-explanation {
+  background: var(--surface-muted);
+  border: 1px solid var(--warning-amber);
+  border-left-width: 4px;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.session-explanation p {
+  margin: 0 0 6px 0;
+  line-height: 1.4;
+}
+
+.session-explanation p:last-child {
+  margin-bottom: 0;
+}
+
+.session-message-box {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.session-message-box.error {
+  border-color: var(--alert-red);
+}
+
+.session-message-box.success {
+  border-color: var(--light-green);
+}
+
+.saved-sessions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.session-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-background);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.session-item-name {
+  font-weight: 700;
+  margin-bottom: 6px;
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.session-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.session-item-actions button {
+  min-height: 28px;
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
 @media (max-width: 980px) {
   .topbar {
     align-items: flex-start;

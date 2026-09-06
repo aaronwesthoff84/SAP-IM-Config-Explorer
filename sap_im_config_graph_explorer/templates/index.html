@@ -57,6 +57,23 @@
         </div>
       </form>
 
+      <h2>Sessions</h2>
+      <div class="session-controls">
+        <label>
+          <span>Session Name</span>
+          <input id="session-name-input" type="text" placeholder="e.g. My Session">
+        </label>
+        <button type="button" id="save-session-button" class="secondary" style="width: 100%; margin-bottom: 12px;">Save Session</button>
+        <div id="session-message-box" class="session-message-box" aria-live="polite" hidden></div>
+        <div id="session-explanation" class="session-explanation" hidden>
+          <p><strong>Note:</strong> Original XML files must be reselected when restoring a session on a new reload or if the files are cleared.</p>
+          <p id="required-files-list"></p>
+        </div>
+        <ul id="saved-sessions-list" class="saved-sessions-list">
+          <!-- Dynamically populated -->
+        </ul>
+      </div>
+
       <h2>Filters</h2>
       <label>
         <span>Search</span>
