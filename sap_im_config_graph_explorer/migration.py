@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sap_im_config_graph_explorer.models import (
     GraphDocument,
+    GraphNode,
     MigrationRiskFactor,
     MigrationRiskReport,
 )
@@ -10,6 +11,11 @@ from sap_im_config_graph_explorer.models import (
 HIGH_RISK_WEIGHT = 40.0
 MEDIUM_RISK_WEIGHT = 10.0
 LOW_RISK_WEIGHT = 2.0
+CONTAINMENT_RELATIONS = {
+    "belongs_to_plan",
+    "belongs_to_plan_component",
+    "parent_child",
+}
 
 
 class MigrationRiskEngine:
@@ -79,7 +85,6 @@ class MigrationRiskEngine:
     def _analyze_structural_changes(
         self, doc: GraphDocument, np_id: str, p_id: str
     ) -> list[MigrationRiskFactor]:
-        factors: list[MigrationRiskFactor] = []
         nodes_by_id = {node.id: node for node in doc.nodes}
         np_nodes_by_key = {
             node.canonicalKey: node for node in doc.nodes if node.snapshotId == np_id
@@ -88,9 +93,29 @@ class MigrationRiskEngine:
             node.canonicalKey: node for node in doc.nodes if node.snapshotId == p_id
         }
 
-        np_links = [l for l in doc.links if nodes_by_id.get(l.source) and nodes_by_id[l.source].snapshotId == np_id]
-        p_links = [l for l in doc.links if nodes_by_id.get(l.source) and nodes_by_id[l.source].snapshotId == p_id]
+        np_link_set, p_link_set = self._extract_link_sets(doc, np_id, p_id, nodes_by_id)
 
+        factors: list[MigrationRiskFactor] = []
+        factors.extend(
+            self._analyze_containment_changes(
+                np_link_set, p_link_set, np_nodes_by_key, p_nodes_by_key
+            )
+        )
+        factors.extend(
+            self._analyze_missing_relationships(
+                np_link_set, p_link_set, np_nodes_by_key, p_nodes_by_key
+            )
+        )
+
+        return factors
+
+    def _extract_link_sets(
+        self,
+        doc: GraphDocument,
+        np_id: str,
+        p_id: str,
+        nodes_by_id: dict[str, GraphNode],
+    ) -> tuple[set[tuple[str, str, str]], set[tuple[str, str, str]]]:
         def link_key(link):
             src = nodes_by_id.get(link.source)
             tgt = nodes_by_id.get(link.target)
@@ -98,23 +123,63 @@ class MigrationRiskEngine:
                 return None
             return (src.canonicalKey, tgt.canonicalKey, link.relationship)
 
+        np_links = [
+            l
+            for l in doc.links
+            if nodes_by_id.get(l.source)
+            and nodes_by_id[l.source].snapshotId == np_id
+        ]
+        p_links = [
+            l
+            for l in doc.links
+            if nodes_by_id.get(l.source)
+            and nodes_by_id[l.source].snapshotId == p_id
+        ]
+
         np_link_set = {link_key(l) for l in np_links} - {None}
         p_link_set = {link_key(l) for l in p_links} - {None}
 
-        containment_rels = {"belongs_to_plan", "belongs_to_plan_component", "parent_child"}
+        return np_link_set, p_link_set
 
-        # Changed Containment
-        def group_containment_targets(link_keys):
-            grouped: dict[tuple[str, str], set[str]] = {}
-            for source_key, target_key, relationship in link_keys:
-                if relationship in containment_rels:
-                    grouped.setdefault((source_key, relationship), set()).add(
-                        target_key
-                    )
-            return grouped
+    def _group_containment_targets(
+        self, link_keys: set[tuple[str, str, str]]
+    ) -> dict[tuple[str, str], set[str]]:
+        grouped: dict[tuple[str, str], set[str]] = {}
+        for source_key, target_key, relationship in link_keys:
+            if relationship in CONTAINMENT_RELATIONS:
+                grouped.setdefault((source_key, relationship), set()).add(
+                    target_key
+                )
+        return grouped
 
-        np_containment = group_containment_targets(np_link_set)
-        p_containment = group_containment_targets(p_link_set)
+    def _format_containment_change(
+        self, added_labels: list[str], removed_labels: list[str]
+    ) -> str:
+        if len(removed_labels) == 1 and len(added_labels) == 1:
+            return f"moved from '{removed_labels[0]}' to '{added_labels[0]}'"
+        if added_labels and not removed_labels:
+            noun = "parent" if len(added_labels) == 1 else "parents"
+            labels = ", ".join(f"'{label}'" for label in added_labels)
+            return f"added {noun} {labels}"
+        if removed_labels and not added_labels:
+            noun = "parent" if len(removed_labels) == 1 else "parents"
+            labels = ", ".join(f"'{label}'" for label in removed_labels)
+            return f"removed {noun} {labels}"
+
+        removed = ", ".join(f"'{label}'" for label in removed_labels)
+        added = ", ".join(f"'{label}'" for label in added_labels)
+        return f"changed parents: removed {removed}; added {added}"
+
+    def _analyze_containment_changes(
+        self,
+        np_link_set: set[tuple[str, str, str]],
+        p_link_set: set[tuple[str, str, str]],
+        np_nodes_by_key: dict[str, GraphNode],
+        p_nodes_by_key: dict[str, GraphNode],
+    ) -> list[MigrationRiskFactor]:
+        factors: list[MigrationRiskFactor] = []
+        np_containment = self._group_containment_targets(np_link_set)
+        p_containment = self._group_containment_targets(p_link_set)
         containment_keys = sorted(set(np_containment) | set(p_containment))
 
         for sk, relationship in containment_keys:
@@ -140,21 +205,7 @@ class MigrationRiskEngine:
             message_prefix = (
                 f"{child_node.type} '{child_node.label}' containment via {relationship}"
             )
-
-            if len(removed_labels) == 1 and len(added_labels) == 1:
-                change = f"moved from '{removed_labels[0]}' to '{added_labels[0]}'"
-            elif added_labels and not removed_labels:
-                noun = "parent" if len(added_labels) == 1 else "parents"
-                labels = ", ".join(f"'{label}'" for label in added_labels)
-                change = f"added {noun} {labels}"
-            elif removed_labels and not added_labels:
-                noun = "parent" if len(removed_labels) == 1 else "parents"
-                labels = ", ".join(f"'{label}'" for label in removed_labels)
-                change = f"removed {noun} {labels}"
-            else:
-                removed = ", ".join(f"'{label}'" for label in removed_labels)
-                added = ", ".join(f"'{label}'" for label in added_labels)
-                change = f"changed parents: removed {removed}; added {added}"
+            change = self._format_containment_change(added_labels, removed_labels)
 
             factors.append(
                 MigrationRiskFactor(
@@ -166,9 +217,18 @@ class MigrationRiskEngine:
                 )
             )
 
-        # Missing Relationships (existed in P, gone in NP for an existing object)
+        return factors
+
+    def _analyze_missing_relationships(
+        self,
+        np_link_set: set[tuple[str, str, str]],
+        p_link_set: set[tuple[str, str, str]],
+        np_nodes_by_key: dict[str, GraphNode],
+        p_nodes_by_key: dict[str, GraphNode],
+    ) -> list[MigrationRiskFactor]:
+        factors: list[MigrationRiskFactor] = []
         for (sk, tk, r) in p_link_set:
-            if r in containment_rels:
+            if r in CONTAINMENT_RELATIONS:
                 continue
 
             if sk in np_nodes_by_key and (sk, tk, r) not in np_link_set:
