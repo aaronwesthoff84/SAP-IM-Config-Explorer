@@ -19,7 +19,7 @@ jobs:
             const labels = {
               'state:idea':'d4c5f9','state:needs-details':'fbca04','state:ready':'0e8a16','state:in-progress':'1d76db',
               'state:waiting-owner':'d93f0b','state:blocked':'b60205','state:ready-to-merge':'5319e7','state:done':'8250df',
-              'agent:jules':'7057ff','jules':'7057ff','owner:approved':'0e8a16','automation:paused':'b60205',
+              'agent:jules':'7057ff','jules':'7057ff','codex':'0075ca','owner:approved':'0e8a16','automation:paused':'b60205',
               'automation:repair-1':'fbca04','automation:repair-2':'d93f0b',
               'risk:low':'0e8a16','risk:medium':'fbca04','risk:high':'b60205',
               'area:graph-model':'c5def5','area:xml-parser':'c5def5','area:html-output':'c5def5','area:web-ui':'c5def5',

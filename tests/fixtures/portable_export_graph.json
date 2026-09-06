@@ -1,6 +1,10 @@
 {
-  "schemaVersion": "1.2",
+  "schemaVersion": "1.3",
   "topologyMode": "core",
+  "provenance": {
+    "origin": "xml",
+    "fileName": null
+  },
   "snapshots": [
     {
       "id": "production",
@@ -162,7 +166,7 @@
     "factors": [
       {
         "code": "missing_relationship",
-        "severity": "warning",
+        "severity": "medium",
         "message": "Review north plan",
         "weight": 3.5,
         "nodeIds": ["plan-configuration", "plan-production"]

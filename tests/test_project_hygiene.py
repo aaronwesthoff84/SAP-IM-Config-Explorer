@@ -51,6 +51,7 @@ def test_jules_automation_contract_files_exist():
         ".github/workflows/ci.yml",
         ".github/workflows/codeql.yml",
         ".github/workflows/dependency-review.yml",
+        ".github/workflows/jules-pr-label.yml",
         "playwright.config.ts",
         "tests/e2e/app-smoke.spec.ts",
     ]
@@ -65,6 +66,19 @@ def test_jules_automation_contract_files_exist():
         "Do not hide or suppress failures",
     ):
         assert required_text in agents
+
+
+def test_jules_pr_label_workflow_marks_jules_prs_for_codex():
+    workflow = (ROOT / ".github/workflows/jules-pr-label.yml").read_text(encoding="utf-8")
+    bootstrap = (ROOT / ".github/workflows/jules-bootstrap.yml").read_text(encoding="utf-8")
+    docs = (ROOT / "docs/JULES_AUTOMATION.md").read_text(encoding="utf-8")
+
+    assert "types: [opened]" in workflow
+    assert "Closes|Fixes|Resolves" in workflow
+    assert "agent:jules" in workflow
+    assert "labels: ['codex']" in workflow
+    assert "'codex':'0075ca'" in bootstrap
+    assert "Jules PR Label" in docs
 
 
 def test_workflows_use_safe_pull_request_permissions():

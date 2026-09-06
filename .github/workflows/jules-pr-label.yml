@@ -1,0 +1,42 @@
+name: Jules PR Label
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+            const match = (pr.body || '').match(/(?:Closes|Fixes|Resolves)\s+#(\d+)/i);
+            if (!match) {
+              core.notice('PR does not link to a primary Issue with Closes, Fixes, or Resolves.');
+              return;
+            }
+
+            const issueNumber = Number(match[1]);
+            const {data: issue} = await github.rest.issues.get({owner, repo, issue_number: issueNumber});
+            const issueLabels = issue.labels.map(label => label.name);
+            if (!issueLabels.includes('agent:jules') && !issueLabels.includes('jules')) {
+              core.notice('Linked Issue is not Jules-managed.');
+              return;
+            }
+
+            const repositoryLabels = await github.paginate(github.rest.issues.listLabelsForRepo, {owner, repo, per_page: 100});
+            if (!repositoryLabels.some(label => label.name === 'codex')) {
+              await github.rest.issues.createLabel({owner, repo, name: 'codex', color: '0075ca'}).catch(error => {
+                if (error.status !== 422) throw error;
+              });
+            }
+            await github.rest.issues.addLabels({owner, repo, issue_number: pr.number, labels: ['codex']});
+            core.notice(`Applied codex label to Jules PR #${pr.number}.`);

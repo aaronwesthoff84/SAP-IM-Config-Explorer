@@ -55,6 +55,9 @@ The generated HTML sorts named objects alphabetically, without changing the disp
 6. Hover or click an edge to inspect its relationship.
 7. Click an export action to download the complete current graph in JSON, CSV, Markdown, or GraphML.
 
+Alternatively, select a local `.json` file with `Import Graph JSON` to reopen a
+previous lossless Graph JSON export without reprocessing its source XML files.
+
 ## Graph Topologies
 
 Core is the default topology and preserves the plan hierarchy:
@@ -104,12 +107,16 @@ Reference resolution is scoped to a snapshot. A name in a production snapshot ca
 
 ## Graph JSON Contract
 
-The current schema version is `1.2`. Version `1.2` adds `topologyMode` so every graph identifies whether Core or Full produced it. Version `1.1` added ordered per-file compatibility evidence under each snapshot's `sourceProfiles`. See [XML Compatibility Matrix](docs/compatibility-matrix.md) for the supported encodings, namespace behavior, and sanitized regression profiles.
+The current schema version is `1.3`. Version `1.3` adds top-level `provenance` so the workspace can distinguish a graph generated from selected XML from one reopened from a local Graph JSON file. Version `1.2` added `topologyMode` so every graph identifies whether Core or Full produced it. Version `1.1` added ordered per-file compatibility evidence under each snapshot's `sourceProfiles`. See [XML Compatibility Matrix](docs/compatibility-matrix.md) for the supported encodings, namespace behavior, and sanitized regression profiles.
 
 ```json
 {
-  "schemaVersion": "1.2",
+  "schemaVersion": "1.3",
   "topologyMode": "core | full",
+  "provenance": {
+    "origin": "xml | imported",
+    "fileName": null
+  },
   "snapshots": [
     {
       "id": "configuration",
@@ -183,6 +190,28 @@ references_integration, parent_child, unknown_reference
 ```
 
 Missing and ambiguous references are emitted as structured findings. They do not create placeholder graph nodes or links with non-node endpoints.
+
+### Graph JSON import and migrations
+
+Graph JSON import is local-only. It accepts one `.json` file up to 25 MiB and
+rejects documents above 50,000 nodes, 100,000 links, or 50,000 findings. The
+importer validates every contract field, enum value, identifier, snapshot
+membership, link endpoint, finding reference, topology constraint, migration-risk
+value, and provenance value before replacing the current in-memory workspace. It
+does not edit the selected file, infer missing objects, create placeholder nodes,
+or send graph content outside the workstation.
+
+Every older schema found in repository history has an explicit deterministic
+migration:
+
+- `1.0 -> 1.1`: add `sourceProfiles: []` to each snapshot.
+- `1.1 -> 1.2`: add `topologyMode: "core"`, matching the historical default.
+- `1.2 -> 1.3`: add `provenance: {"origin": "xml", "fileName": null}`.
+
+Migrations run in that order, never alter snapshot, node, link, or finding
+identity, and perform no other repair. After validation, the in-memory imported
+document records `provenance.origin` as `imported` and `provenance.fileName` as
+the selected local JSON basename. Unsupported future schemas are rejected.
 
 ## Portable Graph Exports
 

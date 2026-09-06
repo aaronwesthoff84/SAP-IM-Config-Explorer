@@ -123,7 +123,9 @@ const statusEl = document.getElementById("status");
 const themeToggle = document.getElementById("theme-toggle");
 const npFileInput = document.getElementById("np-xml-files");
 const pFileInput = document.getElementById("p-xml-files");
+const graphJsonInput = document.getElementById("graph-json-file");
 const topologySelect = document.getElementById("topology-mode");
+const workspaceOriginEl = document.getElementById("workspace-origin");
 const graphEl = document.getElementById("graph");
 const lineageGraphEl = document.getElementById("lineage-graph");
 const lineageTab = document.getElementById("lineage-tab");
@@ -151,6 +153,7 @@ document.getElementById("export-button").addEventListener("click", () => exportG
 document.getElementById("export-csv-button").addEventListener("click", () => exportGraph("csv"));
 document.getElementById("export-markdown-button").addEventListener("click", () => exportGraph("markdown"));
 document.getElementById("export-graphml-button").addEventListener("click", () => exportGraph("graphml"));
+graphJsonInput.addEventListener("change", requestGraphImport);
 themeToggle.addEventListener("click", toggleTheme);
 searchInput.addEventListener("input", renderGraphAndHtmlOutput);
 typeFilter.addEventListener("change", renderGraphAndHtmlOutput);
@@ -226,14 +229,68 @@ async function generateGraph() {
   if (requestId !== latestGraphRequestId) return;
   if (!response.ok) return setStatus(payload.error || "Graph generation failed.");
 
+  loadGraphWorkspace(payload);
+  setStatus(graphStatus(payload));
+}
+
+function requestGraphImport() {
+  importGraphJson().catch((error) => {
+    const detail = error instanceof Error && error.message
+      ? error.message
+      : "Unexpected local Graph JSON import error.";
+    setStatus(`Graph JSON import failed: ${detail}`);
+  });
+}
+
+async function importGraphJson() {
+  const file = graphJsonInput.files[0];
+  if (!file) return;
+  const requestId = ++latestGraphRequestId;
+  const formData = new FormData();
+  formData.append("file", file);
+  setStatus(`Importing ${file.name}...`);
+  try {
+    const response = await fetch("/api/import/graph-json", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = await response.json();
+    if (requestId !== latestGraphRequestId) return;
+    if (!response.ok) {
+      return setStatus(`Graph JSON import failed: ${payload.error || "Invalid Graph JSON file."}`);
+    }
+    loadGraphWorkspace(payload);
+    switchWorkspace("graph-view");
+    setStatus(`Imported ${payload.provenance.fileName}. ${graphStatus(payload)}`);
+  } finally {
+    graphJsonInput.value = "";
+  }
+}
+
+function loadGraphWorkspace(payload) {
   state.graph = payload;
+  topologySelect.value = payload.topologyMode;
   clearSelectedRule();
   destroyLineageRenderer();
+  resetDetails();
   populateFilterControls(payload);
   renderFindings(payload.findings || []);
   renderRiskReport(payload.migrationRisk);
+  renderWorkspaceOrigin(payload.provenance);
   renderGraph();
-  setStatus(graphStatus(payload));
+}
+
+function renderWorkspaceOrigin(provenance) {
+  const imported = provenance?.origin === "imported";
+  workspaceOriginEl.dataset.origin = imported ? "imported" : "xml";
+  workspaceOriginEl.textContent = imported
+    ? `Imported JSON: ${provenance.fileName}`
+    : "Generated from selected XML";
+}
+
+function resetDetails() {
+  summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
+  rawXmlEl.textContent = "";
 }
 
 async function generateHtml() {

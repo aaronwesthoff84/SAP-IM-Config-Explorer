@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-GRAPH_SCHEMA_VERSION = "1.2"
+GRAPH_SCHEMA_VERSION = "1.3"
 SNAPSHOT_ROLES = {"configuration", "non_production", "production"}
 FINDING_SEVERITIES = {"error", "warning", "info"}
+MIGRATION_RISK_SEVERITIES = {"high", "medium", "low"}
+GRAPH_PROVENANCE_ORIGINS = {"xml", "imported"}
 
 NODE_TYPES = {
     "FixedValue",
@@ -212,6 +214,12 @@ class MigrationRiskFactor:
     weight: float
     nodeIds: tuple[str, ...] = field(default_factory=tuple)
 
+    def __post_init__(self) -> None:
+        if self.severity not in MIGRATION_RISK_SEVERITIES:
+            raise ValueError(
+                f"Unsupported migration risk severity: {self.severity}"
+            )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
@@ -234,6 +242,23 @@ class MigrationRiskReport:
         }
 
 
+@dataclass(frozen=True)
+class GraphProvenance:
+    origin: str = "xml"
+    fileName: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.origin not in GRAPH_PROVENANCE_ORIGINS:
+            raise ValueError(f"Unsupported graph provenance origin: {self.origin}")
+        if self.origin == "xml" and self.fileName is not None:
+            raise ValueError("XML graph provenance must not include a JSON filename.")
+        if self.origin == "imported" and not self.fileName:
+            raise ValueError("Imported graph provenance requires a JSON filename.")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"origin": self.origin, "fileName": self.fileName}
+
+
 @dataclass
 class GraphDocument:
     snapshots: list[Snapshot] = field(default_factory=list)
@@ -243,6 +268,7 @@ class GraphDocument:
     migrationRisk: MigrationRiskReport | None = None
     schemaVersion: str = GRAPH_SCHEMA_VERSION
     topologyMode: str = "core"
+    provenance: GraphProvenance = field(default_factory=GraphProvenance)
 
     def __post_init__(self) -> None:
         if self.topologyMode not in TOPOLOGY_MODES:
@@ -252,6 +278,7 @@ class GraphDocument:
         data = {
             "schemaVersion": self.schemaVersion,
             "topologyMode": self.topologyMode,
+            "provenance": self.provenance.to_dict(),
             "snapshots": [snapshot.to_dict() for snapshot in self.snapshots],
             "nodes": [node.to_dict() for node in self.nodes],
             "links": [link.to_dict() for link in self.links],

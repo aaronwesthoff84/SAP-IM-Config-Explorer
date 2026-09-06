@@ -5,6 +5,7 @@ from sap_im_config_graph_explorer.models import (
     GraphDocument,
     GraphLink,
     GraphNode,
+    GraphProvenance,
     Snapshot,
     SourceProfile,
     ValidationFinding,
@@ -44,8 +45,9 @@ def test_versioned_graph_contract_serializes_snapshot_identity_and_findings():
         snapshots=[snapshot], nodes=[node], links=[link], findings=[finding]
     ).to_dict()
 
-    assert payload["schemaVersion"] == GRAPH_SCHEMA_VERSION == "1.2"
+    assert payload["schemaVersion"] == GRAPH_SCHEMA_VERSION == "1.3"
     assert payload["topologyMode"] == "core"
+    assert payload["provenance"] == {"origin": "xml", "fileName": None}
     assert payload["snapshots"][0]["role"] == "non_production"
     assert payload["nodes"][0]["canonicalKey"] == "formula:eligibility"
     assert payload["links"][0]["id"] == "link-1"
@@ -62,3 +64,17 @@ def test_source_profile_rejects_encoding_outside_the_public_contract():
         )
 
     assert str(exc_info.value) == "Unsupported source profile encoding: utf-16"
+
+
+def test_imported_provenance_requires_a_local_json_filename():
+    assert GraphProvenance(origin="imported", fileName="saved.json").to_dict() == {
+        "origin": "imported",
+        "fileName": "saved.json",
+    }
+
+    with pytest.raises(ValueError) as exc_info:
+        GraphProvenance(origin="imported")
+
+    assert str(exc_info.value) == (
+        "Imported graph provenance requires a JSON filename."
+    )

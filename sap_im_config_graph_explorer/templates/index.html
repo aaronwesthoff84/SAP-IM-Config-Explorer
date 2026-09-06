@@ -10,6 +10,7 @@
   <header class="topbar">
     <h1>SAP IM Config Explorer</h1>
     <div class="topbar-actions">
+      <div id="workspace-origin" class="workspace-origin" role="status" aria-live="polite">No graph loaded</div>
       <div id="status" class="status">Ready</div>
       <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
     </div>
@@ -26,6 +27,10 @@
         <label class="file-picker">
           <span>Production XML (optional)</span>
           <input id="p-xml-files" name="p_files" type="file" accept=".xml,application/xml,text/xml" multiple>
+        </label>
+        <label class="file-picker">
+          <span>Import Graph JSON</span>
+          <input id="graph-json-file" name="file" type="file" accept=".json,application/json">
         </label>
         <label>
           <span>Graph topology</span>
