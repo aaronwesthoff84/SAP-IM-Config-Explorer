@@ -12,6 +12,8 @@ A ready Issue includes a `## Goal`, `## Scope`, and `## Acceptance criteria` sec
 
 The dispatcher is controlled by the repository variable `JULES_AUTOMATION_ENABLED`. Use `/pause` and `/resume` from an owner-authored Issue or PR comment to change it.
 
+When Jules opens a pull request, `Jules PR Label` verifies that the PR links to a Jules-managed Issue and applies the `codex` label to the PR. The workflow creates the label if it does not already exist, and the bootstrap workflow also includes it for future repository setup.
+
 ## Risk and merge policy
 
 Low- and medium-risk Jules pull requests become auto-merge eligible only after `validation`, `e2e`, `codeql`, and `dependency-review` succeed. High-risk work requires `/approve` from `@aaronwesthoff84`.

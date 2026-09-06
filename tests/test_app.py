@@ -32,6 +32,9 @@ def test_index_uses_project_name():
     assert 'data-view="html-output-view"' in response.text
     assert 'id="html-output-preview"' in response.text
     assert 'id="theme-toggle"' in response.text
+    assert 'id="graph-json-file"' in response.text
+    assert 'id="workspace-origin"' in response.text
+    assert 'accept=".json,application/json"' in response.text
     assert "Generate HTML" in response.text
 
 
@@ -115,8 +118,9 @@ def test_graph_endpoint_accepts_multiple_uploads():
     payload = response.json()
     assert payload["nodes"]
     assert {node["sourceFile"] for node in payload["nodes"]} == {"first.xml", "second.xml"}
-    assert payload["schemaVersion"] == "1.2"
+    assert payload["schemaVersion"] == "1.3"
     assert payload["topologyMode"] == "core"
+    assert payload["provenance"] == {"origin": "xml", "fileName": None}
     assert payload["snapshots"] == [
         {
             "id": "configuration",
@@ -291,7 +295,15 @@ def test_html_endpoint_returns_generated_html():
 
 def test_export_graph_json_endpoint_returns_downloadable_json():
     client = TestClient(app)
-    graph = {"nodes": [], "links": []}
+    graph = {
+        "schemaVersion": "1.3",
+        "topologyMode": "core",
+        "provenance": {"origin": "xml", "fileName": None},
+        "snapshots": [],
+        "nodes": [],
+        "links": [],
+        "findings": [],
+    }
 
     response = client.post("/api/export/graph-json", json=graph)
 
@@ -299,6 +311,19 @@ def test_export_graph_json_endpoint_returns_downloadable_json():
     assert response.headers["content-type"].startswith("application/json")
     assert "attachment" in response.headers["content-disposition"]
     assert response.json() == graph
+
+
+def test_export_graph_json_endpoint_rejects_payloads_outside_the_contract():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/export/graph-json", json={"nodes": [], "links": []}
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": "Graph export payload is missing required field: findings."
+    }
 
 
 def test_graph_endpoint_reports_malformed_xml():

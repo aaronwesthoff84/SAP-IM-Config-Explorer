@@ -8,6 +8,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from sap_im_config_graph_explorer import graph_import
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
 from sap_im_config_graph_explorer.migration import MigrationRiskEngine
 from sap_im_config_graph_explorer.models import ConversionResult, TOPOLOGY_MODES
@@ -128,9 +129,27 @@ async def graph(
         raise HTTPException(status_code=500, detail=f"Graph generation failed: {exc}") from exc
 
 
+@app.post("/api/import/graph-json")
+async def import_graph_json(file: UploadFile = File(...)) -> dict[str, object]:
+    filename = file.filename or "upload.json"
+    try:
+        safe_filename = graph_import.validate_graph_json_filename(filename)
+        content = await file.read(graph_import.MAX_GRAPH_JSON_BYTES + 1)
+        document = graph_import.import_graph_document_bytes(content, safe_filename)
+    except graph_import.GraphDocumentImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return document.to_dict()
+
+
 @app.post("/api/export/graph-json")
 async def export_graph_json(payload: dict[str, object]) -> Response:
-    body = json.dumps(payload, indent=2)
+    document = _portable_graph_document(payload)
+    body = json.dumps(
+        document.to_dict(),
+        ensure_ascii=False,
+        indent=2,
+        allow_nan=False,
+    )
     return Response(
         content=body,
         media_type="application/json",

@@ -62,7 +62,7 @@ test('loads a namespace-qualified profile without widening the graph allowlist',
   }));
 
   expect(graphEvidence).toEqual({
-    schemaVersion: '1.2',
+    schemaVersion: '1.3',
     sourceProfiles: [{
       sourceFile: 'namespace_profile.xml',
       encoding: 'utf-8',

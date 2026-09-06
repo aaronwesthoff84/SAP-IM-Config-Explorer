@@ -423,6 +423,7 @@ def test_exported_graph_json_matches_expected_schema():
     assert set(reloaded) == {
         "schemaVersion",
         "topologyMode",
+        "provenance",
         "snapshots",
         "nodes",
         "links",

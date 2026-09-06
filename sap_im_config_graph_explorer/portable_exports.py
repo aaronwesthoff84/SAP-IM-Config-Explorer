@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
@@ -15,6 +16,7 @@ from sap_im_config_graph_explorer.models import (
     FINDING_SEVERITIES,
     GRAPH_SCHEMA_VERSION,
     GRAPH_TOPOLOGIES,
+    MIGRATION_RISK_SEVERITIES,
     NODE_TYPES,
     RELATIONSHIP_TYPES,
     SNAPSHOT_ROLES,
@@ -22,6 +24,7 @@ from sap_im_config_graph_explorer.models import (
     GraphDocument,
     GraphLink,
     GraphNode,
+    GraphProvenance,
     MigrationRiskFactor,
     MigrationRiskReport,
     Snapshot,
@@ -80,11 +83,26 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
     """
 
     data = _mapping(payload, "Graph export payload")
+    _keys(
+        data,
+        "Graph export payload",
+        required={
+            "schemaVersion",
+            "topologyMode",
+            "provenance",
+            "snapshots",
+            "nodes",
+            "links",
+            "findings",
+        },
+        optional={"migrationRisk"},
+    )
     snapshots = [_snapshot_from_payload(item) for item in _list(data, "snapshots")]
     nodes = [_node_from_payload(item) for item in _list(data, "nodes")]
     links = [_link_from_payload(item) for item in _list(data, "links")]
     findings = [_finding_from_payload(item) for item in _list(data, "findings")]
     migration_risk = _migration_risk_from_payload(data.get("migrationRisk"))
+    provenance = _graph_provenance_from_payload(data.get("provenance"))
 
     try:
         document = GraphDocument(
@@ -95,6 +113,7 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
             links=links,
             findings=findings,
             migrationRisk=migration_risk,
+            provenance=provenance,
         )
     except ValueError as exc:
         raise PortableGraphExportError(str(exc)) from exc
@@ -117,9 +136,36 @@ def validate_graph_document(document: GraphDocument) -> None:
             f"Unsupported topology mode: {document.topologyMode}"
         )
     topology = GRAPH_TOPOLOGIES[document.topologyMode]
+    if not isinstance(document.provenance, GraphProvenance):
+        raise PortableGraphExportError("provenance must be an object.")
+    if document.provenance.origin == "xml":
+        if document.provenance.fileName is not None:
+            raise PortableGraphExportError(
+                "XML graph provenance must not include a JSON filename."
+            )
+    elif document.provenance.origin == "imported":
+        if not document.provenance.fileName:
+            raise PortableGraphExportError(
+                "Imported graph provenance requires a JSON filename."
+            )
+        if (
+            document.provenance.fileName != document.provenance.fileName.replace("\\", "/").split("/")[-1]
+            or not document.provenance.fileName.lower().endswith(".json")
+            or any(ord(character) < 32 for character in document.provenance.fileName)
+        ):
+            raise PortableGraphExportError(
+                "Imported graph provenance contains an unsafe JSON filename."
+            )
+    else:
+        raise PortableGraphExportError(
+            f"Unsupported graph provenance origin: {document.provenance.origin}"
+        )
 
     snapshot_ids: set[str] = set()
     for snapshot in document.snapshots:
+        if not isinstance(snapshot, Snapshot):
+            raise PortableGraphExportError("snapshots must contain only objects.")
+        _non_empty_model_string(snapshot.id, "snapshot.id")
         if snapshot.id in snapshot_ids:
             raise PortableGraphExportError(f"Duplicate snapshot ID: {snapshot.id}")
         snapshot_ids.add(snapshot.id)
@@ -127,11 +173,51 @@ def validate_graph_document(document: GraphDocument) -> None:
             raise PortableGraphExportError(
                 f"Unsupported snapshot role: {snapshot.role}"
             )
+        if not isinstance(snapshot.sourceFiles, list) or not all(
+            isinstance(source_file, str) for source_file in snapshot.sourceFiles
+        ):
+            raise PortableGraphExportError(
+                "snapshot.sourceFiles must contain only strings."
+            )
+        if len(snapshot.sourceFiles) != len(set(snapshot.sourceFiles)):
+            raise PortableGraphExportError(
+                f"Snapshot {snapshot.id} has duplicate sourceFiles."
+            )
+        if not isinstance(snapshot.sourceProfiles, list):
+            raise PortableGraphExportError(
+                "snapshot.sourceProfiles must be an array."
+            )
+        profile_files: set[str] = set()
+        for profile in snapshot.sourceProfiles:
+            if not isinstance(profile, SourceProfile):
+                raise PortableGraphExportError(
+                    "snapshot.sourceProfiles must contain only objects."
+                )
+            _model_string(profile.sourceFile, "source profile.sourceFile")
+            _model_string(profile.encoding, "source profile.encoding")
+            if profile.namespaceUri is not None:
+                _model_string(profile.namespaceUri, "source profile.namespaceUri")
+            if profile.exportVersion is not None:
+                _model_string(profile.exportVersion, "source profile.exportVersion")
+            if profile.sourceFile not in snapshot.sourceFiles:
+                raise PortableGraphExportError(
+                    f"Snapshot {snapshot.id} source profile references unknown file: "
+                    f"{profile.sourceFile}"
+                )
+            if profile.sourceFile in profile_files:
+                raise PortableGraphExportError(
+                    f"Snapshot {snapshot.id} has duplicate source profile for: "
+                    f"{profile.sourceFile}"
+                )
+            profile_files.add(profile.sourceFile)
         _json_value(snapshot.to_dict(), "snapshot")
 
     node_ids: set[str] = set()
     node_snapshot_ids: dict[str, str] = {}
     for node in document.nodes:
+        if not isinstance(node, GraphNode):
+            raise PortableGraphExportError("nodes must contain only objects.")
+        _non_empty_model_string(node.id, "node.id")
         if node.type not in NODE_TYPES:
             raise PortableGraphExportError(f"Unsupported graph node type: {node.type}")
         if node.type not in topology.node_types:
@@ -146,10 +232,25 @@ def validate_graph_document(document: GraphDocument) -> None:
             raise PortableGraphExportError(
                 f"Graph node {node.id} references unknown snapshot: {node.snapshotId}"
             )
+        for field_name in (
+            "canonicalKey",
+            "snapshotId",
+            "label",
+            "type",
+            "sourceFile",
+            "xmlPath",
+            "rawXml",
+        ):
+            _model_string(getattr(node, field_name), f"node.{field_name}")
+        if not isinstance(node.metadata, dict):
+            raise PortableGraphExportError(f"node metadata for {node.id} must be an object.")
         _json_value(node.metadata, f"node metadata for {node.id}")
 
     link_ids: set[str] = set()
     for link in document.links:
+        if not isinstance(link, GraphLink):
+            raise PortableGraphExportError("links must contain only objects.")
+        _non_empty_model_string(link.id, "link.id")
         if link.relationship not in RELATIONSHIP_TYPES:
             raise PortableGraphExportError(
                 f"Unsupported graph relationship: {link.relationship}"
@@ -174,10 +275,17 @@ def validate_graph_document(document: GraphDocument) -> None:
             raise PortableGraphExportError(
                 f"Graph link {link.id} crosses snapshot boundaries."
             )
+        for field_name in ("source", "target", "relationship", "confidence"):
+            _model_string(getattr(link, field_name), f"link.{field_name}")
+        if not isinstance(link.metadata, dict):
+            raise PortableGraphExportError(f"link metadata for {link.id} must be an object.")
         _json_value(link.metadata, f"link metadata for {link.id}")
 
     finding_ids: set[str] = set()
     for finding in document.findings:
+        if not isinstance(finding, ValidationFinding):
+            raise PortableGraphExportError("findings must contain only objects.")
+        _non_empty_model_string(finding.id, "finding.id")
         if finding.severity not in FINDING_SEVERITIES:
             raise PortableGraphExportError(
                 f"Unsupported finding severity: {finding.severity}"
@@ -201,8 +309,38 @@ def validate_graph_document(document: GraphDocument) -> None:
                 raise PortableGraphExportError(
                     f"Validation finding {finding.id} crosses snapshot boundaries."
                 )
+        for field_name in ("code", "severity", "snapshotId", "message"):
+            _model_string(getattr(finding, field_name), f"finding.{field_name}")
+        if not isinstance(finding.nodeIds, tuple) or not all(
+            isinstance(node_id, str) for node_id in finding.nodeIds
+        ):
+            raise PortableGraphExportError("finding.nodeIds must contain only strings.")
+        if not isinstance(finding.details, dict):
+            raise PortableGraphExportError(f"finding details for {finding.id} must be an object.")
         _json_value(finding.details, f"finding details for {finding.id}")
     if document.migrationRisk is not None:
+        if not isinstance(document.migrationRisk, MigrationRiskReport):
+            raise PortableGraphExportError("migrationRisk must be an object.")
+        if not _finite_number(document.migrationRisk.score):
+            raise PortableGraphExportError("migrationRisk.score must be a finite number.")
+        for factor in document.migrationRisk.factors:
+            if not isinstance(factor, MigrationRiskFactor):
+                raise PortableGraphExportError(
+                    "migrationRisk.factors must contain only objects."
+                )
+            if factor.severity not in MIGRATION_RISK_SEVERITIES:
+                raise PortableGraphExportError(
+                    f"Unsupported migration risk severity: {factor.severity}"
+                )
+            if not _finite_number(factor.weight):
+                raise PortableGraphExportError(
+                    "migration risk factor weight must be a finite number."
+                )
+            for node_id in factor.nodeIds:
+                if node_id not in node_ids:
+                    raise PortableGraphExportError(
+                        f"Migration risk factor {factor.code} references unknown node IDs."
+                    )
         _json_value(document.migrationRisk.to_dict(), "migration risk report")
 
 
@@ -520,6 +658,7 @@ def _findings_payload(document: GraphDocument) -> list[dict[str, Any]]:
 
 def _provenance(document: GraphDocument) -> dict[str, Any]:
     provenance: dict[str, Any] = {
+        **document.provenance.to_dict(),
         "sourceProfiles": [
             {"snapshotId": snapshot.id, "profiles": _source_profiles(snapshot)}
             for snapshot in _sorted_snapshots(document)
@@ -700,6 +839,26 @@ def _mapping(value: object, name: str) -> Mapping[str, Any]:
     return value
 
 
+def _keys(
+    data: Mapping[str, Any],
+    name: str,
+    *,
+    required: set[str],
+    optional: set[str] | None = None,
+) -> None:
+    optional = optional or set()
+    missing = sorted(required - set(data))
+    if missing:
+        raise PortableGraphExportError(
+            f"{name} is missing required field: {missing[0]}."
+        )
+    unexpected = sorted(set(data) - required - optional)
+    if unexpected:
+        raise PortableGraphExportError(
+            f"{name} contains unsupported field: {unexpected[0]}."
+        )
+
+
 def _list(data: Mapping[str, Any], name: str) -> list[Any]:
     value = data.get(name)
     if not isinstance(value, list):
@@ -730,10 +889,20 @@ def _object(data: Mapping[str, Any], name: str) -> dict[str, Any]:
 
 def _snapshot_from_payload(value: object) -> Snapshot:
     data = _mapping(value, "snapshot")
+    _keys(
+        data,
+        "snapshot",
+        required={"id", "role", "sourceFiles", "sourceProfiles"},
+    )
     try:
         profiles = []
         for profile_value in _list(data, "sourceProfiles"):
             profile = _mapping(profile_value, "source profile")
+            _keys(
+                profile,
+                "source profile",
+                required={"sourceFile", "encoding", "namespaceUri", "exportVersion"},
+            )
             profiles.append(
                 SourceProfile(
                     sourceFile=_string(profile, "sourceFile"),
@@ -754,6 +923,21 @@ def _snapshot_from_payload(value: object) -> Snapshot:
 
 def _node_from_payload(value: object) -> GraphNode:
     data = _mapping(value, "node")
+    _keys(
+        data,
+        "node",
+        required={
+            "id",
+            "canonicalKey",
+            "snapshotId",
+            "label",
+            "type",
+            "sourceFile",
+            "xmlPath",
+            "rawXml",
+            "metadata",
+        },
+    )
     try:
         return GraphNode(
             id=_string(data, "id"),
@@ -772,6 +956,18 @@ def _node_from_payload(value: object) -> GraphNode:
 
 def _link_from_payload(value: object) -> GraphLink:
     data = _mapping(value, "link")
+    _keys(
+        data,
+        "link",
+        required={
+            "id",
+            "source",
+            "target",
+            "relationship",
+            "confidence",
+            "metadata",
+        },
+    )
     try:
         return GraphLink(
             id=_string(data, "id"),
@@ -787,6 +983,19 @@ def _link_from_payload(value: object) -> GraphLink:
 
 def _finding_from_payload(value: object) -> ValidationFinding:
     data = _mapping(value, "finding")
+    _keys(
+        data,
+        "finding",
+        required={
+            "id",
+            "code",
+            "severity",
+            "snapshotId",
+            "nodeIds",
+            "message",
+            "details",
+        },
+    )
     try:
         return ValidationFinding(
             id=_string(data, "id"),
@@ -805,25 +1014,48 @@ def _migration_risk_from_payload(value: object) -> MigrationRiskReport | None:
     if value is None:
         return None
     data = _mapping(value, "migrationRisk")
+    _keys(data, "migrationRisk", required={"score", "factors"})
     score = data.get("score")
-    if isinstance(score, bool) or not isinstance(score, (int, float)):
-        raise PortableGraphExportError("migrationRisk.score must be a number.")
+    if not _finite_number(score):
+        raise PortableGraphExportError("migrationRisk.score must be a finite number.")
     factors = []
     for item in _list(data, "factors"):
         factor = _mapping(item, "migration risk factor")
-        weight = factor.get("weight")
-        if isinstance(weight, bool) or not isinstance(weight, (int, float)):
-            raise PortableGraphExportError("migration risk factor weight must be a number.")
-        factors.append(
-            MigrationRiskFactor(
-                code=_string(factor, "code"),
-                severity=_string(factor, "severity"),
-                message=_string(factor, "message"),
-                weight=weight,
-                nodeIds=tuple(_string_list(factor, "nodeIds")),
-            )
+        _keys(
+            factor,
+            "migration risk factor",
+            required={"code", "severity", "message", "weight", "nodeIds"},
         )
+        weight = factor.get("weight")
+        if not _finite_number(weight):
+            raise PortableGraphExportError(
+                "migration risk factor weight must be a finite number."
+            )
+        try:
+            factors.append(
+                MigrationRiskFactor(
+                    code=_string(factor, "code"),
+                    severity=_string(factor, "severity"),
+                    message=_string(factor, "message"),
+                    weight=weight,
+                    nodeIds=tuple(_string_list(factor, "nodeIds")),
+                )
+            )
+        except ValueError as exc:
+            raise PortableGraphExportError(str(exc)) from exc
     return MigrationRiskReport(score=score, factors=factors)
+
+
+def _graph_provenance_from_payload(value: object) -> GraphProvenance:
+    data = _mapping(value, "provenance")
+    _keys(data, "provenance", required={"origin", "fileName"})
+    try:
+        return GraphProvenance(
+            origin=_string(data, "origin"),
+            fileName=_optional_string(data, "fileName"),
+        )
+    except ValueError as exc:
+        raise PortableGraphExportError(str(exc)) from exc
 
 
 def _optional_string(data: Mapping[str, Any], name: str) -> str | None:
@@ -836,5 +1068,24 @@ def _optional_string(data: Mapping[str, Any], name: str) -> str | None:
 def _json_value(value: object, name: str) -> None:
     try:
         json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
-    except (TypeError, ValueError) as exc:
+    except (RecursionError, TypeError, ValueError) as exc:
         raise PortableGraphExportError(f"{name} is not portable JSON: {exc}") from exc
+
+
+def _finite_number(value: object) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+    )
+
+
+def _model_string(value: object, name: str) -> None:
+    if not isinstance(value, str):
+        raise PortableGraphExportError(f"{name} must be a string.")
+
+
+def _non_empty_model_string(value: object, name: str) -> None:
+    _model_string(value, name)
+    if not value:
+        raise PortableGraphExportError(f"{name} must not be empty.")
