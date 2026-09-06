@@ -91,7 +91,7 @@ Provide one dependency-ordered execution list for the SAP IM Config Explorer bac
 - [ ] #41 Sandbox generated HTML and escape XML-derived content
 - [ ] #56 Make migration-risk weights configurable and show every object factor
 - [ ] #58 Upgrade Playwright past the affected 1.55.0 dev dependency
-- [ ] #31 Resolve the Starlette TestClient/httpx deprecation warning
+- [x] #31 Resolve the Starlette TestClient/httpx deprecation warning
 - [ ] #32 Number generic attributes in rendered action output
 - [ ] #51 Preserve duplicate objects in generated reports
 - [ ] #48 Support SAP XML namespaces, encodings, and version profiles

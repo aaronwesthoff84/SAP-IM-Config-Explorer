@@ -25,7 +25,7 @@ def test_dependency_versions_are_reproducible():
     ]
     assert _nonblank("requirements-dev.txt") == [
         "-r requirements.txt",
-        "httpx==0.28.1",
+        "httpx2==2.12.0",
         "pytest==9.1.1",
     ]
 
