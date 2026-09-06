@@ -625,25 +625,49 @@ function renderFindings(findings) {
 function renderRiskReport(risk) {
   if (!risk) {
     riskContainer.hidden = true;
-    riskReportEl.innerHTML = "";
+    riskReportEl.replaceChildren();
     return;
   }
 
   riskContainer.hidden = false;
   const severity = risk.score >= 70 ? "high" : risk.score >= 30 ? "medium" : "low";
-  const factors = (risk.factors || []).map((f) => `
-    <li class="risk-factor ${escapeHtml(f.severity)}">
-      <strong>${escapeHtml(f.code)}</strong> (Weight: ${f.weight}): ${escapeHtml(f.message)}
-    </li>
-  `).join("");
 
-  riskReportEl.innerHTML = `
-    <div class="risk-score-box">
-      <span class="risk-score-value ${severity}">${Math.round(risk.score)}</span>
-      <span class="risk-score-label">${severity.toUpperCase()} RISK</span>
-    </div>
-    <ul class="risk-factors-list">${factors}</ul>
-  `;
+  const scoreBoxEl = document.createElement("div");
+  scoreBoxEl.className = "risk-score-box";
+
+  const scoreValueEl = document.createElement("span");
+  scoreValueEl.className = `risk-score-value ${severity}`;
+  scoreValueEl.textContent = String(Math.round(risk.score));
+
+  const scoreLabelEl = document.createElement("span");
+  scoreLabelEl.className = "risk-score-label";
+  scoreLabelEl.textContent = `${severity.toUpperCase()} RISK`;
+
+  scoreBoxEl.append(scoreValueEl, scoreLabelEl);
+
+  const factorsListEl = document.createElement("ul");
+  factorsListEl.className = "risk-factors-list";
+
+  (risk.factors || []).forEach((f) => {
+    const factorLi = document.createElement("li");
+    factorLi.className = "risk-factor";
+    if (f.severity) {
+      factorLi.classList.add(f.severity);
+    }
+
+    const codeStrong = document.createElement("strong");
+    codeStrong.textContent = String(f.code ?? "");
+
+    factorLi.append(
+      codeStrong,
+      ` (Weight: ${f.weight ?? ""}): `,
+      String(f.message ?? "")
+    );
+
+    factorsListEl.appendChild(factorLi);
+  });
+
+  riskReportEl.replaceChildren(scoreBoxEl, factorsListEl);
 }
 
 function graphStatus(payload) {
