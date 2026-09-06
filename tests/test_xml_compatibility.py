@@ -312,3 +312,56 @@ def test_graph_api_reports_unsupported_encoding_with_filename() -> None:
     assert response.json() == {
         "error": "Unsupported XML encoding in legacy.xml: Windows-1252."
     }
+
+
+@pytest.mark.parametrize(
+    ("filename", "payload", "expected_exception_substring"),
+    [
+        (
+            "xxe.xml",
+            """<?xml version="1.0"?>
+<!DOCTYPE foo [
+  <!ELEMENT foo ANY >
+  <!ENTITY xxe SYSTEM "file:///etc/passwd" >]>
+<DATA_IMPORT>&xxe;</DATA_IMPORT>""",
+            "EntitiesForbidden",
+        ),
+        (
+            "billion-laughs.xml",
+            """<?xml version="1.0"?>
+<!DOCTYPE lolz [
+ <!ENTITY lol "lol">
+ <!ELEMENT lolz (#PCDATA)>
+ <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+]>
+<DATA_IMPORT>&lol1;</DATA_IMPORT>""",
+            "EntitiesForbidden",
+        ),
+    ],
+)
+def test_xxe_and_entity_expansions_are_rejected(
+    filename: str, payload: str, expected_exception_substring: str
+) -> None:
+    with pytest.raises(XmlLoadError) as exc_info:
+        load_xml_text(payload, filename)
+
+    assert f"Malformed XML in {filename}:" in str(exc_info.value)
+    assert expected_exception_substring in str(exc_info.value)
+
+
+def test_graph_api_rejects_xxe_upload_safely() -> None:
+    client = TestClient(app)
+    xxe_payload = (
+        b'<?xml version="1.0"?>'
+        b'<!DOCTYPE foo [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>'
+        b'<DATA_IMPORT>&xxe;</DATA_IMPORT>'
+    )
+
+    response = client.post(
+        "/api/graph",
+        files={"files": ("exploit.xml", xxe_payload, "application/xml")},
+    )
+
+    assert response.status_code == 400
+    assert "Malformed XML in exploit.xml:" in response.json()["error"]
+    assert "EntitiesForbidden" in response.json()["error"]

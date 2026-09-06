@@ -15,6 +15,7 @@ def _nonblank(path: str) -> list[str]:
 
 def test_dependency_versions_are_reproducible():
     assert _nonblank("requirements.txt") == [
+        "defusedxml==0.7.1",
         "fastapi==0.139.0",
         "pydantic==2.13.4",
         "pydantic-core==2.46.4",
