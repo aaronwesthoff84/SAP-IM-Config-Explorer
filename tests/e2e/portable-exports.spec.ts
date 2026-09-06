@@ -23,6 +23,7 @@ test('downloads the complete current graph as CSV, Markdown, and GraphML', async
     ['#export-csv-button', 'sap-im-config-graph-csv.zip', 'CSV'],
     ['#export-markdown-button', 'sap-im-config-graph.md', 'Markdown'],
     ['#export-graphml-button', 'sap-im-config-graph.graphml', 'GraphML'],
+    ['#export-neo4j-button', 'sap-im-config-graph-neo4j.zip', 'Neo4j'],
   ]) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator(button).click();

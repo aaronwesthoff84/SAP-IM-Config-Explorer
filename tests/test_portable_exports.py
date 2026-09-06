@@ -17,6 +17,7 @@ from sap_im_config_graph_explorer.portable_exports import (
     serialize_csv_bundle,
     serialize_graphml,
     serialize_markdown,
+    serialize_neo4j_bundle,
 )
 
 
@@ -314,3 +315,61 @@ def test_csv_neutralizes_spreadsheet_formula_prefixes_from_graph_content():
         node_id: f"'{label}"
         for node_id, label in dangerous_labels.items()
     }
+
+
+def test_neo4j_bundle_is_deterministic_and_contains_expected_members_and_content():
+    document = _document()
+    first = serialize_neo4j_bundle(document)
+    second = serialize_neo4j_bundle(document)
+
+    assert first == second
+    with zipfile.ZipFile(io.BytesIO(first)) as archive:
+        assert sorted(archive.namelist()) == sorted(["nodes.csv", "relationships.csv", "import.cypher", "README.md"])
+
+        # Check nodes CSV
+        nodes_csv = archive.read("nodes.csv").decode("utf-8")
+        assert nodes_csv.splitlines()[0].split(",") == list(CSV_NODE_COLUMNS)
+        assert "plan-configuration" in nodes_csv
+        assert "rule-production" in nodes_csv
+
+        # Check relationships CSV
+        relationships_csv = archive.read("relationships.csv").decode("utf-8")
+        assert relationships_csv.splitlines()[0].split(",") == list(CSV_LINK_COLUMNS)
+        assert "edge-configuration-component-plan" in relationships_csv
+
+        # Check import Cypher
+        import_cypher = archive.read("import.cypher").decode("utf-8")
+        assert "CREATE CONSTRAINT config_node_id_unique FOR (n:ConfigNode) REQUIRE n.id IS UNIQUE" in import_cypher
+        assert "LOAD CSV WITH HEADERS FROM 'file:///nodes.csv' AS row" in import_cypher
+        assert "FOREACH (_ IN CASE WHEN row.type = 'Plan' THEN [1] ELSE [] END | SET n:Plan)" in import_cypher
+        assert "LOAD CSV WITH HEADERS FROM 'file:///relationships.csv' AS row" in import_cypher
+        assert "FOREACH (_ IN CASE WHEN row.relationship = 'belongs_to_plan_component' THEN [1] ELSE [] END" in import_cypher
+
+        # Check README.md
+        readme = archive.read("README.md").decode("utf-8")
+        assert "# SAP IM Config Explorer Neo4j Import Instructions" in readme
+        assert "nodes.csv" in readme
+        assert "relationships.csv" in readme
+        assert "import.cypher" in readme
+        assert "Limitations" in readme
+
+        # Ensure no raw XML or excluded strings
+        portable_content = b"\n".join(archive.read(name) for name in archive.namelist())
+        assert b"rawXml" not in portable_content
+        assert b"EXCLUDED_RAW_XML" not in portable_content
+
+
+def test_neo4j_route_returns_local_downloads_and_validates_payload():
+    client = TestClient(app)
+    payload = _fixture_payload()
+
+    response = client.post("/api/export/graph-neo4j", json=payload)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/zip")
+    assert "sap-im-config-graph-neo4j.zip" in response.headers["content-disposition"]
+    assert b"rawXml" not in response.content
+
+    payload["nodes"][0]["type"] = "FUNCTION"  # type: ignore[index]
+    rejected = client.post("/api/export/graph-neo4j", json=payload)
+    assert rejected.status_code == 422
+    assert rejected.json() == {"error": "Unsupported graph node type: FUNCTION"}

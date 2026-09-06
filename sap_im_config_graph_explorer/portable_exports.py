@@ -64,6 +64,7 @@ CSV_FINDING_COLUMNS = (
 CSV_BUNDLE_FILENAME = "sap-im-config-graph-csv.zip"
 MARKDOWN_FILENAME = "sap-im-config-graph.md"
 GRAPHML_FILENAME = "sap-im-config-graph.graphml"
+NEO4J_BUNDLE_FILENAME = "sap-im-config-graph-neo4j.zip"
 
 _ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 _GRAPHML_NAMESPACE = "http://graphml.graphdrawing.org/xmlns"
@@ -605,6 +606,216 @@ def serialize_graphml(document: GraphDocument) -> bytes:
 
     ET.indent(root, space="  ")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True) + b"\n"
+
+
+def serialize_neo4j_bundle(document: GraphDocument) -> bytes:
+    """Return a byte-stable Neo4j CSV/Cypher/README ZIP bundle without raw XML content."""
+
+    validate_graph_document(document)
+
+    cypher_script = """// SAP IM Config Explorer Neo4j Import Script
+//
+// 1. Copy 'nodes.csv' and 'relationships.csv' into your Neo4j database's 'import' directory.
+// 2. Run this script in the Neo4j Browser or using 'cypher-shell'.
+
+// --- Constraints and Indexes ---
+CREATE CONSTRAINT config_node_id_unique FOR (n:ConfigNode) REQUIRE n.id IS UNIQUE;
+
+// --- Load Nodes ---
+LOAD CSV WITH HEADERS FROM 'file:///nodes.csv' AS row
+MERGE (n:ConfigNode {id: row.id})
+SET n.canonicalKey = row.canonicalKey,
+    n.snapshotId = row.snapshotId,
+    n.type = row.type,
+    n.label = row.label,
+    n.sourceFile = row.sourceFile,
+    n.xmlPath = row.xmlPath,
+    n.metadataJson = row.metadataJson;
+
+// --- Apply Node Type Labels ---
+LOAD CSV WITH HEADERS FROM 'file:///nodes.csv' AS row
+MATCH (n:ConfigNode {id: row.id})
+FOREACH (_ IN CASE WHEN row.type = 'Plan' THEN [1] ELSE [] END | SET n:Plan)
+FOREACH (_ IN CASE WHEN row.type = 'PlanComponent' THEN [1] ELSE [] END | SET n:PlanComponent)
+FOREACH (_ IN CASE WHEN row.type = 'Rule' THEN [1] ELSE [] END | SET n:Rule)
+FOREACH (_ IN CASE WHEN row.type = 'FixedValue' THEN [1] ELSE [] END | SET n:FixedValue)
+FOREACH (_ IN CASE WHEN row.type = 'Formula' THEN [1] ELSE [] END | SET n:Formula)
+FOREACH (_ IN CASE WHEN row.type = 'LookupTable' THEN [1] ELSE [] END | SET n:LookupTable)
+FOREACH (_ IN CASE WHEN row.type = 'Quota' THEN [1] ELSE [] END | SET n:Quota)
+FOREACH (_ IN CASE WHEN row.type = 'RateTable' THEN [1] ELSE [] END | SET n:RateTable)
+FOREACH (_ IN CASE WHEN row.type = 'Territory' THEN [1] ELSE [] END | SET n:Territory)
+FOREACH (_ IN CASE WHEN row.type = 'Variable' THEN [1] ELSE [] END | SET n:Variable)
+FOREACH (_ IN CASE WHEN row.type = 'EventType' THEN [1] ELSE [] END | SET n:EventType)
+FOREACH (_ IN CASE WHEN row.type = 'CreditType' THEN [1] ELSE [] END | SET n:CreditType)
+FOREACH (_ IN CASE WHEN row.type = 'EarningCode' THEN [1] ELSE [] END | SET n:EarningCode)
+FOREACH (_ IN CASE WHEN row.type = 'EarningGroup' THEN [1] ELSE [] END | SET n:EarningGroup)
+FOREACH (_ IN CASE WHEN row.type = 'BusinessUnit' THEN [1] ELSE [] END | SET n:BusinessUnit)
+FOREACH (_ IN CASE WHEN row.type = 'ProcessingUnit' THEN [1] ELSE [] END | SET n:ProcessingUnit)
+FOREACH (_ IN CASE WHEN row.type = 'Calendar' THEN [1] ELSE [] END | SET n:Calendar);
+
+// --- Load Relationships ---
+LOAD CSV WITH HEADERS FROM 'file:///relationships.csv' AS row
+MATCH (source:ConfigNode {id: row.source})
+MATCH (target:ConfigNode {id: row.target})
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_fixed_value' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_fixed_value]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_formula' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_formula]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_lookup' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_lookup]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_quota' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_quota]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_rate_table' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_rate_table]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_classifier' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_classifier]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_territory' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_territory]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_variable' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_variable]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_rule' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_rule]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'belongs_to_plan' THEN [1] ELSE [] END |
+    MERGE (source)-[r:belongs_to_plan]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'belongs_to_plan_component' THEN [1] ELSE [] END |
+    MERGE (source)-[r:belongs_to_plan_component]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'runs_in_pipeline' THEN [1] ELSE [] END |
+    MERGE (source)-[r:runs_in_pipeline]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_event_type' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_event_type]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'outputs_credit_type' THEN [1] ELSE [] END |
+    MERGE (source)-[r:outputs_credit_type]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_earning_code' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_earning_code]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_earning_group' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_earning_group]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_business_unit' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_business_unit]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_processing_unit' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_processing_unit]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'uses_calendar' THEN [1] ELSE [] END |
+    MERGE (source)-[r:uses_calendar]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'feeds_deposit' THEN [1] ELSE [] END |
+    MERGE (source)-[r:feeds_deposit]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'depends_on_period' THEN [1] ELSE [] END |
+    MERGE (source)-[r:depends_on_period]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'references_custom_object' THEN [1] ELSE [] END |
+    MERGE (source)-[r:references_custom_object]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'references_report' THEN [1] ELSE [] END |
+    MERGE (source)-[r:references_report]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'references_integration' THEN [1] ELSE [] END |
+    MERGE (source)-[r:references_integration]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'parent_child' THEN [1] ELSE [] END |
+    MERGE (source)-[r:parent_child]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+)
+FOREACH (_ IN CASE WHEN row.relationship = 'unknown_reference' THEN [1] ELSE [] END |
+    MERGE (source)-[r:unknown_reference]->(target)
+    SET r.id = row.id, r.confidence = row.confidence, r.metadataJson = row.metadataJson
+);
+"""
+
+    readme_content = """# SAP IM Config Explorer Neo4j Import Instructions
+
+This package contains an offline Neo4j-compatible import bundle generated from the current allowlisted SAP IM Config graph.
+
+## Package Members
+
+- `nodes.csv`: CSV data for graph nodes.
+- `relationships.csv`: CSV data for graph relationships.
+- `import.cypher`: Cypher script to create uniqueness constraints, load nodes, apply node labels, and create relationships.
+- `README.md`: This instruction document.
+
+## Local Import Instructions
+
+Follow these steps to import the graph into your local Neo4j instance:
+
+1. **Locate the import directory**:
+   - For Neo4j Desktop: Click on your project, select your active database, click **Open** > **Import**.
+   - For Neo4j Aura / Cloud or Server: Place the CSV files in your server's configured `import/` directory.
+
+2. **Copy the CSV files**:
+   - Copy `nodes.csv` and `relationships.csv` into that `import/` directory.
+
+3. **Run the Cypher import**:
+   - Open Neo4j Browser or connect via `cypher-shell`.
+   - Copy the Cypher statements from `import.cypher` and execute them. Note that you may need to execute the constraint creation line first, wait for it to complete, and then run the rest.
+
+## Limitations
+
+- **Offline Export**: This package does not connect to or store credentials for any Neo4j server directly. It is designed entirely for local file-based loading.
+- **Node Type Scope**: Only allowlisted graph elements (Plans, Plan Components, Rules, Lookup Tables, Formulas, etc.) are exported. Formula internals and non-allowlisted objects are excluded.
+- **Relationship Scope**: Only validated and resolved links between these allowlisted elements are included. Unresolved, missing, or ambiguous references are excluded to maintain graph integrity in Neo4j.
+"""
+
+    members = (
+        ("nodes.csv", _nodes_csv(document)),
+        ("relationships.csv", _links_csv(document)),
+        ("import.cypher", cypher_script),
+        ("README.md", readme_content),
+    )
+    output = io.BytesIO()
+    with zipfile.ZipFile(
+        output,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for name, content in members:
+            entry = zipfile.ZipInfo(name, date_time=_ZIP_TIMESTAMP)
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            entry.create_system = 3
+            entry.external_attr = 0o100644 << 16
+            archive.writestr(entry, content.encode("utf-8"), compresslevel=9)
+    return output.getvalue()
 
 
 def _nodes_csv(document: GraphDocument) -> str:
