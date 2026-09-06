@@ -87,7 +87,7 @@ def test_markdown_is_stable_readable_and_escapes_table_cells():
     assert "EXCLUDED_RAW_XML" not in markdown
 
 
-def test_graphml_is_parseable_and_preserves_node_edge_and_graph_properties():
+def test_graphml_hash_and_graph_structure():
     graphml = serialize_graphml(_document())
     assert hashlib.sha256(graphml).hexdigest() == _expected_hashes()["graphmlSha256"]
     root = ET.fromstring(graphml)
@@ -110,6 +110,16 @@ def test_graphml_is_parseable_and_preserves_node_edge_and_graph_properties():
         "edge-configuration-rule-component",
         "edge-production-rule-component",
     ]
+    assert "rawXml" not in graphml.decode("utf-8")
+    assert "EXCLUDED_RAW_XML" not in graphml.decode("utf-8")
+
+
+def test_graphml_key_definitions_and_graph_metadata():
+    graphml = serialize_graphml(_document())
+    root = ET.fromstring(graphml)
+    graph = root.find("graphml:graph", GRAPHML_NAMESPACE)
+    assert graph is not None
+
     keys = {
         key.attrib["id"]: key.attrib["attr.name"]
         for key in root.findall("graphml:key", GRAPHML_NAMESPACE)
@@ -125,8 +135,13 @@ def test_graphml_is_parseable_and_preserves_node_edge_and_graph_properties():
     }
     assert json.loads(graph_data["graphSnapshotsJson"])[0]["id"] == "configuration"
     assert json.loads(graph_data["graphFindingsJson"])[0]["id"] == "finding-configuration"
-    assert "rawXml" not in graphml.decode("utf-8")
-    assert "EXCLUDED_RAW_XML" not in graphml.decode("utf-8")
+
+
+def test_graphml_node_properties():
+    graphml = serialize_graphml(_document())
+    root = ET.fromstring(graphml)
+    graph = root.find("graphml:graph", GRAPHML_NAMESPACE)
+    assert graph is not None
 
     payload = _fixture_payload()
     expected_nodes = {
@@ -153,6 +168,14 @@ def test_graphml_is_parseable_and_preserves_node_edge_and_graph_properties():
     }
     assert actual_nodes == expected_nodes
 
+
+def test_graphml_edge_properties():
+    graphml = serialize_graphml(_document())
+    root = ET.fromstring(graphml)
+    graph = root.find("graphml:graph", GRAPHML_NAMESPACE)
+    assert graph is not None
+
+    payload = _fixture_payload()
     expected_links = {
         link["id"]: {
             "edgeId": link["id"],
