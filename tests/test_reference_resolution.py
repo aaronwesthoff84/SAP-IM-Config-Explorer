@@ -1,9 +1,13 @@
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import pytest
 
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
+from sap_im_config_graph_explorer.models import GraphNode
 from sap_im_config_graph_explorer.object_extractors import default_registry
+from sap_im_config_graph_explorer.object_extractors.base import ReferenceCandidate
+from sap_im_config_graph_explorer.reference_resolver import ReferenceResolver
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -112,3 +116,154 @@ def test_normalize_identity_and_normalize_ref_handle_none_empty_and_edge_cases()
     assert normalize_ref("") == ""
     assert normalize_ref("   ") == ""
     assert normalize_ref("  Test Ref  ") == "test-ref"
+
+
+def test_reference_resolver_skips_unmapped_source_element():
+    elem = ET.Element("FORMULA")
+    node = GraphNode(
+        id="node-1",
+        label="Var 1",
+        type="Variable",
+        sourceFile="f.xml",
+        xmlPath="/VARIABLE",
+        rawXml="<VARIABLE/>",
+        snapshotId="snap1",
+    )
+    ref = ReferenceCandidate(
+        source_element=elem,
+        value="Var 1",
+        hint="variable",
+        origin="test",
+    )
+    resolver = ReferenceResolver(
+        nodes=[node],
+        references=[ref],
+        node_id_by_element={},
+    )
+    result = resolver.resolve()
+    assert len(result.links) == 0
+    assert len(result.findings) == 0
+
+
+def test_reference_resolver_handles_missing_reference_finding():
+    elem = ET.Element("FORMULA")
+    node = GraphNode(
+        id="node-1",
+        label="Formula 1",
+        type="Formula",
+        sourceFile="f.xml",
+        xmlPath="/FORMULA",
+        rawXml="<FORMULA/>",
+        snapshotId="snap1",
+    )
+    ref = ReferenceCandidate(
+        source_element=elem,
+        value="NonExistentVar",
+        hint="variable",
+        expected_type="Variable",
+        origin="test",
+    )
+    resolver = ReferenceResolver(
+        nodes=[node],
+        references=[ref],
+        node_id_by_element={id(elem): "node-1"},
+    )
+    result = resolver.resolve()
+    assert len(result.links) == 0
+    assert len(result.findings) == 1
+    assert result.findings[0].code == "missing_reference"
+
+
+def test_reference_resolver_handles_ambiguous_reference_finding():
+    elem = ET.Element("FORMULA")
+    node_source = GraphNode(
+        id="node-1",
+        label="Formula 1",
+        type="Formula",
+        sourceFile="f.xml",
+        xmlPath="/FORMULA",
+        rawXml="<FORMULA/>",
+        snapshotId="snap1",
+    )
+    node_cand1 = GraphNode(
+        id="node-2",
+        label="VarDup",
+        type="Variable",
+        sourceFile="f.xml",
+        xmlPath="/VARIABLE[1]",
+        rawXml="<VARIABLE/>",
+        snapshotId="snap1",
+    )
+    node_cand2 = GraphNode(
+        id="node-3",
+        label="VarDup",
+        type="Variable",
+        sourceFile="f.xml",
+        xmlPath="/VARIABLE[2]",
+        rawXml="<VARIABLE/>",
+        snapshotId="snap1",
+    )
+    ref = ReferenceCandidate(
+        source_element=elem,
+        value="VarDup",
+        hint="variable",
+        expected_type="Variable",
+        origin="test",
+    )
+    resolver = ReferenceResolver(
+        nodes=[node_source, node_cand1, node_cand2],
+        references=[ref],
+        node_id_by_element={id(elem): "node-1"},
+    )
+    result = resolver.resolve()
+    assert len(result.links) == 0
+    assert len(result.findings) == 1
+    assert result.findings[0].code == "ambiguous_reference"
+
+
+def test_reference_resolver_creates_link_and_deduplicates():
+    elem = ET.Element("FORMULA")
+    node_source = GraphNode(
+        id="node-1",
+        label="Formula 1",
+        type="Formula",
+        sourceFile="f.xml",
+        xmlPath="/FORMULA",
+        rawXml="<FORMULA/>",
+        snapshotId="snap1",
+    )
+    node_target = GraphNode(
+        id="node-2",
+        label="Var 1",
+        type="Variable",
+        sourceFile="f.xml",
+        xmlPath="/VARIABLE",
+        rawXml="<VARIABLE/>",
+        snapshotId="snap1",
+    )
+    ref1 = ReferenceCandidate(
+        source_element=elem,
+        value="Var 1",
+        hint="variable",
+        expected_type="Variable",
+        relationship="uses_variable",
+        origin="test",
+    )
+    ref2 = ReferenceCandidate(
+        source_element=elem,
+        value="Var 1",
+        hint="variable",
+        expected_type="Variable",
+        relationship="uses_variable",
+        origin="test",
+    )
+    resolver = ReferenceResolver(
+        nodes=[node_source, node_target],
+        references=[ref1, ref2],
+        node_id_by_element={id(elem): "node-1"},
+    )
+    result = resolver.resolve()
+    assert len(result.links) == 1
+    assert result.links[0].source == "node-1"
+    assert result.links[0].target == "node-2"
+    assert result.links[0].relationship == "uses_variable"
