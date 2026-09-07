@@ -493,3 +493,32 @@ def test_core_graph_only_resolves_plan_component_and_rule_containment(tmp_path):
         for finding in graph.findings
         if finding.code in {"missing_reference", "ambiguous_reference"}
     }
+
+
+def test_converter_escapes_malicious_xml_payloads_and_adds_csp():
+    transformer = Transformer()
+    transformer.parse(str(FIXTURES / "malicious_payloads.xml"))
+    html = transformer.html()
+
+    # Content Security Policy meta tag is present
+    assert '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; font-src data:;">' in html
+
+    # Unescaped executable tags are neutralized
+    assert "<script" not in html
+    assert "<img" not in html
+    assert "<svg" not in html
+    assert "<iframe" not in html
+
+    # Escaped payloads are present as safe text
+    assert "&lt;script&gt;window.__pwned=true;&lt;/script&gt;" in html
+    assert "&quot;&gt;&lt;img src=x onerror=&quot;window.__pwned=true&quot;&gt;" in html
+    assert "&lt;svg onload=alert(1)&gt; &quot;quotes&quot;" in html
+
+    # Section attributes are escaped
+    assert 'data-object-label="Malicious &lt;script&gt;window.__pwned=true;&lt;/script&gt; Plan"' in html
+    assert 'data-object-label="Component &lt;svg onload=alert(1)&gt; &quot;quotes&quot;"' in html
+
+    # Anchors are safe and encoded
+    assert 'href="#Malicious %3Cscript%3Ewindow.__pwned%3Dtrue%3B%3C%2Fscript%3E Plan-plan"' in html
+    assert 'name="Malicious %3Cscript%3Ewindow.__pwned%3Dtrue%3B%3C%2Fscript%3E Plan-plan"' in html
+

@@ -358,3 +358,33 @@ def test_index_includes_graph_layout_and_image_export_controls():
     assert 'id="export-svg-button"' in html
     assert 'id="sidebar-export-png-button"' in html
     assert 'id="sidebar-export-svg-button"' in html
+
+
+def test_convert_html_endpoint_escapes_malicious_payloads_and_returns_csp():
+    client = TestClient(app)
+    malicious_fixture = ROOT / "tests" / "fixtures" / "malicious_payloads.xml"
+
+    with malicious_fixture.open("rb") as f:
+        response = client.post(
+            "/api/convert/html",
+            files={"file": ("malicious_payloads.xml", f, "application/xml")},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    html = data["html"]
+
+    # CSP meta tag is present in generated HTML
+    assert '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; font-src data:;">' in html
+
+    # Dangerous tags are escaped / neutralized
+    assert "<script" not in html
+    assert "<img" not in html
+    assert "<svg" not in html
+    assert "<iframe" not in html
+
+    # Safe escaped content is preserved
+    assert "&lt;script&gt;window.__pwned=true;&lt;/script&gt;" in html
+    assert "&quot;&gt;&lt;img src=x onerror=&quot;window.__pwned=true&quot;&gt;" in html
+

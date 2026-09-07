@@ -4,7 +4,7 @@ SAP Incentive Management XML to HTML Transformer
 Converts SAP Incentive Management plan XML to HTML.
 Usage: python sap_im_transformer.py input.xml [output.html] [--variant A|B]
 """
-import sys, html as html_mod
+import sys, html as html_mod, urllib.parse
 from xml.etree import ElementTree as ET
 
 TYPE_LABELS = {
@@ -133,7 +133,11 @@ class XErr(Exception):
 
 def esc(t):
     if t is None: return ""
-    return html_mod.escape(str(t))
+    return html_mod.escape(str(t), quote=True)
+
+def safe_anchor(name):
+    if not name: return ""
+    return urllib.parse.quote(str(name), safe=" -_.~")
 def scd(t):
     if not t: return ""
     t = t.strip()
@@ -191,16 +195,17 @@ def render_ref(elem):
     off = elem.get("PERIOD_OFFSET","0")
     rid = elem.get("ID","")
     tag = elem.tag.lower() if hasattr(elem,'tag') else ""
-    if rid == "STRING_FORMULA_REF": return f'<a class="Link" href="#{nm}-formula">{esc(nm)}</a>'
-    if "variable" in tag: return f'<a class="Link" href="#{nm}-var">{esc(nm)}</a>'
-    if "territory" in tag: return f'<a class="Link" href="#{nm}-terr">{esc(nm)}</a>'
-    if "ratetable" in tag: return f'<a class="Link" href="#{nm}-rt">{esc(nm)}</a>'
-    if "mdlt" in tag: return f'<a class="Link" href="#{nm}-mdlt">{esc(nm)}</a>'
-    return f'<i>{esc(nm)}:{per}-{off}<sub>[From Current Position:EXPECT_ONE]</sub></i>'
+    sa = safe_anchor(nm)
+    if rid == "STRING_FORMULA_REF": return f'<a class="Link" href="#{esc(sa)}-formula">{esc(nm)}</a>'
+    if "variable" in tag: return f'<a class="Link" href="#{esc(sa)}-var">{esc(nm)}</a>'
+    if "territory" in tag: return f'<a class="Link" href="#{esc(sa)}-terr">{esc(nm)}</a>'
+    if "ratetable" in tag: return f'<a class="Link" href="#{esc(sa)}-rt">{esc(nm)}</a>'
+    if "mdlt" in tag: return f'<a class="Link" href="#{esc(sa)}-mdlt">{esc(nm)}</a>'
+    return f'<i>{esc(nm)}:{esc(per)}-{esc(off)}<sub>[From Current Position:EXPECT_ONE]</sub></i>'
 
 def render_oref(elem):
     nm = elem.get("NAME",""); per = elem.get("PERIOD_TYPE","month"); ut = elem.get("UNIT_TYPE","")
-    return f"<b>[{esc(nm)}, {per}{', ' + ut if ut else ''}]</b>"
+    return f"<b>[{esc(nm)}, {esc(per)}{', ' + esc(ut) if ut else ''}]</b>"
 
 def _rop(elem, depth=0):
     if elem is None: return ""
@@ -210,19 +215,20 @@ def _rop(elem, depth=0):
     if tag=="function": return _r_func(elem, depth)
     if tag=="event_type_expression": return _r_evtype(elem, depth)
     if any(x in tag for x in ["measurement_ref","incentive_ref","rule_element_ref"]): return render_ref(elem)
-    if "variable_ref" in tag: return f'<a class="Link" href="#{elem.get("NAME","")}-var">{esc(elem.get("NAME",""))}</a>'
-    if "territory_ref" in tag: return f'<a class="Link" href="#{elem.get("NAME","")}-terr">{esc(elem.get("NAME",""))}</a>'
+    if "variable_ref" in tag: return f'<a class="Link" href="#{esc(safe_anchor(elem.get("NAME","")))}-var">{esc(elem.get("NAME",""))}</a>'
+    if "territory_ref" in tag: return f'<a class="Link" href="#{esc(safe_anchor(elem.get("NAME","")))}-terr">{esc(elem.get("NAME",""))}</a>'
     if "output_reference" in tag: return render_oref(elem)
-    if "mdlt_ref" in tag: return f'<a class="Link" href="#{elem.get("NAME","")}-mdlt">{esc(elem.get("NAME",""))}</a>'
+    if "mdlt_ref" in tag: return f'<a class="Link" href="#{esc(safe_anchor(elem.get("NAME","")))}-mdlt">{esc(elem.get("NAME",""))}</a>'
     if "hold_ref" in tag:
         nm=elem.get("NAME",""); per=elem.get("PERIOD_TYPE",""); rls=elem.get("RELEASE_TYPE","")
-        return rls if rls else (nm + (f" ( {per} )" if per else ""))
-    if "ratetable_ref" in tag: return f'<a class="Link" href="#{elem.get("NAME","")}-rt">{esc(elem.get("NAME",""))}</a>'
-    if tag=="data_field": return gtxt(elem)
-    if tag=="string_literal": t=gtxt(elem); return "NULL" if t.upper()=="NULL" else t
-    if tag=="value": d=elem.get("DECIMAL_VALUE",""); u=elem.get("UNIT_TYPE",""); return f"{d} {u}".strip()
-    if tag=="boolean": return elem.get("VALUE","")
-    if tag=="credit_type": return gtxt(elem)
+        v=rls if rls else (nm + (f" ( {per} )" if per else ""))
+        return esc(v)
+    if "ratetable_ref" in tag: return f'<a class="Link" href="#{esc(safe_anchor(elem.get("NAME","")))}-rt">{esc(elem.get("NAME",""))}</a>'
+    if tag=="data_field": return esc(gtxt(elem))
+    if tag=="string_literal": t=gtxt(elem); return "NULL" if t.upper()=="NULL" else esc(t)
+    if tag=="value": d=elem.get("DECIMAL_VALUE",""); u=elem.get("UNIT_TYPE",""); return esc(f"{d} {u}".strip())
+    if tag=="boolean": return esc(elem.get("VALUE",""))
+    if tag=="credit_type": return esc(gtxt(elem))
     t=gtxt(elem); return esc(t) if t else ""
 
 def _r_op(op_elem, depth=0):
@@ -257,7 +263,8 @@ def _r_func(func_elem, depth=0):
         if mr is not None:
             L.append(f'{ind}<tr>')
             L.append(f'{ind}<td valign="top" style="right-padding: 10px" class="FunctionParameterLineNumber">Lookup Table Name</td>')
-            L.append(f'{ind}<td class="FunctionParameter"><a class="Link" href="#{mr.get("NAME","")}-mdlt">{esc(mr.get("NAME",""))}</a><br></td>')
+            mr_name = mr.get("NAME","")
+            L.append(f'{ind}<td class="FunctionParameter"><a class="Link" href="#{esc(safe_anchor(mr_name))}-mdlt">{esc(mr_name)}</a><br></td>')
             L.append(f'{ind}</tr>')
         rn=2
         for c in func_elem:
@@ -390,20 +397,20 @@ def render_action(func_elem, depth=0):
         elif "rule_element_ref" in tag:
             L.append(f'{ind}<td class="FunctionParameter">{render_ref(child)}</td>')
         elif tag=="data_field":
-            L.append(f'{ind}<td class="FunctionParameter">{gtxt(child)}</td>')
+            L.append(f'{ind}<td class="FunctionParameter">{esc(gtxt(child))}</td>')
         elif tag=="string_literal":
-            t=gtxt(child); L.append(f'{ind}<td class="FunctionParameter">{"NULL" if t.upper()=="NULL" else t}</td>')
+            t=gtxt(child); L.append(f'{ind}<td class="FunctionParameter">{"NULL" if t.upper()=="NULL" else esc(t)}</td>')
         elif tag=="value":
             d=child.get("DECIMAL_VALUE",""); u=child.get("UNIT_TYPE","")
-            L.append(f'{ind}<td class="FunctionParameter">{(d+chr(32)+u).strip()}</td>')
+            L.append(f'{ind}<td class="FunctionParameter">{esc((d+chr(32)+u).strip())}</td>')
         elif tag=="hold_ref":
             nm=child.get("NAME",""); per=child.get("PERIOD_TYPE",""); rls=child.get("RELEASE_TYPE","")
             v=rls if rls else (nm + (f" ( {per} )" if per else ""))
-            L.append(f'{ind}<td class="FunctionParameter">{v}</td>')
+            L.append(f'{ind}<td class="FunctionParameter">{esc(v)}</td>')
         elif tag=="credit_type":
-            L.append(f'{ind}<td class="FunctionParameter">{gtxt(child)}</td>')
+            L.append(f'{ind}<td class="FunctionParameter">{esc(gtxt(child))}</td>')
         elif tag=="boolean":
-            L.append(f'{ind}<td class="FunctionParameter">{child.get("VALUE","")}</td>')
+            L.append(f'{ind}<td class="FunctionParameter">{esc(child.get("VALUE",""))}</td>')
         elif "ref" in tag:
             L.append(f'{ind}<td class="FunctionParameter">{render_ref(child)}</td>')
         else:
@@ -418,9 +425,9 @@ def render_action(func_elem, depth=0):
 class Plan:
     def __init__(self,e): self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE",""); self.desc=e.get("DESCRIPTION",""); self.cn=[]
     @property
-    def anchor(self): return f"{self.name}-plan"
+    def anchor(self): return f"{safe_anchor(self.name)}-plan"
     def render(self, v, cm, rm):
-        L=[f'<a name="{self.anchor}"></a>', f'<h2 class="SubSectionTitle">{esc(self.name)}</h2>']
+        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="SubSectionTitle">{esc(self.name)}</h2>']
         L.append('<table border="0" cellspacing="0" cellpadding="0">')
         L.append(f'<tr><td class="LabelCell">Effective Date Range</td><td class="Value">{esc(drange(self.st,self.en))}</td></tr>')
         L.append(f'<tr><td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td></tr>')
@@ -434,12 +441,12 @@ class Plan:
         L.append('</tr><tr>')
         clinks=[]; cats={category:[] for category in categories}
         for pc in pcs:
-            ca=f"{pc.name}-plan-{self.name}"
-            clinks.append(f'<a class="Link" href="#{ca}">{esc(pc.name)}</a>')
+            ca=f"{safe_anchor(pc.name)}-plan-{safe_anchor(self.name)}"
+            clinks.append(f'<a class="Link" href="#{esc(ca)}">{esc(pc.name)}</a>')
             for r in sorted_rules([rm[rn] for rn in pc.rn if rn in rm]):
                 category=rule_category(r)
-                ra=f"{r.name}-rule-{pc.name}-{self.name}"
-                link=f'<a class="Link" href="#{ra}">{esc(r.name)}</a>'
+                ra=f"{safe_anchor(r.name)}-rule-{safe_anchor(pc.name)}-{safe_anchor(self.name)}"
+                link=f'<a class="Link" href="#{esc(ra)}">{esc(r.name)}</a>'
                 if link not in cats[category]: cats[category].append(link)
         L.append(f'<td valign="top">{"<br>".join(clinks)}</td>')
         for category in categories:
@@ -454,7 +461,8 @@ class Plan:
 class PComp:
     def __init__(self,e): self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE",""); self.desc=e.get("DESCRIPTION",""); self.rn=[]
     def render(self, v, pn, rm):
-        L=[f'<a name="{self.name}-plan-{pn}"></a>', f'<h2 class="ComponentObjectTitle">{esc(self.name)}</h2>']
+        ca=f"{safe_anchor(self.name)}-plan-{safe_anchor(pn)}"
+        L=[f'<a name="{esc(ca)}"></a>', f'<h2 class="ComponentObjectTitle">{esc(self.name)}</h2>']
         es=fd(self.st); ee=fd(self.en)
         if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
         L.append('<table border="0" cellspacing="0" cellpadding="0">')
@@ -471,8 +479,8 @@ class PComp:
         cats={category:[] for category in categories}
         for r in cr:
             category=rule_category(r)
-            ra=f"{r.name}-rule-{self.name}-{pn}"
-            cats[category].append(f'<a class="Link" href="#{ra}">{esc(r.name)}</a>')
+            ra=f"{safe_anchor(r.name)}-rule-{safe_anchor(self.name)}-{safe_anchor(pn)}"
+            cats[category].append(f'<a class="Link" href="#{esc(ra)}">{esc(r.name)}</a>')
         for category in categories:
             L.append(f'<td valign="top">{"<br>".join(cats[category])}</td>')
         L.append('</tr></table>')
@@ -483,13 +491,13 @@ class Rule:
     @property
     def heading(self): return f"{TYPE_HEADING.get(self.rt,'Rule')}: {self.name}"
     def render(self, v, pn, cn):
-        anchor=f"{self.name}-rule-{cn}-{pn}"
-        L=[f'<a name="{anchor}"></a>', f'<h2 class="ObjectTitle">{esc(self.heading)}</h2>']
+        anchor=f"{safe_anchor(self.name)}-rule-{safe_anchor(cn)}-{safe_anchor(pn)}"
+        L=[f'<a name="{esc(anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.heading)}</h2>']
         L.append('<table border="0" cellspacing="0" cellpadding="0">')
         L.append(f'<tr><td class="LabelCell">Type</td><td class="Value">{esc(TYPE_LABELS.get(self.rt,self.rt))}</td></tr>')
         if self.rt in ("DIRECT_TRANSACTION_CREDIT","ROLLUP_TRANSACTION_CREDIT"):
             ev="true" if self.eca and self.eca.lower()=="true" else "false"
-            L.append(f'<tr><td class="LabelCell">ECA</td><td class="Value">{ev}</td></tr>')
+            L.append(f'<tr><td class="LabelCell">ECA</td><td class="Value">{esc(ev)}</td></tr>')
         es=fd(self.st); ee=fd(self.en)
         if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
         L.append(f'<tr><td class="LabelCell">Effective Date Range</td><td class="Value">{esc(es)} - {esc(ee)}</td></tr>')
@@ -526,9 +534,9 @@ class Rule:
                         func=gf.find("FUNCTION")
                         if func is not None: L.append(render_action(func))
         L.append('</td></tr></table>')
-        ca=f"{cn}-plan-{pn}"
+        ca=f"{safe_anchor(cn)}-plan-{safe_anchor(pn)}"
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
-        L.append(f'<td class="LabelCell"><a class="Link" href="#{ca}">{esc(cn)}</a> | <a class="Link" href="#Top">Top</a></td>')
+        L.append(f'<td class="LabelCell"><a class="Link" href="#{esc(ca)}">{esc(cn)}</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
         L.append('</table>')
         return "\n".join(L)
@@ -543,7 +551,7 @@ class MDLT:
         if ce is not None:
             for c in ce.findall("CELL"): self.cells.append(c)
     @property
-    def anchor(self): return f"{self.name}-mdlt"
+    def anchor(self): return f"{safe_anchor(self.name)}-mdlt"
     def _edt(self):
         es=fd(self.st); ee=fd(self.en)
         if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
@@ -554,7 +562,7 @@ class MDLT:
         L.append('</tr></table>')
         return "\n".join(L)
     def render(self, v):
-        L=[f'<a name="{self.anchor}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>', self._edt()]
+        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>', self._edt()]
         L.append('<p></p><span class="ContentTitle">Cells</span><p></p>')
         L.append('<table class="ListTable"><tr>')
         for h in ["Title","Component","Value"]: L.append(f'<td class="ListHeaderCell">{h}</td>')
@@ -583,12 +591,12 @@ class FV:
         if fv is not None: self.dv=fv.get("DECIMAL_VALUE",""); self.ut=fv.get("UNIT_TYPE","")
         else: self.dv=self.ut=""
     @property
-    def anchor(self): return f"{self.name}-fv"
+    def anchor(self): return f"{safe_anchor(self.name)}-fv"
     def render(self, v):
         es=fd(self.st); ee=fd(self.en)
         if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
         val=f"{self.dv} {self.ut}".strip()
-        L=[f'<a name="{self.anchor}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table class="ListTable"><tr>')
         for h in ["Start Date","End Date","Value"]: L.append(f'<td class="ListHeaderCell">{h}</td>')
@@ -606,11 +614,11 @@ class Quota:
         self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
         self.positions=list(e.findall("QUOTA_VALUE"))
     @property
-    def anchor(self): return f"{self.name}-quota"
+    def anchor(self): return f"{safe_anchor(self.name)}-quota"
     def render(self, v):
         es=fd(self.st); ee=fd(self.en)
         if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=[f'<a name="{self.anchor}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
@@ -637,11 +645,11 @@ class Formula:
         self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
         self.rt=e.get("RETURN_TYPE",""); self.desc=e.get("DESCRIPTION","")
     @property
-    def anchor(self): return f"{self.name}-formula"
+    def anchor(self): return f"{safe_anchor(self.name)}-formula"
     def render(self, v):
         es=fd(self.st); ee=fd(self.en)
         if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=[f'<a name="{self.anchor}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
@@ -672,11 +680,11 @@ class Territory:
         self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
         self.desc=e.get("DESCRIPTION","")
     @property
-    def anchor(self): return f"{self.name}-terr"
+    def anchor(self): return f"{safe_anchor(self.name)}-terr"
     def render(self, v):
         es=fd(self.st); ee=fd(self.en)
         if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=[f'<a name="{self.anchor}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
@@ -703,11 +711,11 @@ class Variable:
         self.vt=e.get("VARIABLE_TYPE",""); self.pt=e.get("PERIOD_TYPE",""); self.dv=e.get("DEFAULT_VALUE","")
         self.assignments=list(e.findall("VARIABLE_ASSIGNMENT"))
     @property
-    def anchor(self): return f"{self.name}-var"
+    def anchor(self): return f"{safe_anchor(self.name)}-var"
     def render(self, v):
         es=fd(self.st); ee=fd(self.en)
         if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=[f'<a name="{self.anchor}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
@@ -824,6 +832,7 @@ class Transformer:
             raise XErr(f"Unsupported theme: {theme}")
         v=self.v; L=['<!DOCTYPE HTML>',f'<html data-theme="{theme}">','<head>',
             '<META http-equiv="Content-Type" content="text/html; charset=UTF-8">',
+            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; font-src data:;">',
             '<title>SAP Incentive Management Plan Summary</title>',
             f'<style type="text/css">{CSS}</style>','</head>','<body class="Body">']
         if v=="B": L.append(f'<p style="text-align: center;"><img src="data:image/png;base64,{SAP_LOGO_B64}" alt="SAP"></p>')
@@ -858,9 +867,9 @@ class Transformer:
         component_anchors={}; rule_anchors={}
         for plan in self._so("plans"):
             for component in self._plan_components(plan):
-                component_anchors.setdefault(component.name, f"{component.name}-plan-{plan.name}")
+                component_anchors.setdefault(component.name, f"{safe_anchor(component.name)}-plan-{safe_anchor(plan.name)}")
                 for rule in self._component_rules(component):
-                    rule_anchors.setdefault(rule.name, f"{rule.name}-rule-{component.name}-{plan.name}")
+                    rule_anchors.setdefault(rule.name, f"{safe_anchor(rule.name)}-rule-{safe_anchor(component.name)}-{safe_anchor(plan.name)}")
         return component_anchors, rule_anchors
 
     def _summary_entries(self, anchor):
