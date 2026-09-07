@@ -10,6 +10,7 @@ const state = {
   activeLayout: "cose", // Active layout choice
   graph3DInstance: null,
   highlightedIds: null,
+  aiStatus: null,
 };
 
 window.state = state;
@@ -187,8 +188,15 @@ const exportSvgButton = document.getElementById("export-svg-button");
 const sidebarExportPngButton = document.getElementById("sidebar-export-png-button");
 const sidebarExportSvgButton = document.getElementById("sidebar-export-svg-button");
 
+const aiSummaryContainer = document.getElementById("ai-summary-container");
+const aiSummaryStatus = document.getElementById("ai-summary-status");
+const aiSummaryLabel = document.getElementById("ai-summary-label");
+const aiSummaryContent = document.getElementById("ai-summary-content");
+const generateSummaryButton = document.getElementById("generate-summary-button");
+
 document.getElementById("graph-button").addEventListener("click", requestGraphGeneration);
 document.getElementById("html-button").addEventListener("click", generateHtml);
+generateSummaryButton.addEventListener("click", handleGenerateSummaryClick);
 document.getElementById("export-button").addEventListener("click", () => exportGraph("json"));
 document.getElementById("export-csv-button").addEventListener("click", () => exportGraph("csv"));
 document.getElementById("export-markdown-button").addEventListener("click", () => exportGraph("markdown"));
@@ -286,6 +294,7 @@ visualizationModeSelect.addEventListener("change", () => {
 
 initializeTheme();
 loadSessionsFromStorage();
+fetchAiStatus();
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
@@ -918,6 +927,7 @@ function renderGraph() {
       clearSelectedRule();
       summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
       rawXmlEl.textContent = "";
+      hideAiSummary();
     }
   });
   state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
@@ -1346,6 +1356,8 @@ function showNodeDetails(node) {
       }
     });
   });
+
+  setupAiSummaryForNode(node, hierarchy);
 }
 
 function clearSelectedRule() {
@@ -1488,6 +1500,7 @@ function showEdgeDetails(edge) {
     <dt>Target</dt><dd>${escapeHtml(edge.target)}</dd>
   `;
   rawXmlEl.textContent = JSON.stringify(edge.metadata || {}, null, 2);
+  hideAiSummary();
 }
 
 const graphExportFormats = {
@@ -1862,6 +1875,102 @@ function colorForType(type) {
     ProcessingUnit: "#ffa000",
     Calendar: "#2e7d32",
   }[type] || "#81c784";
+}
+
+async function fetchAiStatus() {
+  try {
+    const response = await fetch("/api/ai/status");
+    if (response.ok) {
+      state.aiStatus = await response.json();
+    } else {
+      state.aiStatus = { enabled: false, provider: "none", configured: false, message: "Failed to load AI status." };
+    }
+  } catch (error) {
+    state.aiStatus = { enabled: false, provider: "none", configured: false, message: `Failed to load AI status: ${error.message}` };
+  }
+}
+
+let currentSelectedNodeForSummary = null;
+
+function setupAiSummaryForNode(node, hierarchy) {
+  currentSelectedNodeForSummary = { node, hierarchy };
+  aiSummaryLabel.style.display = "none";
+  aiSummaryContent.style.display = "none";
+  aiSummaryContent.textContent = "";
+
+  if (!state.aiStatus) {
+    generateSummaryButton.disabled = true;
+    aiSummaryStatus.textContent = "AI status is loading...";
+  } else if (!state.aiStatus.enabled) {
+    generateSummaryButton.disabled = true;
+    aiSummaryStatus.textContent = state.aiStatus.message || "AI summary is not configured.";
+  } else {
+    generateSummaryButton.disabled = false;
+    const provName = state.aiStatus.provider === "stub" ? "local stub" : "OpenAI";
+    aiSummaryStatus.textContent = `Ready to generate summary via ${provName} provider.`;
+  }
+  aiSummaryContainer.style.display = "block";
+}
+
+function hideAiSummary() {
+  currentSelectedNodeForSummary = null;
+  if (aiSummaryContainer) {
+    aiSummaryContainer.style.display = "none";
+    aiSummaryLabel.style.display = "none";
+    aiSummaryContent.style.display = "none";
+    aiSummaryContent.textContent = "";
+    aiSummaryStatus.textContent = "";
+  }
+}
+
+async function handleGenerateSummaryClick() {
+  if (!currentSelectedNodeForSummary) return;
+  const { node, hierarchy } = currentSelectedNodeForSummary;
+
+  generateSummaryButton.disabled = true;
+  aiSummaryStatus.textContent = "Generating summary...";
+  aiSummaryLabel.style.display = "none";
+  aiSummaryContent.style.display = "none";
+  aiSummaryContent.textContent = "";
+
+  try {
+    const payload = {
+      nodeId: node.id,
+      label: node.label,
+      type: node.type,
+      sourceFile: node.sourceFile,
+      xmlPath: node.xmlPath,
+      rawXml: node.rawXml || "",
+      metadata: node.metadata || {},
+      associatedPlans: hierarchy.plans || [],
+      associatedPlanComponents: hierarchy.components || [],
+      associatedRules: hierarchy.rules || []
+    };
+
+    const response = await fetch("/api/ai/summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || `Failed with status ${response.status}`);
+    }
+
+    const providerLabel = data.provider === "stub" ? "Stub" : "OpenAI";
+    aiSummaryLabel.textContent = `AI-Generated Summary (${providerLabel} Provider)`;
+    aiSummaryLabel.style.display = "block";
+    aiSummaryContent.textContent = data.summary;
+    aiSummaryContent.style.display = "block";
+    aiSummaryStatus.textContent = "Summary generated successfully.";
+  } catch (error) {
+    aiSummaryStatus.textContent = "Error generating summary.";
+    aiSummaryContent.textContent = error.message || "An unexpected error occurred.";
+    aiSummaryContent.style.display = "block";
+  } finally {
+    generateSummaryButton.disabled = false;
+  }
 }
 
 function graphThemeColors() {
