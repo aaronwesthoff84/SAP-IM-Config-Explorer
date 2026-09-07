@@ -247,7 +247,12 @@ function navigateToHtmlSectionForNode(node) {
   const preview = document.getElementById("html-output-preview");
   const doc = preview.contentDocument || preview.contentWindow.document;
   if (doc) {
-    const element = doc.getElementsByName(anchor)[0] || doc.getElementById(anchor);
+    const candidates = [anchor, decodeURIComponent(anchor)];
+    let element = null;
+    for (const cand of candidates) {
+      element = doc.getElementsByName(cand)[0] || doc.getElementById(cand);
+      if (element) break;
+    }
     if (element) {
       element.scrollIntoView({ block: "start", behavior: "smooth" });
       setStatus(`Navigated to HTML section for ${node.label}`);
@@ -632,9 +637,10 @@ function enableHtmlPreviewAnchors(preview) {
     if (!href?.startsWith("#")) return;
 
     event.preventDefault();
-    const anchor = href.slice(1);
+    const rawAnchor = href.slice(1);
+    const candidates = [rawAnchor, decodeURIComponent(rawAnchor)];
     const target = [...previewDocument.querySelectorAll("[name], [id]")].find(
-      (element) => element.getAttribute("name") === anchor || element.id === anchor
+      (element) => candidates.includes(element.getAttribute("name")) || candidates.includes(element.id)
     );
     target?.scrollIntoView({ block: "start" });
   });
@@ -1221,6 +1227,11 @@ function topologyLabel(topologyMode) {
   return topologyMode === "full" ? "Full" : "Core";
 }
 
+function safeAnchorPart(str) {
+  if (!str) return "";
+  return encodeURIComponent(str).replace(/%20/g, " ");
+}
+
 function getHtmlAnchorsForNode(node) {
   let anchors = [];
   if (!state.graph || !state.graph.nodes) return [];
@@ -1228,7 +1239,7 @@ function getHtmlAnchorsForNode(node) {
   const links = state.graph.links || [];
 
   if (node.type === "Plan") {
-    anchors = [`${node.label}-plan`];
+    anchors = [`${safeAnchorPart(node.label)}-plan`];
   } else if (node.type === "PlanComponent") {
     const planLinks = links.filter(
       (link) => link.relationship === "belongs_to_plan" && link.source === node.id
@@ -1237,7 +1248,7 @@ function getHtmlAnchorsForNode(node) {
       anchors = planLinks.map((link) => {
         const plan = nodesById.get(link.target);
         const planLabel = plan ? plan.label : "";
-        return `${node.label}-plan-${planLabel}`;
+        return `${safeAnchorPart(node.label)}-plan-${safeAnchorPart(planLabel)}`;
       });
     }
   } else if (node.type === "Rule") {
@@ -1254,7 +1265,7 @@ function getHtmlAnchorsForNode(node) {
           planLinks.forEach((pLink) => {
             const plan = nodesById.get(pLink.target);
             if (plan) {
-              anchors.push(`${node.label}-rule-${comp.label}-${plan.label}`);
+              anchors.push(`${safeAnchorPart(node.label)}-rule-${safeAnchorPart(comp.label)}-${safeAnchorPart(plan.label)}`);
             }
           });
         }
@@ -1269,7 +1280,7 @@ function getHtmlAnchorsForNode(node) {
       Quota: "-quota",
       Territory: "-terr",
     }[node.type];
-    anchors = [`${node.label}${suffix}`];
+    anchors = [`${safeAnchorPart(node.label)}${suffix}`];
   }
   return anchors.sort((a, b) => a.localeCompare(b));
 }
@@ -1361,7 +1372,12 @@ function showNodeDetails(node) {
       const preview = document.getElementById("html-output-preview");
       const doc = preview.contentDocument || preview.contentWindow.document;
       if (doc) {
-        const element = doc.getElementsByName(anchor)[0] || doc.getElementById(anchor);
+        const candidates = [anchor, decodeURIComponent(anchor)];
+        let element = null;
+        for (const cand of candidates) {
+          element = doc.getElementsByName(cand)[0] || doc.getElementById(cand);
+          if (element) break;
+        }
         if (element) {
           element.scrollIntoView({ block: "start", behavior: "smooth" });
           setStatus(`Navigated to HTML section for ${node.label}`);

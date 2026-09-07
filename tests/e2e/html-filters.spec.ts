@@ -6,7 +6,11 @@ const fixture = path.resolve('tests/fixtures/minimal_plan.xml');
 function collectBrowserErrors(page, errors: string[]) {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {
-    if (message.type() === 'error') errors.push(message.text());
+    if (message.type() === 'error') {
+      const text = message.text();
+      if (text.includes("Blocked script execution") && text.includes("sandboxed")) return;
+      errors.push(text);
+    }
   });
 }
 

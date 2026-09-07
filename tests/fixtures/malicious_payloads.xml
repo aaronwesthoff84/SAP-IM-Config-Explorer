@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Malicious &lt;script&gt;window.__pwned=true;&lt;/script&gt; Plan" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="&quot;&gt;&lt;img src=x onerror=&quot;window.__pwned=true&quot;&gt;">
+      <COMPONENT_REF NAME="Component &lt;svg onload=alert(1)&gt; &quot;quotes&quot;" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT NAME="Component &lt;svg onload=alert(1)&gt; &quot;quotes&quot;" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Comp &lt;iframe src=javascript:alert(1)&gt;">
+      <RULE_REFS>
+        <RULE_REF NAME="Rule &lt;b onmouseover=alert(1)&gt;Test&lt;/b&gt;" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE NAME="Rule &lt;b onmouseover=alert(1)&gt;Test&lt;/b&gt;" TYPE="DIRECT_TRANSACTION_CREDIT" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01">
+      <CONDITION_EXPRESSION>
+        <FUNCTION ID="MDLT_FUNCTION">
+          <MDLT_REF NAME="Lookup &lt;a href=&quot;javascript:alert(1)&quot;&gt;Click&lt;/a&gt;" />
+          <STRING_FORMULA_REF NAME="Formula &quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" ID="STRING_FORMULA_REF" />
+        </FUNCTION>
+      </CONDITION_EXPRESSION>
+      <ACTION_EXPRESSION_SET>
+        <ACTION_EXPRESSION>
+          <FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+            <CREDIT_TYPE>&lt;script&gt;alert(&quot;credit&quot;)&lt;/script&gt;</CREDIT_TYPE>
+          </FUNCTION>
+        </ACTION_EXPRESSION>
+      </ACTION_EXPRESSION_SET>
+    </RULE>
+  </RULE_SET>
+  <FORMULA_SET>
+    <FORMULA NAME="Formula &quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" RETURN_TYPE="Boolean" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01">
+      <EXPRESSION>
+        <BOOLEAN VALUE="true" />
+      </EXPRESSION>
+    </FORMULA>
+  </FORMULA_SET>
+  <MD_LOOKUP_TABLE_SET>
+    <MD_LOOKUP_TABLE NAME="Lookup &lt;a href=&quot;javascript:alert(1)&quot;&gt;Click&lt;/a&gt;" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01">
+      <DIM_NAMES>
+        <DIM_NAME NAME="Product &lt;script&gt;" />
+      </DIM_NAMES>
+    </MD_LOOKUP_TABLE>
+  </MD_LOOKUP_TABLE_SET>
+</DATA_IMPORT>
