@@ -522,3 +522,64 @@ def test_converter_escapes_malicious_xml_payloads_and_adds_csp():
     assert 'href="#Malicious %3Cscript%3Ewindow.__pwned%3Dtrue%3B%3C%2Fscript%3E Plan-plan"' in html
     assert 'name="Malicious %3Cscript%3Ewindow.__pwned%3Dtrue%3B%3C%2Fscript%3E Plan-plan"' in html
 
+
+def test_duplicate_objects_preserved_in_html_report():
+    transformer = Transformer()
+    fixture_path = FIXTURES / "duplicate_rules_components.xml"
+    transformer.parse(str(fixture_path), source_file="duplicate_rules_components.xml")
+    html = transformer.html()
+
+    # Verify both Shared Component instances are preserved
+    assert len(transformer.comps) == 4
+    shared_comps = [c for c in transformer.comps if c.name == "Shared Component"]
+    assert len(shared_comps) == 2
+    assert shared_comps[0].is_duplicate is True
+    assert shared_comps[0].duplicate_index == 1
+    assert shared_comps[1].duplicate_index == 2
+
+    # Verify both Shared Rule instances are preserved
+    shared_rules = [r for r in transformer.rules if r.name == "Shared Rule"]
+    assert len(shared_rules) == 2
+    assert shared_rules[0].is_duplicate is True
+    assert shared_rules[0].duplicate_index == 1
+    assert shared_rules[1].duplicate_index == 2
+
+    # Verify Distinct ID instances have their IDs tracked
+    id_comps = [c for c in transformer.comps if c.name == "Distinct ID Component"]
+    assert len(id_comps) == 2
+    assert {c.source_id for c in id_comps} == {"COMP-1", "COMP-2"}
+
+    id_rules = [r for r in transformer.rules if r.name == "Distinct ID Rule"]
+    assert len(id_rules) == 2
+    assert {r.source_id for r in id_rules} == {"RULE-1", "RULE-2"}
+
+    # Verify HTML includes metadata rows
+    assert "Source File" in html
+    assert "duplicate_rules_components.xml" in html
+    assert "Source ID" in html
+    assert "COMP-1" in html
+    assert "COMP-2" in html
+    assert "RULE-1" in html
+    assert "RULE-2" in html
+    assert "XML Path" in html
+    assert "Duplicate Status" in html
+    assert "Duplicate instance (1 of 2)" in html
+    assert "Duplicate instance (2 of 2)" in html
+
+    # Verify collision-safe anchors for duplicates
+    assert 'name="Shared Component-plan-Duplicate Demo Plan-dup-2"' in html
+    assert 'name="Shared Rule-rule-Shared Component-Duplicate Demo Plan-dup-2"' in html
+
+    # Verify exact node-id anchors are rendered for cross-view navigation
+    for c in transformer.comps:
+        assert f'name="{c.instance_id}"' in html
+    for r in transformer.rules:
+        assert f'name="{r.instance_id}"' in html
+
+    # Verify summary index includes distinct ID badges for duplicates
+    assert "(COMP-1)" in html
+    assert "(COMP-2)" in html
+    assert "(RULE-1)" in html
+    assert "(RULE-2)" in html
+
+

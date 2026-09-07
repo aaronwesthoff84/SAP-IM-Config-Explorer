@@ -388,3 +388,34 @@ def test_convert_html_endpoint_escapes_malicious_payloads_and_returns_csp():
     assert "&lt;script&gt;window.__pwned=true;&lt;/script&gt;" in html
     assert "&quot;&gt;&lt;img src=x onerror=&quot;window.__pwned=true&quot;&gt;" in html
 
+
+def test_convert_html_endpoint_supports_multiple_files_and_preserves_duplicates():
+    client = TestClient(app)
+    fixture_dup = ROOT / "tests" / "fixtures" / "duplicate_rules_components.xml"
+    fixture_minimal = ROOT / "tests" / "fixtures" / "minimal_plan.xml"
+
+    with fixture_dup.open("rb") as f1, fixture_minimal.open("rb") as f2:
+        response = client.post(
+            "/api/convert/html",
+            files=[
+                ("files", ("duplicate_rules_components.xml", f1, "application/xml")),
+                ("files", ("minimal_plan.xml", f2, "application/xml")),
+            ],
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["inputFiles"] == ["duplicate_rules_components.xml", "minimal_plan.xml"]
+    assert "duplicate_rules_components-combined.html" in data["outputFile"]
+    html = data["html"]
+
+    # Verify objects from both files are in the HTML output
+    assert "Duplicate Demo Plan" in html
+    assert "Enterprise Plan" in html
+    assert "Duplicate instance (1 of 2)" in html
+    assert "Duplicate instance (2 of 2)" in html
+    assert "COMP-1" in html
+    assert "COMP-2" in html
+
+

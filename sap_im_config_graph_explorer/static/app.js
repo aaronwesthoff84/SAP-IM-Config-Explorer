@@ -231,33 +231,42 @@ function navigateToHtmlSectionForNode(node) {
     setStatus("HTML representation unavailable: No HTML generated yet.");
     return;
   }
-  if (node.sourceFile !== state.html.inputName) {
-    setStatus(`HTML representation unavailable: Node is in file '${node.sourceFile}', but HTML was generated for '${state.html.inputName}'.`);
+  const htmlInputFiles = state.html.inputFiles || (state.html.inputName ? [state.html.inputName] : []);
+  if (node.sourceFile && htmlInputFiles.length > 0 && !htmlInputFiles.includes(node.sourceFile)) {
+    setStatus(`HTML representation unavailable: Node is in file '${node.sourceFile}', but HTML was generated for '${htmlInputFiles.join(", ")}'.`);
     return;
   }
 
   const anchors = getHtmlAnchorsForNode(node);
-  if (anchors.length === 0) {
+  const directCandidates = [];
+  if (node.id) directCandidates.push(node.id);
+  if (node.sourceId) directCandidates.push(node.sourceId, safeAnchorPart(node.sourceId));
+  if (node.xmlPath) directCandidates.push(node.xmlPath, safeAnchorPart(node.xmlPath));
+  const allCandidates = [...directCandidates, ...anchors];
+
+  if (allCandidates.length === 0) {
     setStatus(`HTML representation unavailable for ${node.type}: ${node.label}`);
     return;
   }
 
   switchWorkspace("html-output-view");
-  const anchor = anchors[0];
   const preview = document.getElementById("html-output-preview");
   const doc = preview.contentDocument || preview.contentWindow.document;
   if (doc) {
-    const candidates = [anchor, decodeURIComponent(anchor)];
     let element = null;
-    for (const cand of candidates) {
-      element = doc.getElementsByName(cand)[0] || doc.getElementById(cand);
+    for (const cand of allCandidates) {
+      element = doc.getElementById(cand) || doc.getElementsByName(cand)[0];
+      if (element) break;
+      const decoded = decodeURIComponent(cand);
+      element = doc.getElementById(decoded) || doc.getElementsByName(decoded)[0];
       if (element) break;
     }
     if (element) {
       element.scrollIntoView({ block: "start", behavior: "smooth" });
       setStatus(`Navigated to HTML section for ${node.label}`);
     } else {
-      setStatus(`HTML representation unavailable: Anchor '${anchor}' not found in preview.`);
+      const fallbackAnchor = anchors[0] || node.id;
+      setStatus(`HTML representation unavailable: Anchor '${fallbackAnchor}' not found in preview.`);
     }
   }
 }
@@ -440,11 +449,12 @@ function resetDetails() {
 
 async function generateHtml() {
   const file = npFileInput.files[0] || pFileInput.files[0];
+  const files = [...npFileInput.files, ...pFileInput.files];
   if (!file) return setStatus("Select an XML file.");
   const variant = document.getElementById("variant").value;
   setStatus("Generating HTML...");
   try {
-    state.html = await convertHtml(file, variant);
+    state.html = await convertHtml(files.length > 1 ? files : file, variant);
   } catch (error) {
     return setStatus(error.message || "HTML generation failed.");
   }
@@ -454,36 +464,51 @@ async function generateHtml() {
   setStatus(`Generated ${state.html.outputFile}.`);
 }
 
-async function convertHtml(file, variant) {
+async function convertHtml(fileOrFiles, variant) {
+  const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
   const formData = new FormData();
-  formData.append("file", file);
+  if (files.length === 1) {
+    formData.append("file", files[0]);
+  } else {
+    for (const f of files) {
+      formData.append("files", f);
+    }
+  }
   formData.append("variant", variant);
   formData.append("theme", currentTheme());
+  const snapshotId = (npFileInput.files.length > 0 && pFileInput.files.length === 0) ? "non_production" : (pFileInput.files.length > 0 && npFileInput.files.length === 0 ? "production" : "configuration");
+  formData.append("snapshot_id", snapshotId);
   const response = await fetch("/api/convert/html", { method: "POST", body: formData });
   const payload = await response.json();
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.error || `Unable to generate HTML for ${file.name}.`);
+    throw new Error(payload.error || `Unable to generate HTML for ${files.map((f) => f.name).join(", ")}.`);
   }
   return {
     originalHtml: payload.html,
-    inputName: file.name,
+    inputName: files[0].name,
+    inputFiles: payload.inputFiles || files.map((f) => f.name),
     outputFile: payload.outputFile,
     variant,
     findings: payload.findings || [],
   };
 }
 
-window.sapImExplorer_navigateToGraphNode = (type, label) => {
+window.sapImExplorer_navigateToGraphNode = (type, label, instanceId = null) => {
   if (!state.graph || !state.graph.nodes) {
     setStatus("Graph representation unavailable: No graph generated yet.");
     return;
   }
 
-  const sourceFile = state.html ? state.html.inputName : null;
-  let node = state.graph.nodes.find(
-    (n) => n.type === type && n.label === label && (!sourceFile || n.sourceFile === sourceFile)
-  );
-
+  let node = null;
+  if (instanceId) {
+    node = state.graph.nodes.find((n) => n.id === instanceId);
+  }
+  if (!node) {
+    const sourceFiles = state.html ? (state.html.inputFiles || [state.html.inputName]) : [];
+    node = state.graph.nodes.find(
+      (n) => n.type === type && n.label === label && (sourceFiles.length === 0 || sourceFiles.includes(n.sourceFile))
+    );
+  }
   if (!node) {
     node = state.graph.nodes.find((n) => n.type === type && n.label === label);
   }
@@ -537,21 +562,24 @@ function enhanceHtmlPreviewForGraphNavigation(preview) {
     const type = section.getAttribute("data-object-type");
     const label = section.getAttribute("data-object-label");
     const heading = section.querySelector("h1, h2, h3");
-    if (heading) {
+    if (heading && !heading.querySelector(".view-in-graph-link")) {
       const link = doc.createElement("a");
       link.className = "view-in-graph-link";
       link.textContent = "[View in Graph]";
       link.href = "#";
       link.addEventListener("click", (e) => {
         e.preventDefault();
+        const instanceAnchor = section.querySelector("a[name^='node-']");
+        const instanceId = instanceAnchor ? instanceAnchor.getAttribute("name") : null;
         const targetWindow = window.parent.sapImExplorer_navigateToGraphNode ? window.parent : window;
-        targetWindow.sapImExplorer_navigateToGraphNode(type, label);
+        targetWindow.sapImExplorer_navigateToGraphNode(type, label, instanceId);
       });
       heading.appendChild(link);
     }
   });
 
   doc.querySelectorAll("span[data-object-entry='true'][data-object-type][data-object-label]").forEach((entry) => {
+    if (entry.querySelector(".view-in-graph-entry-link")) return;
     const type = entry.getAttribute("data-object-type");
     const label = entry.getAttribute("data-object-label");
     const link = doc.createElement("a");
@@ -1137,7 +1165,14 @@ function renderFindings(findings) {
     let actionButtons = '';
     if (finding.nodeIds && finding.nodeIds.length > 0) {
       const linksHtml = finding.nodeIds.map((nodeId) => {
-        const node = state.graph.nodes.find((n) => n.id === nodeId);
+        let node = state.graph.nodes.find((n) => n.id === nodeId);
+        if (!node && state.graph.nodes.length > 0) {
+          const parts = nodeId.split("-");
+          const digest = parts.length > 1 ? parts[1] : "";
+          if (digest) {
+            node = state.graph.nodes.find((n) => n.id.endsWith(digest));
+          }
+        }
         if (!node) return '';
         return `
           <div class="finding-node-links" style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--border);">
@@ -1250,6 +1285,8 @@ function getHtmlAnchorsForNode(node) {
         const planLabel = plan ? plan.label : "";
         return `${safeAnchorPart(node.label)}-plan-${safeAnchorPart(planLabel)}`;
       });
+    } else {
+      anchors = [`${safeAnchorPart(node.label)}-comp`];
     }
   } else if (node.type === "Rule") {
     const componentLinks = links.filter(
@@ -1271,6 +1308,9 @@ function getHtmlAnchorsForNode(node) {
         }
       }
     });
+    if (anchors.length === 0) {
+      anchors = [`${safeAnchorPart(node.label)}-rule`];
+    }
   } else if (["Formula", "Variable", "LookupTable", "FixedValue", "Quota", "Territory"].includes(node.type)) {
     const suffix = {
       Formula: "-formula",
@@ -1329,10 +1369,11 @@ function showNodeDetails(node) {
 
   // Get HTML anchors and generate HTML links
   let htmlLinksHtml = "";
+  const htmlInputFiles = state.html ? (state.html.inputFiles || (state.html.inputName ? [state.html.inputName] : [])) : [];
   if (!state.html) {
     htmlLinksHtml = '<span style="color: var(--muted-text); font-style: italic;">Unavailable (HTML not generated)</span>';
-  } else if (node.sourceFile !== state.html.inputName) {
-    htmlLinksHtml = `<span style="color: var(--muted-text); font-style: italic;" title="This node belongs to '${escapeHtml(node.sourceFile)}', but HTML is generated for '${escapeHtml(state.html.inputName)}'">Unavailable (File mismatch)</span>`;
+  } else if (node.sourceFile && htmlInputFiles.length > 0 && !htmlInputFiles.includes(node.sourceFile)) {
+    htmlLinksHtml = `<span style="color: var(--muted-text); font-style: italic;" title="This node belongs to '${escapeHtml(node.sourceFile)}', but HTML is generated for '${escapeHtml(htmlInputFiles.join(", "))}'">Unavailable (File mismatch)</span>`;
   } else {
     const anchors = getHtmlAnchorsForNode(node);
     if (anchors.length === 0) {

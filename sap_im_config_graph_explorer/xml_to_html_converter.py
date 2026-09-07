@@ -4,7 +4,13 @@ SAP Incentive Management XML to HTML Transformer
 Converts SAP Incentive Management plan XML to HTML.
 Usage: python sap_im_transformer.py input.xml [output.html] [--variant A|B]
 """
-import sys, html as html_mod, urllib.parse
+import hashlib
+import html as html_mod
+from pathlib import Path
+import re
+import sys
+import urllib.parse
+from collections import defaultdict
 from xml.etree import ElementTree as ET
 
 TYPE_LABELS = {
@@ -155,9 +161,90 @@ def drange(s,e):
     if not e or "2200" in e or "2099" in e: return f"{s} - End of Time"
     return f"{s} - {e}"
 
+def _build_paths(root: ET.Element) -> dict[int, str]:
+    paths: dict[int, str] = {}
+    def visit(element: ET.Element, path: str) -> None:
+        paths[id(element)] = path
+        tag_counts: dict[str, int] = {}
+        for child in list(element):
+            tag_counts[child.tag] = tag_counts.get(child.tag, 0) + 1
+            visit(child, f"{path}/{child.tag}[{tag_counts[child.tag]}]")
+    visit(root, f"/{root.tag}[1]")
+    return paths
+
+def normalize_identity(value: str | None) -> str:
+    if value is None:
+        return ""
+    normalized = re.sub(r"[^a-zA-Z0-9]+", "-", str(value).strip())
+    return normalized.strip("-").lower()
+
+def compute_instance_id(snapshot_id: str, source_file: str, canonical_key: str, xml_path: str, occurrence: int = 1) -> str:
+    identity = "\x1f".join((snapshot_id, source_file, canonical_key, xml_path, str(occurrence)))
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
+    return f"node-{digest}"
+
+def canonical_key_for(node_type: str, element: ET.Element, name: str) -> str:
+    source_id = element.get("ID") or element.get("OBJECT_ID")
+    identity = normalize_identity(source_id or name)
+    return f"{normalize_identity(node_type)}:{identity}"
+
+def render_metadata_rows(obj):
+    rows = []
+    sf = getattr(obj, "source_file", "")
+    sid = getattr(obj, "source_id", "")
+    xp = getattr(obj, "xml_path", "")
+    is_dup = getattr(obj, "is_duplicate", False)
+    dup_idx = getattr(obj, "duplicate_index", 1)
+    dup_total = getattr(obj, "duplicate_total", 1)
+
+    if sf:
+        rows.append(f'<tr><td class="LabelCell">Source File</td><td class="Value">{esc(sf)}</td></tr>')
+    if sid:
+        rows.append(f'<tr><td class="LabelCell">Source ID</td><td class="Value">{esc(sid)}</td></tr>')
+    if xp:
+        rows.append(f'<tr><td class="LabelCell">XML Path</td><td class="Value">{esc(xp)}</td></tr>')
+    if is_dup:
+        evidence = f"Duplicate instance ({dup_idx} of {dup_total})"
+        if sid:
+            evidence += f" - Source ID: {sid}"
+        if sf:
+            evidence += f" [{sf}]"
+        rows.append(f'<tr><td class="LabelCell">Duplicate Status</td><td class="Value" style="color: var(--alert-red); font-weight: bold;">{esc(evidence)}</td></tr>')
+    return "".join(rows)
+
+def render_anchor_tags(primary_anchor, obj=None, fallback_anchors=None):
+    tags = []
+    seen = set()
+    def add(a):
+        if a and a not in seen:
+            seen.add(a)
+            tags.append(f'<a name="{esc(a)}"></a>')
+
+    add(primary_anchor)
+    if fallback_anchors:
+        for fa in fallback_anchors:
+            add(fa)
+    if obj is not None:
+        inst_id = getattr(obj, "instance_id", "")
+        if inst_id:
+            add(inst_id)
+        config_inst_id = getattr(obj, "config_instance_id", "")
+        if config_inst_id:
+            add(config_inst_id)
+        sid = getattr(obj, "source_id", "")
+        if sid:
+            add(safe_anchor(sid))
+        xp = getattr(obj, "xml_path", "")
+        if xp:
+            add(safe_anchor(xp))
+    return "".join(tags)
+
 def object_sort_key(obj):
     name = getattr(obj, "name", "")
-    return (name.casefold(), name)
+    dup_idx = getattr(obj, "duplicate_index", 1)
+    sf = getattr(obj, "source_file", "")
+    sid = getattr(obj, "source_id", "")
+    return (name.casefold(), name, dup_idx, sf, sid)
 
 def rule_category(rule):
     return TYPE_CATEGORY.get(rule.rt, "other")
@@ -177,13 +264,13 @@ def rule_categories(rules):
         categories.append("other")
     return categories
 
-def render_object_section(object_type, label, content):
+def render_object_section(object_type, label, content, obj=None):
     return (
         f'<section data-object-type="{esc(object_type)}" '
         f'data-object-label="{esc(label)}">\n{content}\n</section>'
     )
 
-def render_object_entry(object_type, label, content):
+def render_object_entry(object_type, label, content, obj=None):
     return (
         f'<span data-object-entry="true" data-object-type="{esc(object_type)}" '
         f'data-object-label="{esc(label)}">{content}</span>'
@@ -423,31 +510,87 @@ def render_action(func_elem, depth=0):
 
 # Data Model classes
 class Plan:
-    def __init__(self,e): self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE",""); self.desc=e.get("DESCRIPTION",""); self.cn=[]
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        self.desc = e.get("DESCRIPTION", "")
+        self.cn = []
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
     @property
-    def anchor(self): return f"{safe_anchor(self.name)}-plan"
-    def render(self, v, cm, rm):
-        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="SubSectionTitle">{esc(self.name)}</h2>']
+    def anchor(self):
+        base = f"{safe_anchor(self.name)}-plan"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor
+
+    def render(self, v, cm_map, rm_map):
+        primary = self.anchor
+        fallbacks = [f"{safe_anchor(self.name)}-plan"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(primary, self, fallbacks), f'<h2 class="SubSectionTitle">{esc(self.name)}{title_extra}</h2>']
         L.append('<table border="0" cellspacing="0" cellpadding="0">')
-        L.append(f'<tr><td class="LabelCell">Effective Date Range</td><td class="Value">{esc(drange(self.st,self.en))}</td></tr>')
+        L.append(f'<tr><td class="LabelCell">Effective Date Range</td><td class="Value">{esc(drange(self.st, self.en))}</td></tr>')
         L.append(f'<tr><td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td></tr>')
+        L.append(render_metadata_rows(self))
         L.append('</table><p></p>')
-        pcs=sorted_objects([cm[c] for c in self.cn if c in cm])
-        referenced_rules=[rm[rn] for pc in pcs for rn in pc.rn if rn in rm]
-        categories=rule_categories(referenced_rules)
+
+        pcs = []
+        for c in self.cn:
+            matching = cm_map.get(c, []) if isinstance(cm_map, dict) else []
+            if isinstance(matching, list):
+                for comp in matching:
+                    if comp not in pcs:
+                        pcs.append(comp)
+            elif matching and matching not in pcs:
+                pcs.append(matching)
+        pcs = sorted_objects(pcs)
+
+        referenced_rules = []
+        for pc in pcs:
+            for rn in pc.rn:
+                matching_rules = rm_map.get(rn, []) if isinstance(rm_map, dict) else []
+                if isinstance(matching_rules, list):
+                    for r in matching_rules:
+                        if r not in referenced_rules:
+                            referenced_rules.append(r)
+                elif matching_rules and matching_rules not in referenced_rules:
+                    referenced_rules.append(matching_rules)
+
+        categories = rule_categories(referenced_rules)
         L.append('<table width="100%" border="0" cellpadding="0" cellspacing="5"><tr>')
         for h in ["Plan Components"] + [RULE_CATEGORY_HEADINGS[category] for category in categories]:
             L.append(f'<td class="ContentTitle">{h}</td>')
         L.append('</tr><tr>')
-        clinks=[]; cats={category:[] for category in categories}
+        clinks = []
+        cats = {category: [] for category in categories}
         for pc in pcs:
-            ca=f"{safe_anchor(pc.name)}-plan-{safe_anchor(self.name)}"
-            clinks.append(f'<a class="Link" href="#{esc(ca)}">{esc(pc.name)}</a>')
-            for r in sorted_rules([rm[rn] for rn in pc.rn if rn in rm]):
-                category=rule_category(r)
-                ra=f"{safe_anchor(r.name)}-rule-{safe_anchor(pc.name)}-{safe_anchor(self.name)}"
-                link=f'<a class="Link" href="#{esc(ra)}">{esc(r.name)}</a>'
-                if link not in cats[category]: cats[category].append(link)
+            ca = pc.anchor_under_plan(self.name)
+            pc_badge = f' <small style="color:var(--alert-red);font-size:11px;">({esc(pc.source_id or f"#{pc.duplicate_index}")})</small>' if pc.is_duplicate else ''
+            clinks.append(f'<a class="Link" href="#{esc(ca)}">{esc(pc.name)}{pc_badge}</a>')
+            for rn in pc.rn:
+                matching_rules = rm_map.get(rn, []) if isinstance(rm_map, dict) else []
+                if not isinstance(matching_rules, list):
+                    matching_rules = [matching_rules] if matching_rules else []
+                for r in sorted_rules(matching_rules):
+                    category = rule_category(r)
+                    ra = r.anchor_under_component(self.name, pc.name, pc=pc)
+                    r_badge = f' <small style="color:var(--alert-red);font-size:11px;">({esc(r.source_id or f"#{r.duplicate_index}")})</small>' if r.is_duplicate else ''
+                    link = f'<a class="Link" href="#{esc(ra)}">{esc(r.name)}{r_badge}</a>'
+                    if link not in cats[category]:
+                        cats[category].append(link)
         L.append(f'<td valign="top">{"<br>".join(clinks)}</td>')
         for category in categories:
             L.append(f'<td valign="top">{"<br>".join(cats[category])}</td>')
@@ -459,121 +602,357 @@ class Plan:
         return "\n".join(L)
 
 class PComp:
-    def __init__(self,e): self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE",""); self.desc=e.get("DESCRIPTION",""); self.rn=[]
-    def render(self, v, pn, rm):
-        ca=f"{safe_anchor(self.name)}-plan-{safe_anchor(pn)}"
-        L=[f'<a name="{esc(ca)}"></a>', f'<h2 class="ComponentObjectTitle">{esc(self.name)}</h2>']
-        es=fd(self.st); ee=fd(self.en)
-        if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        self.desc = e.get("DESCRIPTION", "")
+        self.rn = []
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
+    def anchor_under_plan(self, pn):
+        base = f"{safe_anchor(self.name)}-plan-{safe_anchor(pn)}"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    def anchor_standalone(self):
+        base = f"{safe_anchor(self.name)}-plancomponent"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor_standalone()
+
+    def render(self, v, pn, rm_map):
+        ca = self.anchor_under_plan(pn)
+        fallbacks = [f"{safe_anchor(self.name)}-plan-{safe_anchor(pn)}"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(ca, self, fallbacks), f'<h2 class="ComponentObjectTitle">{esc(self.name)}{title_extra}</h2>']
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
         L.append('<table border="0" cellspacing="0" cellpadding="0">')
         L.append(f'<tr><td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td></tr>')
         L.append(f'<tr><td class="LabelCell">Effective</td><td class="Value">{esc(es)} to {esc(ee)}</td></tr>')
+        L.append(render_metadata_rows(self))
         L.append('</table><p></p>')
-        cr=sorted_rules([rm[rn] for rn in self.rn if rn in rm])
-        categories=rule_categories(cr)
+
+        cr = []
+        for rn in self.rn:
+            matching = rm_map.get(rn, []) if isinstance(rm_map, dict) else []
+            if isinstance(matching, list):
+                for r in matching:
+                    if r not in cr:
+                        cr.append(r)
+            elif matching and matching not in cr:
+                cr.append(matching)
+        cr = sorted_rules(cr)
+        categories = rule_categories(cr)
         L.append('<table width="100%" border="0" cellpadding="0" cellspacing="5"><tr>')
         for category in categories:
-            h=RULE_CATEGORY_HEADINGS[category]
+            h = RULE_CATEGORY_HEADINGS[category]
             L.append(f'<td class="ContentTitle">{h}</td>')
         L.append('</tr><tr>')
-        cats={category:[] for category in categories}
+        cats = {category: [] for category in categories}
         for r in cr:
-            category=rule_category(r)
-            ra=f"{safe_anchor(r.name)}-rule-{safe_anchor(self.name)}-{safe_anchor(pn)}"
-            cats[category].append(f'<a class="Link" href="#{esc(ra)}">{esc(r.name)}</a>')
+            category = rule_category(r)
+            ra = r.anchor_under_component(pn, self.name, pc=self)
+            r_badge = f' <small style="color:var(--alert-red);font-size:11px;">({esc(r.source_id or f"#{r.duplicate_index}")})</small>' if r.is_duplicate else ''
+            cats[category].append(f'<a class="Link" href="#{esc(ra)}">{esc(r.name)}{r_badge}</a>')
         for category in categories:
             L.append(f'<td valign="top">{"<br>".join(cats[category])}</td>')
         L.append('</tr></table>')
+        L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
+        plan_anchor = f"{safe_anchor(pn)}-plan"
+        L.append(f'<td class="LabelCell"><a class="Link" href="#{esc(plan_anchor)}">{esc(pn)}</a> | <a class="Link" href="#Top">Top</a></td>')
+        L.append('</tr>')
+        L.append('</table>')
+        return "\n".join(L)
+
+    def render_standalone(self, v, rm_map):
+        ca = self.anchor_standalone()
+        fallbacks = [f"{safe_anchor(self.name)}-plancomponent"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(ca, self, fallbacks), f'<h2 class="ComponentObjectTitle">{esc(self.name)}{title_extra}</h2>']
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
+        L.append('<table border="0" cellspacing="0" cellpadding="0">')
+        L.append(f'<tr><td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td></tr>')
+        L.append(f'<tr><td class="LabelCell">Effective</td><td class="Value">{esc(es)} to {esc(ee)}</td></tr>')
+        L.append(render_metadata_rows(self))
+        L.append('</table><p></p>')
+
+        cr = []
+        for rn in self.rn:
+            matching = rm_map.get(rn, []) if isinstance(rm_map, dict) else []
+            if isinstance(matching, list):
+                for r in matching:
+                    if r not in cr:
+                        cr.append(r)
+            elif matching and matching not in cr:
+                cr.append(matching)
+        cr = sorted_rules(cr)
+        if cr:
+            categories = rule_categories(cr)
+            L.append('<table width="100%" border="0" cellpadding="0" cellspacing="5"><tr>')
+            for category in categories:
+                h = RULE_CATEGORY_HEADINGS[category]
+                L.append(f'<td class="ContentTitle">{h}</td>')
+            L.append('</tr><tr>')
+            cats = {category: [] for category in categories}
+            for r in cr:
+                category = rule_category(r)
+                ra = r.anchor_standalone()
+                r_badge = f' <small style="color:var(--alert-red);font-size:11px;">({esc(r.source_id or f"#{r.duplicate_index}")})</small>' if r.is_duplicate else ''
+                cats[category].append(f'<a class="Link" href="#{esc(ra)}">{esc(r.name)}{r_badge}</a>')
+            for category in categories:
+                L.append(f'<td valign="top">{"<br>".join(cats[category])}</td>')
+            L.append('</tr></table>')
+        L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
+        L.append(f'<td class="LabelCell"><a class="Link" href="#plancomponents">Plan Components</a> | <a class="Link" href="#Top">Top</a></td>')
+        L.append('</tr>')
+        L.append('</table>')
         return "\n".join(L)
 
 class Rule:
-    def __init__(self,e): self.e=e; self.name=e.get("NAME",""); self.rt=e.get("TYPE",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE",""); self.eca=e.get("ISEVENTCONDITIONACTION",e.get("ECA",""))
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.rt = e.get("TYPE", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        self.eca = e.get("ISEVENTCONDITIONACTION", e.get("ECA", ""))
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
     @property
-    def heading(self): return f"{TYPE_HEADING.get(self.rt,'Rule')}: {self.name}"
-    def render(self, v, pn, cn):
-        anchor=f"{safe_anchor(self.name)}-rule-{safe_anchor(cn)}-{safe_anchor(pn)}"
-        L=[f'<a name="{esc(anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.heading)}</h2>']
+    def heading(self):
+        return f"{TYPE_HEADING.get(self.rt, 'Rule')}: {self.name}"
+
+    def anchor_under_component(self, pn, cn, pc=None):
+        base = f"{safe_anchor(self.name)}-rule-{safe_anchor(cn)}-{safe_anchor(pn)}"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    def anchor_standalone(self):
+        base = f"{safe_anchor(self.name)}-rule"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor_standalone()
+
+    def render(self, v, pn, cn, pc=None):
+        anchor = self.anchor_under_component(pn, cn, pc=pc)
+        fallbacks = [f"{safe_anchor(self.name)}-rule-{safe_anchor(cn)}-{safe_anchor(pn)}"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(anchor, self, fallbacks), f'<h2 class="ObjectTitle">{esc(self.heading)}{title_extra}</h2>']
         L.append('<table border="0" cellspacing="0" cellpadding="0">')
-        L.append(f'<tr><td class="LabelCell">Type</td><td class="Value">{esc(TYPE_LABELS.get(self.rt,self.rt))}</td></tr>')
-        if self.rt in ("DIRECT_TRANSACTION_CREDIT","ROLLUP_TRANSACTION_CREDIT"):
-            ev="true" if self.eca and self.eca.lower()=="true" else "false"
+        L.append(f'<tr><td class="LabelCell">Type</td><td class="Value">{esc(TYPE_LABELS.get(self.rt, self.rt))}</td></tr>')
+        if self.rt in ("DIRECT_TRANSACTION_CREDIT", "ROLLUP_TRANSACTION_CREDIT"):
+            ev = "true" if self.eca and self.eca.lower() == "true" else "false"
             L.append(f'<tr><td class="LabelCell">ECA</td><td class="Value">{esc(ev)}</td></tr>')
-        es=fd(self.st); ee=fd(self.en)
-        if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
         L.append(f'<tr><td class="LabelCell">Effective Date Range</td><td class="Value">{esc(es)} - {esc(ee)}</td></tr>')
+        L.append(render_metadata_rows(self))
         L.append('</table>')
-        if self.rt=="DIRECT_TRANSACTION_CREDIT":
-            evt=self.e.find("EVENT_TYPE_EXPRESSION")
+
+        if self.rt == "DIRECT_TRANSACTION_CREDIT":
+            evt = self.e.find("EVENT_TYPE_EXPRESSION")
             if evt is not None:
                 L.append('<p></p><span class="ContentTitle">Event Type</span><p></p>')
                 L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
-                L.append(_r_evtype(evt)); L.append('</td></tr></table>')
-        cond=self.e.find("CONDITION_EXPRESSION")
+                L.append(_r_evtype(evt))
+                L.append('</td></tr></table>')
+        cond = self.e.find("CONDITION_EXPRESSION")
         if cond is not None and len(cond):
             L.append('<p></p><span class="ContentTitle">Condition</span><p></p>')
             L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
-            L.append(render_expr(cond)); L.append('</td></tr></table>')
-        terr=self.e.find("TERRITORY_EXPRESSION")
+            L.append(render_expr(cond))
+            L.append('</td></tr></table>')
+        terr = self.e.find("TERRITORY_EXPRESSION")
         if terr is not None and len(terr):
             L.append('<p></p><span class="ContentTitle">Territory</span><p></p>')
             L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
-            L.append(render_expr(terr)); L.append('</td></tr></table>')
+            L.append(render_expr(terr))
+            L.append('</td></tr></table>')
         L.append('<p></p><span class="ContentTitle">Actions</span><p></p><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
-        aes=self.e.find("ACTION_EXPRESSION_SET")
+        aes = self.e.find("ACTION_EXPRESSION_SET")
         if aes is not None:
             for ae in aes.findall("ACTION_EXPRESSION"):
-                func=ae.find("FUNCTION")
-                if func is not None: L.append(render_action(func))
+                func = ae.find("FUNCTION")
+                if func is not None:
+                    L.append(render_action(func))
         else:
-            acts=self.e.find("ACTIONS")
+            acts = self.e.find("ACTIONS")
             if acts is not None:
                 for act in acts.findall("ACTION"):
-                    gf=act.find("GA_FUNCTION")
+                    gf = act.find("GA_FUNCTION")
                     if gf is not None:
-                        func=gf.find("FUNCTION")
-                        if func is not None: L.append(render_action(func))
+                        func = gf.find("FUNCTION")
+                        if func is not None:
+                            L.append(render_action(func))
         L.append('</td></tr></table>')
-        ca=f"{safe_anchor(cn)}-plan-{safe_anchor(pn)}"
+        ca = pc.anchor_under_plan(pn) if pc is not None else f"{safe_anchor(cn)}-plan-{safe_anchor(pn)}"
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#{esc(ca)}">{esc(cn)}</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
         L.append('</table>')
         return "\n".join(L)
 
+    def render_standalone(self, v):
+        anchor = self.anchor_standalone()
+        fallbacks = [f"{safe_anchor(self.name)}-rule"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(anchor, self, fallbacks), f'<h2 class="ObjectTitle">{esc(self.heading)}{title_extra}</h2>']
+        L.append('<table border="0" cellspacing="0" cellpadding="0">')
+        L.append(f'<tr><td class="LabelCell">Type</td><td class="Value">{esc(TYPE_LABELS.get(self.rt, self.rt))}</td></tr>')
+        if self.rt in ("DIRECT_TRANSACTION_CREDIT", "ROLLUP_TRANSACTION_CREDIT"):
+            ev = "true" if self.eca and self.eca.lower() == "true" else "false"
+            L.append(f'<tr><td class="LabelCell">ECA</td><td class="Value">{esc(ev)}</td></tr>')
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
+        L.append(f'<tr><td class="LabelCell">Effective Date Range</td><td class="Value">{esc(es)} - {esc(ee)}</td></tr>')
+        L.append(render_metadata_rows(self))
+        L.append('</table>')
+
+        if self.rt == "DIRECT_TRANSACTION_CREDIT":
+            evt = self.e.find("EVENT_TYPE_EXPRESSION")
+            if evt is not None:
+                L.append('<p></p><span class="ContentTitle">Event Type</span><p></p>')
+                L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
+                L.append(_r_evtype(evt))
+                L.append('</td></tr></table>')
+        cond = self.e.find("CONDITION_EXPRESSION")
+        if cond is not None and len(cond):
+            L.append('<p></p><span class="ContentTitle">Condition</span><p></p>')
+            L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
+            L.append(render_expr(cond))
+            L.append('</td></tr></table>')
+        terr = self.e.find("TERRITORY_EXPRESSION")
+        if terr is not None and len(terr):
+            L.append('<p></p><span class="ContentTitle">Territory</span><p></p>')
+            L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
+            L.append(render_expr(terr))
+            L.append('</td></tr></table>')
+        L.append('<p></p><span class="ContentTitle">Actions</span><p></p><p></p>')
+        L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
+        aes = self.e.find("ACTION_EXPRESSION_SET")
+        if aes is not None:
+            for ae in aes.findall("ACTION_EXPRESSION"):
+                func = ae.find("FUNCTION")
+                if func is not None:
+                    L.append(render_action(func))
+        else:
+            acts = self.e.find("ACTIONS")
+            if acts is not None:
+                for act in acts.findall("ACTION"):
+                    gf = act.find("GA_FUNCTION")
+                    if gf is not None:
+                        func = gf.find("FUNCTION")
+                        if func is not None:
+                            L.append(render_action(func))
+        L.append('</td></tr></table>')
+        L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
+        L.append(f'<td class="LabelCell"><a class="Link" href="#rules">Rules</a> | <a class="Link" href="#Top">Top</a></td>')
+        L.append('</tr>')
+        L.append('</table>')
+        return "\n".join(L)
+
 class MDLT:
-    def __init__(self,e):
-        self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
-        self.dims=[]; dn=e.find("DIM_NAMES")
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        self.dims = []
+        dn = e.find("DIM_NAMES")
         if dn is not None:
-            for d in dn.findall("DIM_NAME"): self.dims.append(d.get("NAME",""))
-        self.cells=[]; ce=e.find("CELLS")
+            for d in dn.findall("DIM_NAME"):
+                self.dims.append(d.get("NAME", ""))
+        self.cells = []
+        ce = e.find("CELLS")
         if ce is not None:
-            for c in ce.findall("CELL"): self.cells.append(c)
+            for c in ce.findall("CELL"):
+                self.cells.append(c)
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
     @property
-    def anchor(self): return f"{safe_anchor(self.name)}-mdlt"
+    def anchor(self):
+        base = f"{safe_anchor(self.name)}-mdlt"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor
+
     def _edt(self):
-        es=fd(self.st); ee=fd(self.en)
-        if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=['<p></p><span class="ContentTitle">Effective Date Range</span><p></p>']
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
+        L = ['<p></p><span class="ContentTitle">Effective Date Range</span><p></p>']
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
         L.append(f'<td class="LabelCell">End Date</td><td class="Value">{esc(ee)}</td>')
-        L.append('</tr></table>')
+        L.append('</tr>')
+        L.append(render_metadata_rows(self))
+        L.append('</table>')
         return "\n".join(L)
+
     def render(self, v):
-        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>', self._edt()]
+        primary = self.anchor
+        fallbacks = [f"{safe_anchor(self.name)}-mdlt"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(primary, self, fallbacks), f'<h2 class="ObjectTitle">{esc(self.name)}{title_extra}</h2>', self._edt()]
         L.append('<p></p><span class="ContentTitle">Cells</span><p></p>')
         L.append('<table class="ListTable"><tr>')
-        for h in ["Title","Component","Value"]: L.append(f'<td class="ListHeaderCell">{h}</td>')
+        for h in ["Title", "Component", "Value"]:
+            L.append(f'<td class="ListHeaderCell">{h}</td>')
         L.append('</tr>')
         for cell in self.cells:
-            dv={}
-            for d in cell.findall("DIM_VALUE"): dv[d.get("DIM_NAME","")]=d.get("VALUE","")
-            title=", ".join(f"{k}={v}" for k,v in dv.items())
-            comp=", ".join(self.dims)
-            ve=cell.find("VALUE")
-            val=f'{ve.get("DECIMAL_VALUE","")} {ve.get("UNIT_TYPE","")}'.strip() if ve is not None else ""
+            dv = {}
+            for d in cell.findall("DIM_VALUE"):
+                dv[d.get("DIM_NAME", "")] = d.get("VALUE", "")
+            title = ", ".join(f"{k}={v}" for k, v in dv.items())
+            comp = ", ".join(self.dims)
+            ve = cell.find("VALUE")
+            val = f'{ve.get("DECIMAL_VALUE", "")} {ve.get("UNIT_TYPE", "")}'.strip() if ve is not None else ""
             L.append('<tr>')
             L.append(f'<td class="ListCell">{esc(title)}</td><td class="ListCell">{esc(comp)}</td><td class="ListCell">{esc(val)}</td>')
             L.append('</tr>')
@@ -585,24 +964,58 @@ class MDLT:
         return "\n".join(L)
 
 class FV:
-    def __init__(self,e):
-        self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
-        fv=e.find("FIXED_VALUE_VALUE") or e.find("VALUE")
-        if fv is not None: self.dv=fv.get("DECIMAL_VALUE",""); self.ut=fv.get("UNIT_TYPE","")
-        else: self.dv=self.ut=""
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        fv = e.find("FIXED_VALUE_VALUE") or e.find("VALUE")
+        if fv is not None:
+            self.dv = fv.get("DECIMAL_VALUE", "")
+            self.ut = fv.get("UNIT_TYPE", "")
+        else:
+            self.dv = self.ut = ""
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
     @property
-    def anchor(self): return f"{safe_anchor(self.name)}-fv"
+    def anchor(self):
+        base = f"{safe_anchor(self.name)}-fv"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor
+
     def render(self, v):
-        es=fd(self.st); ee=fd(self.en)
-        if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        val=f"{self.dv} {self.ut}".strip()
-        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
+        val = f"{self.dv} {self.ut}".strip()
+        primary = self.anchor
+        fallbacks = [f"{safe_anchor(self.name)}-fv"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(primary, self, fallbacks), f'<h2 class="ObjectTitle">{esc(self.name)}{title_extra}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table class="ListTable"><tr>')
-        for h in ["Start Date","End Date","Value"]: L.append(f'<td class="ListHeaderCell">{h}</td>')
+        for h in ["Start Date", "End Date", "Value"]:
+            L.append(f'<td class="ListHeaderCell">{h}</td>')
         L.append('</tr><tr>')
         L.append(f'<td class="ListCell">{esc(es)}</td><td class="ListCell">{esc(ee)}</td><td class="ListCell">{esc(val)}</td>')
         L.append('</tr></table>')
+        meta_rows = render_metadata_rows(self)
+        if meta_rows:
+            L.append('<table border="0" cellspacing="0" cellpadding="0">')
+            L.append(meta_rows)
+            L.append('</table>')
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#fixedvalues">Fixed Values</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
@@ -610,27 +1023,57 @@ class FV:
         return "\n".join(L)
 
 class Quota:
-    def __init__(self,e):
-        self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
-        self.positions=list(e.findall("QUOTA_VALUE"))
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        self.positions = list(e.findall("QUOTA_VALUE"))
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
     @property
-    def anchor(self): return f"{safe_anchor(self.name)}-quota"
+    def anchor(self):
+        base = f"{safe_anchor(self.name)}-quota"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor
+
     def render(self, v):
-        es=fd(self.st); ee=fd(self.en)
-        if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
+        primary = self.anchor
+        fallbacks = [f"{safe_anchor(self.name)}-quota"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(primary, self, fallbacks), f'<h2 class="ObjectTitle">{esc(self.name)}{title_extra}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
         L.append(f'<td class="LabelCell">End Date</td><td class="Value">{esc(ee)}</td>')
-        L.append('</tr></table>')
+        L.append('</tr>')
+        L.append(render_metadata_rows(self))
+        L.append('</table>')
         for pos in self.positions:
-            pn=pos.get("POSITION_NAME",pos.get("NAME","")); sp=pos.get("EFFECTIVE_START_DATE",""); ep=pos.get("EFFECTIVE_END_DATE","")
-            ve=pos.find("VALUE")
-            vl=f'{ve.get("DECIMAL_VALUE","")} {ve.get("UNIT_TYPE","")}'.strip() if ve is not None else pos.get("QUOTA_VALUE","")
+            pn = pos.get("POSITION_NAME", pos.get("NAME", ""))
+            sp = pos.get("EFFECTIVE_START_DATE", "")
+            ep = pos.get("EFFECTIVE_END_DATE", "")
+            ve = pos.find("VALUE")
+            vl = f'{ve.get("DECIMAL_VALUE", "")} {ve.get("UNIT_TYPE", "")}'.strip() if ve is not None else pos.get("QUOTA_VALUE", "")
             L.append(f'<p></p><span class="ContentTitle">{esc(pn)}</span><p></p>')
             L.append('<table class="ListTable"><tr>')
-            for h in ["Start Period","End Period","Value"]: L.append(f'<td class="ListHeaderCell">{h}</td>')
+            for h in ["Start Period", "End Period", "Value"]:
+                L.append(f'<td class="ListHeaderCell">{h}</td>')
             L.append('</tr><tr>')
             L.append(f'<td class="ListCell">{esc(sp)}</td><td class="ListCell">{esc(ep)}</td><td class="ListCell">{esc(vl)}</td>')
             L.append('</tr></table>')
@@ -641,20 +1084,48 @@ class Quota:
         return "\n".join(L)
 
 class Formula:
-    def __init__(self,e):
-        self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
-        self.rt=e.get("RETURN_TYPE",""); self.desc=e.get("DESCRIPTION","")
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        self.rt = e.get("RETURN_TYPE", "")
+        self.desc = e.get("DESCRIPTION", "")
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
     @property
-    def anchor(self): return f"{safe_anchor(self.name)}-formula"
+    def anchor(self):
+        base = f"{safe_anchor(self.name)}-formula"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor
+
     def render(self, v):
-        es=fd(self.st); ee=fd(self.en)
-        if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
+        primary = self.anchor
+        fallbacks = [f"{safe_anchor(self.name)}-formula"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(primary, self, fallbacks), f'<h2 class="ObjectTitle">{esc(self.name)}{title_extra}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
         L.append(f'<td class="LabelCell">End Date</td><td class="Value">{esc(ee)}</td>')
-        L.append('</tr></table>')
+        L.append('</tr>')
+        L.append(render_metadata_rows(self))
+        L.append('</table>')
         L.append('<p></p><span class="ContentTitle">Return Type</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Return Type</td><td class="Value">{esc(self.rt)}</td>')
@@ -664,11 +1135,12 @@ class Formula:
             L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
             L.append(f'<td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td>')
             L.append('</tr></table>')
-        expr=self.e.find("EXPRESSION")
+        expr = self.e.find("EXPRESSION")
         if expr is not None and len(expr):
             L.append('<p></p><span class="ContentTitle">Formula</span><p></p>')
             L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
-            L.append(render_expr(expr)); L.append('</td></tr></table>')
+            L.append(render_expr(expr))
+            L.append('</td></tr></table>')
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#formulas">Formulas</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
@@ -676,29 +1148,58 @@ class Formula:
         return "\n".join(L)
 
 class Territory:
-    def __init__(self,e):
-        self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
-        self.desc=e.get("DESCRIPTION","")
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        self.desc = e.get("DESCRIPTION", "")
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
     @property
-    def anchor(self): return f"{safe_anchor(self.name)}-terr"
+    def anchor(self):
+        base = f"{safe_anchor(self.name)}-terr"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor
+
     def render(self, v):
-        es=fd(self.st); ee=fd(self.en)
-        if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
+        primary = self.anchor
+        fallbacks = [f"{safe_anchor(self.name)}-terr"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(primary, self, fallbacks), f'<h2 class="ObjectTitle">{esc(self.name)}{title_extra}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
         L.append(f'<td class="LabelCell">End Date</td><td class="Value">{esc(ee)}</td>')
-        L.append('</tr></table>')
-        L.append('<p></p><span class="ContentTitle">Description</span><p></p>')
-        L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
-        L.append(f'<td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td>')
-        L.append('</tr></table>')
-        expr=self.e.find("EXPRESSION")
+        L.append('</tr>')
+        L.append(render_metadata_rows(self))
+        L.append('</table>')
+        if self.desc:
+            L.append('<p></p><span class="ContentTitle">Description</span><p></p>')
+            L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
+            L.append(f'<td class="LabelCell">Description</td><td class="Value">{esc(self.desc)}</td>')
+            L.append('</tr></table>')
+        expr = self.e.find("EXPRESSION")
         if expr is not None and len(expr):
             L.append('<p></p><span class="ContentTitle">Territory</span><p></p>')
             L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td class="ContentBox">')
-            L.append(render_expr(expr)); L.append('</td></tr></table>')
+            L.append(render_expr(expr))
+            L.append('</td></tr></table>')
         L.append('<p></p><table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell"><a class="Link" href="#territories">Territories</a> | <a class="Link" href="#Top">Top</a></td>')
         L.append('</tr>')
@@ -706,38 +1207,69 @@ class Territory:
         return "\n".join(L)
 
 class Variable:
-    def __init__(self,e):
-        self.e=e; self.name=e.get("NAME",""); self.st=e.get("EFFECTIVE_START_DATE",""); self.en=e.get("EFFECTIVE_END_DATE","")
-        self.vt=e.get("VARIABLE_TYPE",""); self.pt=e.get("PERIOD_TYPE",""); self.dv=e.get("DEFAULT_VALUE","")
-        self.assignments=list(e.findall("VARIABLE_ASSIGNMENT"))
+    def __init__(self, e):
+        self.e = e
+        self.name = e.get("NAME", "")
+        self.st = e.get("EFFECTIVE_START_DATE", "")
+        self.en = e.get("EFFECTIVE_END_DATE", "")
+        self.vt = e.get("VARIABLE_TYPE", "")
+        self.pt = e.get("PERIOD_TYPE", "")
+        self.dv = e.get("DEFAULT_VALUE", "")
+        self.assignments = list(e.findall("VARIABLE_ASSIGNMENT"))
+        self.source_file = ""
+        self.source_id = e.get("ID") or e.get("OBJECT_ID") or ""
+        self.xml_path = ""
+        self.instance_id = ""
+        self.is_duplicate = False
+        self.duplicate_index = 1
+        self.duplicate_total = 1
+
     @property
-    def anchor(self): return f"{safe_anchor(self.name)}-var"
+    def anchor(self):
+        base = f"{safe_anchor(self.name)}-var"
+        if self.is_duplicate and self.duplicate_index > 1:
+            return f"{base}-dup-{self.duplicate_index}"
+        return base
+
+    @property
+    def primary_anchor(self):
+        return self.anchor
+
     def render(self, v):
-        es=fd(self.st); ee=fd(self.en)
-        if not ee or "2200" in ee or "2099" in ee: ee="End of Time"
-        L=[f'<a name="{esc(self.anchor)}"></a>', f'<h2 class="ObjectTitle">{esc(self.name)}</h2>']
+        es = fd(self.st)
+        ee = fd(self.en)
+        if not ee or "2200" in ee or "2099" in ee:
+            ee = "End of Time"
+        primary = self.anchor
+        fallbacks = [f"{safe_anchor(self.name)}-var"] if (self.is_duplicate and self.duplicate_index == 1) else []
+        title_extra = f' <small style="font-size:12px;color:var(--alert-red);">(Instance {self.duplicate_index} of {self.duplicate_total})</small>' if self.is_duplicate else ''
+        L = [render_anchor_tags(primary, self, fallbacks), f'<h2 class="ObjectTitle">{esc(self.name)}{title_extra}</h2>']
         L.append('<p></p><span class="ContentTitle">Effective Date Range</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0"><tr>')
         L.append(f'<td class="LabelCell">Start Date</td><td class="Value">{esc(es)}</td>')
         L.append(f'<td class="LabelCell">End Date</td><td class="Value">{esc(ee)}</td>')
-        L.append('</tr></table>')
+        L.append('</tr>')
+        L.append(render_metadata_rows(self))
+        L.append('</table>')
         L.append('<p></p><span class="ContentTitle">Variable</span><p></p>')
         L.append('<table width="100%" border="0" cellspacing="0" cellpadding="0">')
         L.append(f'<tr><td class="LabelCell">Type</td><td class="Value">{esc(self.vt)}</td></tr>')
-        if self.pt: L.append(f'<tr><td class="LabelCell">Period Type</td><td class="Value">{esc(self.pt)}</td></tr>')
+        if self.pt:
+            L.append(f'<tr><td class="LabelCell">Period Type</td><td class="Value">{esc(self.pt)}</td></tr>')
         L.append(f'<tr><td class="LabelCell">Default</td><td class="Value">{esc(self.dv)}</td></tr>')
         L.append('</table>')
         L.append('<p></p><span class="ContentTitle">Assignments</span><p></p>')
         L.append('<table class="ListTable"><tr>')
-        for h in ["Plan","Owner","Owner Type","Assignment"]: L.append(f'<td class="ListHeaderCell">{h}</td>')
+        for h in ["Plan", "Owner", "Owner Type", "Assignment"]:
+            L.append(f'<td class="ListHeaderCell">{h}</td>')
         L.append('</tr>')
         if self.assignments:
             for va in self.assignments:
                 L.append('<tr>')
-                L.append(f'<td class="ListCell">{esc(va.get("PLAN_NAME",""))}</td>')
-                L.append(f'<td class="ListCell">{esc(va.get("OWNER_NAME",""))}</td>')
-                L.append(f'<td class="ListCell">{esc(va.get("OWNER_TYPE",""))}</td>')
-                L.append(f'<td class="ListCell">{esc(va.get("ASSIGNMENT_VALUE",""))}</td>')
+                L.append(f'<td class="ListCell">{esc(va.get("PLAN_NAME", ""))}</td>')
+                L.append(f'<td class="ListCell">{esc(va.get("OWNER_NAME", ""))}</td>')
+                L.append(f'<td class="ListCell">{esc(va.get("OWNER_TYPE", ""))}</td>')
+                L.append(f'<td class="ListCell">{esc(va.get("ASSIGNMENT_VALUE", ""))}</td>')
                 L.append('</tr>')
         else:
             L.append('<tr><td class="ListCell"></td><td class="ListCell"></td><td class="ListCell"></td><td class="ListCell"></td></tr>')
@@ -750,78 +1282,213 @@ class Variable:
 
 class Transformer:
     def __init__(self, variant="A"):
-        self.v=variant; self.plans=[]; self.comps={}; self.rules={}
-        self.mdlts=[]; self.fvs=[]; self.quotas=[]; self.formulas=[]; self.terrs=[]; self.vars=[]
-        self.ver=""
-    def parse(self, path):
+        self.v = variant
+        self.plans = []
+        self.comps = []
+        self.rules = []
+        self.mdlts = []
+        self.fvs = []
+        self.quotas = []
+        self.formulas = []
+        self.terrs = []
+        self.vars = []
+        self._comps_by_name = defaultdict(list)
+        self._rules_by_name = defaultdict(list)
+        self.ver = ""
+        self.parsed_files = []
+
+    def _compute_duplicates(self):
+        all_collections = [
+            ("plans", self.plans),
+            ("plancomponents", self.comps),
+            ("rules", self.rules),
+            ("mdlts", self.mdlts),
+            ("fixedvalues", self.fvs),
+            ("quotas", self.quotas),
+            ("formulas", self.formulas),
+            ("territories", self.terrs),
+            ("variables", self.vars),
+        ]
+        for _, items in all_collections:
+            groups = defaultdict(list)
+            for item in items:
+                groups[item.name].append(item)
+            for _, members in groups.items():
+                if len(members) > 1:
+                    for idx, member in enumerate(members, start=1):
+                        member.is_duplicate = True
+                        member.duplicate_index = idx
+                        member.duplicate_total = len(members)
+                else:
+                    for member in members:
+                        member.is_duplicate = False
+                        member.duplicate_index = 1
+                        member.duplicate_total = 1
+
+    def parse(self, path, source_file=None, snapshot_id="configuration"):
+        if source_file is None:
+            source_file = Path(path).name
+        if source_file not in self.parsed_files:
+            self.parsed_files.append(source_file)
         try:
-            tree=ET.parse(path); root=tree.getroot()
-        except ET.ParseError as e: raise XErr(f"XML parse error", details=str(e))
-        if root.tag!="DATA_IMPORT": raise XErr(f"Expected DATA_IMPORT, got {root.tag}")
-        self.ver=root.get("VERSION","")
+            tree = ET.parse(path)
+            root = tree.getroot()
+        except ET.ParseError as e:
+            raise XErr(f"XML parse error", details=str(e))
+        if root.tag != "DATA_IMPORT":
+            raise XErr(f"Expected DATA_IMPORT, got {root.tag}")
+        if not self.ver:
+            self.ver = root.get("VERSION", "")
+
+        paths = _build_paths(root)
+
         for se in root:
-            tag=se.tag
+            tag = se.tag
             try:
-                if tag=="PLAN_SET":
+                if tag == "PLAN_SET":
                     for pe in se.findall("PLAN"):
-                        p=Plan(pe)
-                        for cr in pe.findall("COMPONENT_REF"): 
-                            cn=cr.get("NAME","")
-                            if cn: p.cn.append(cn)
-                        comps=pe.find("COMPONENTS")
+                        p = Plan(pe)
+                        p.source_file = source_file
+                        p.xml_path = paths.get(id(pe), "")
+                        p.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("Plan", pe, p.name), p.xml_path)
+                        p.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("Plan", pe, p.name), p.xml_path)
+                        for cr in pe.findall("COMPONENT_REF"):
+                            cn = cr.get("NAME", "")
+                            if cn:
+                                p.cn.append(cn)
+                        comps = pe.find("COMPONENTS")
                         if comps is not None:
                             for c in comps.findall("COMPONENT"):
-                                cn=c.get("NAME","")
-                                if cn and cn not in p.cn: p.cn.append(cn)
+                                cn = c.get("NAME", "")
+                                if cn and cn not in p.cn:
+                                    p.cn.append(cn)
                         self.plans.append(p)
-                elif tag=="PLANCOMPONENT_SET":
+                elif tag == "PLANCOMPONENT_SET":
                     for ce in se.findall("PLANCOMPONENT"):
-                        c=PComp(ce)
-                        rre=ce.find("RULE_REFS")
+                        c = PComp(ce)
+                        c.source_file = source_file
+                        c.xml_path = paths.get(id(ce), "")
+                        c.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("PlanComponent", ce, c.name), c.xml_path)
+                        c.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("PlanComponent", ce, c.name), c.xml_path)
+                        rre = ce.find("RULE_REFS")
                         if rre is not None:
                             for rr in rre.findall("RULE_REF"):
-                                rn=rr.get("NAME","")
-                                if rn: c.rn.append(rn)
+                                rn = rr.get("NAME", "")
+                                if rn:
+                                    c.rn.append(rn)
                         for rr in ce.findall("RULE_REF"):
-                            rn=rr.get("NAME","")
-                            if rn and rn not in c.rn: c.rn.append(rn)
-                        self.comps[c.name]=c
-                elif tag=="RULE_SET":
-                    for re in se.findall("RULE"): self.rules[re.get("NAME","")]=Rule(re)
-                elif tag=="MD_LOOKUP_TABLE_SET":
-                    for e in se.findall("MD_LOOKUP_TABLE"): self.mdlts.append(MDLT(e))
-                elif tag=="FIXED_VALUE_SET":
-                    for e in se.findall("FIXED_VALUE"): self.fvs.append(FV(e))
-                elif tag=="QUOTA_SET":
-                    for e in se.findall("QUOTA"): self.quotas.append(Quota(e))
-                elif tag=="FORMULA_SET":
-                    for e in se.findall("FORMULA"): self.formulas.append(Formula(e))
-                elif tag=="TERRITORY_SET":
-                    for e in se.findall("TERRITORY"): self.terrs.append(Territory(e))
-                elif tag=="VARIABLE_SET":
-                    for e in se.findall("VARIABLE"): self.vars.append(Variable(e))
+                            rn = rr.get("NAME", "")
+                            if rn and rn not in c.rn:
+                                c.rn.append(rn)
+                        self.comps.append(c)
+                        self._comps_by_name[c.name].append(c)
+                elif tag == "RULE_SET":
+                    for re_el in se.findall("RULE"):
+                        r = Rule(re_el)
+                        r.source_file = source_file
+                        r.xml_path = paths.get(id(re_el), "")
+                        r.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("Rule", re_el, r.name), r.xml_path)
+                        r.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("Rule", re_el, r.name), r.xml_path)
+                        self.rules.append(r)
+                        self._rules_by_name[r.name].append(r)
+                elif tag == "MD_LOOKUP_TABLE_SET":
+                    for e in se.findall("MD_LOOKUP_TABLE"):
+                        m = MDLT(e)
+                        m.source_file = source_file
+                        m.xml_path = paths.get(id(e), "")
+                        m.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("LookupTable", e, m.name), m.xml_path)
+                        m.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("LookupTable", e, m.name), m.xml_path)
+                        self.mdlts.append(m)
+                elif tag == "FIXED_VALUE_SET":
+                    for e in se.findall("FIXED_VALUE"):
+                        fv = FV(e)
+                        fv.source_file = source_file
+                        fv.xml_path = paths.get(id(e), "")
+                        fv.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("FixedValue", e, fv.name), fv.xml_path)
+                        fv.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("FixedValue", e, fv.name), fv.xml_path)
+                        self.fvs.append(fv)
+                elif tag == "QUOTA_SET":
+                    for e in se.findall("QUOTA"):
+                        q = Quota(e)
+                        q.source_file = source_file
+                        q.xml_path = paths.get(id(e), "")
+                        q.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("Quota", e, q.name), q.xml_path)
+                        q.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("Quota", e, q.name), q.xml_path)
+                        self.quotas.append(q)
+                elif tag == "FORMULA_SET":
+                    for e in se.findall("FORMULA"):
+                        f = Formula(e)
+                        f.source_file = source_file
+                        f.xml_path = paths.get(id(e), "")
+                        f.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("Formula", e, f.name), f.xml_path)
+                        f.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("Formula", e, f.name), f.xml_path)
+                        self.formulas.append(f)
+                elif tag == "TERRITORY_SET":
+                    for e in se.findall("TERRITORY"):
+                        t = Territory(e)
+                        t.source_file = source_file
+                        t.xml_path = paths.get(id(e), "")
+                        t.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("Territory", e, t.name), t.xml_path)
+                        t.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("Territory", e, t.name), t.xml_path)
+                        self.terrs.append(t)
+                elif tag == "VARIABLE_SET":
+                    for e in se.findall("VARIABLE"):
+                        v = Variable(e)
+                        v.source_file = source_file
+                        v.xml_path = paths.get(id(e), "")
+                        v.instance_id = compute_instance_id(snapshot_id, source_file, canonical_key_for("Variable", e, v.name), v.xml_path)
+                        v.config_instance_id = compute_instance_id("configuration", source_file, canonical_key_for("Variable", e, v.name), v.xml_path)
+                        self.vars.append(v)
             except Exception as e:
                 raise XErr(f"Parse error in {tag}", details=str(e)) from e
-        if self.v=="B": return
-        if self.ver>="17.0" or len(self.plans)>=2: self.v="B"; return
-        for r in self.rules.values():
-            bu=r.e.get("BUSINESS_UNITS","")
-            if bu and bu not in ("__ALL_BU__",""): self.v="B"; break
+
+        self._compute_duplicates()
+
+        if self.v == "B":
+            return
+        if self.ver >= "17.0" or len(self.plans) >= 2:
+            self.v = "B"
+            return
+        for r in self.rules:
+            bu = r.e.get("BUSINESS_UNITS", "")
+            if bu and bu not in ("__ALL_BU__", ""):
+                self.v = "B"
+                break
+
     def _so(self, a):
-        objects={"plans":self.plans,"plancomponents":list(self.comps.values()),
-                 "rules":list(self.rules.values()),"mdlts":self.mdlts,"fixedvalues":self.fvs,
-                 "quotas":self.quotas,"formulas":self.formulas,"territories":self.terrs,
-                 "variables":self.vars}.get(a,[])
-        return sorted_rules(objects) if a=="rules" else sorted_objects(objects)
+        objects = {
+            "plans": self.plans,
+            "plancomponents": self.comps,
+            "rules": self.rules,
+            "mdlts": self.mdlts,
+            "fixedvalues": self.fvs,
+            "quotas": self.quotas,
+            "formulas": self.formulas,
+            "territories": self.terrs,
+            "variables": self.vars,
+        }.get(a, [])
+        return sorted_rules(objects) if a == "rules" else sorted_objects(objects)
 
     def _plan_components(self, plan):
-        return sorted_objects([self.comps[name] for name in plan.cn if name in self.comps])
+        comps = []
+        for name in plan.cn:
+            matching = self._comps_by_name.get(name, [])
+            for c in matching:
+                if c not in comps:
+                    comps.append(c)
+        return sorted_objects(comps)
 
     def _component_rules(self, component):
-        return sorted_rules([self.rules[name] for name in component.rn if name in self.rules])
+        rules = []
+        for name in component.rn:
+            matching = self._rules_by_name.get(name, [])
+            for r in matching:
+                if r not in rules:
+                    rules.append(r)
+        return sorted_rules(rules)
 
     def _plan_rule_occurrences(self, plan):
-        occurrences=[]
+        occurrences = []
         for component in self._plan_components(plan):
             for rule in self._component_rules(component):
                 occurrences.append((component, rule))
@@ -830,62 +1497,138 @@ class Transformer:
     def html(self, theme="light"):
         if theme not in {"light", "dark"}:
             raise XErr(f"Unsupported theme: {theme}")
-        v=self.v; L=['<!DOCTYPE HTML>',f'<html data-theme="{theme}">','<head>',
+        self._compute_duplicates()
+        v = self.v
+        L = [
+            '<!DOCTYPE HTML>',
+            f'<html data-theme="{theme}">',
+            '<head>',
             '<META http-equiv="Content-Type" content="text/html; charset=UTF-8">',
             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; font-src data:;">',
             '<title>SAP Incentive Management Plan Summary</title>',
-            f'<style type="text/css">{CSS}</style>','</head>','<body class="Body">']
-        if v=="B": L.append(f'<p style="text-align: center;"><img src="data:image/png;base64,{SAP_LOGO_B64}" alt="SAP"></p>')
+            f'<style type="text/css">{CSS}</style>',
+            '</head>',
+            '<body class="Body">',
+        ]
+        if v == "B":
+            L.append(f'<p style="text-align: center;"><img src="data:image/png;base64,{SAP_LOGO_B64}" alt="SAP"></p>')
         L.append('<a name="Top"></a>')
         L.append('<p></p><span class="PageTitle">SAP Incentive Management Plan Summary</span><p></p><p></p>')
         L.append(self._idx())
-        for anchor,dname,sname in SECTION_ORDER:
-            objs=self._so(anchor)
+
+        rendered_comps = set()
+        rendered_rules = set()
+
+        for anchor, dname, sname in SECTION_ORDER:
+            objs = self._so(anchor)
             if not objs:
-                if anchor in ("quotas","territories"): continue
+                if anchor in ("quotas", "territories"):
+                    continue
                 L.append(f'<a name="{anchor}"></a><h1 class="SectionTitle">{dname} (0)</h1><p></p>')
                 continue
             L.append(f'<a name="{anchor}"></a>')
             L.append(f'<h1 xmlns:java="http://xml.apache.org/xalan/java" class="SectionTitle" width="100%">{dname}</h1><p></p>')
             for obj in objs:
                 try:
-                    if anchor=="plans":
-                        L.append(render_object_section(OBJECT_TYPE_BY_SECTION[anchor], obj.name, obj.render(v,self.comps,self.rules))); L.append('<p></p>')
+                    if anchor == "plans":
+                        L.append(render_object_section(OBJECT_TYPE_BY_SECTION[anchor], obj.name, obj.render(v, self._comps_by_name, self._rules_by_name), obj=obj))
+                        L.append('<p></p>')
                         for comp in self._plan_components(obj):
-                            L.append(render_object_section(OBJECT_TYPE_BY_SECTION["plancomponents"], comp.name, comp.render(v,obj.name,self.rules))); L.append('<p></p>')
+                            rendered_comps.add(id(comp))
+                            L.append(render_object_section(OBJECT_TYPE_BY_SECTION["plancomponents"], comp.name, comp.render(v, obj.name, self._rules_by_name), obj=comp))
+                            L.append('<p></p>')
                         for comp, rule in self._plan_rule_occurrences(obj):
-                            L.append(render_object_section(OBJECT_TYPE_BY_SECTION["rules"], rule.name, rule.render(v,obj.name,comp.name))); L.append('<p></p>')
+                            rendered_rules.add(id(rule))
+                            L.append(render_object_section(OBJECT_TYPE_BY_SECTION["rules"], rule.name, rule.render(v, obj.name, comp.name, pc=comp), obj=rule))
+                            L.append('<p></p>')
                     else:
-                        object_type=OBJECT_TYPE_BY_SECTION[anchor]
-                        L.append(render_object_section(object_type, obj.name, obj.render(v))); L.append('<p></p>')
+                        object_type = OBJECT_TYPE_BY_SECTION[anchor]
+                        L.append(render_object_section(object_type, obj.name, obj.render(v), obj=obj))
+                        L.append('<p></p>')
                 except Exception as e:
-                    on=getattr(obj,'name','?')
+                    on = getattr(obj, 'name', '?')
                     raise XErr("Render error", obj_name=on, obj_type=type(obj).__name__, details=str(e)) from e
+
+        # Render any unassigned Plan Components
+        unrendered_comps = [c for c in self.comps if id(c) not in rendered_comps]
+        if unrendered_comps:
+            heading = "Plan Components" if not self.plans else "Unassigned Plan Components"
+            L.append('<a name="plancomponents"></a>')
+            L.append(f'<h1 class="SectionTitle">{heading} ({len(unrendered_comps)})</h1><p></p>')
+            for comp in sorted_objects(unrendered_comps):
+                L.append(render_object_section(OBJECT_TYPE_BY_SECTION["plancomponents"], comp.name, comp.render_standalone(v, self._rules_by_name), obj=comp))
+                L.append('<p></p>')
+
+        # Render any unassigned Rules
+        unrendered_rules = [r for r in self.rules if id(r) not in rendered_rules]
+        if unrendered_rules:
+            heading = "Rules" if not self.plans else "Unassigned Rules"
+            L.append('<a name="rules"></a>')
+            L.append(f'<h1 class="SectionTitle">{heading} ({len(unrendered_rules)})</h1><p></p>')
+            for rule in sorted_rules(unrendered_rules):
+                L.append(render_object_section(OBJECT_TYPE_BY_SECTION["rules"], rule.name, rule.render_standalone(v), obj=rule))
+                L.append('<p></p>')
+
         L.append('</body></html>')
         return "\n".join(L)
+
     def _summary_anchors(self):
-        component_anchors={}; rule_anchors={}
+        component_anchors = {}
+        rule_anchors = {}
         for plan in self._so("plans"):
             for component in self._plan_components(plan):
-                component_anchors.setdefault(component.name, f"{safe_anchor(component.name)}-plan-{safe_anchor(plan.name)}")
+                ca = component.anchor_under_plan(plan.name)
+                component_anchors.setdefault(id(component), ca)
+                component_anchors.setdefault(component.name, ca)
                 for rule in self._component_rules(component):
-                    rule_anchors.setdefault(rule.name, f"{safe_anchor(rule.name)}-rule-{safe_anchor(component.name)}-{safe_anchor(plan.name)}")
+                    ra = rule.anchor_under_component(plan.name, component.name, pc=component)
+                    rule_anchors.setdefault(id(rule), ra)
+                    rule_anchors.setdefault(rule.name, ra)
+        for comp in self.comps:
+            if id(comp) not in component_anchors:
+                ca = comp.anchor_standalone()
+                component_anchors.setdefault(id(comp), ca)
+                component_anchors.setdefault(comp.name, ca)
+        for rule in self.rules:
+            if id(rule) not in rule_anchors:
+                ra = rule.anchor_standalone()
+                rule_anchors.setdefault(id(rule), ra)
+                rule_anchors.setdefault(rule.name, ra)
         return component_anchors, rule_anchors
 
     def _summary_entries(self, anchor):
-        component_anchors, rule_anchors=self._summary_anchors()
-        entries=[]
-        object_type=OBJECT_TYPE_BY_SECTION[anchor]
+        component_anchors, rule_anchors = self._summary_anchors()
+        entries = []
+        object_type = OBJECT_TYPE_BY_SECTION[anchor]
         for obj in self._so(anchor):
-            name=getattr(obj, "name", "")
-            if anchor=="plancomponents": target=component_anchors.get(name)
-            elif anchor=="rules": target=rule_anchors.get(name)
-            else: target=getattr(obj, "anchor", None)
-            if target:
-                content=f'<a class="Link" href="#{esc(target)}">{esc(name)}</a>'
+            name = getattr(obj, "name", "")
+            if anchor == "plancomponents":
+                target = component_anchors.get(id(obj)) or component_anchors.get(name)
+            elif anchor == "rules":
+                target = rule_anchors.get(id(obj)) or rule_anchors.get(name)
             else:
-                content=f'<span class="SummaryItem">{esc(name)}</span>'
-            entries.append(render_object_entry(object_type, name, content))
+                target = getattr(obj, "primary_anchor", getattr(obj, "anchor", None))
+
+            disp_name = esc(name)
+            if getattr(obj, "is_duplicate", False):
+                details = []
+                sid = getattr(obj, "source_id", "")
+                sf = getattr(obj, "source_file", "")
+                if sid:
+                    details.append(sid)
+                if sf and len(self.parsed_files) > 1:
+                    details.append(sf)
+                if not details:
+                    details.append(f"#{getattr(obj, 'duplicate_index', 1)}")
+                disp_text = f'{disp_name} <small class="SummaryDetail" style="color: var(--alert-red); font-size: 11px;">({esc(", ".join(details))})</small>'
+            else:
+                disp_text = disp_name
+
+            if target:
+                content = f'<a class="Link" href="#{esc(target)}">{disp_text}</a>'
+            else:
+                content = f'<span class="SummaryItem">{disp_text}</span>'
+            entries.append(render_object_entry(object_type, name, content, obj=obj))
         return entries
 
     def _idx(self):

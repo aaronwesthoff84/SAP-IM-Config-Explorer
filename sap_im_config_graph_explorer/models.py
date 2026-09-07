@@ -298,6 +298,7 @@ class ConversionResult:
     variant: str = ""
     error: str = ""
     findings: list[dict[str, Any]] = field(default_factory=list)
+    inputFiles: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -307,6 +308,7 @@ class ConversionResult:
             "variant": self.variant,
             "error": self.error,
             "findings": self.findings,
+            "inputFiles": self.inputFiles,
         }
 
 
