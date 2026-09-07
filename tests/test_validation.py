@@ -1,8 +1,14 @@
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder
 from sap_im_config_graph_explorer.models import (
+    FindingWaiver,
+    GraphDocument,
     GraphLink,
     GraphNode,
     ValidationFinding,
+)
+from sap_im_config_graph_explorer.portable_exports import (
+    PortableGraphExportError,
+    graph_document_from_payload,
 )
 from sap_im_config_graph_explorer.validation import ValidationEngine
 
@@ -119,3 +125,66 @@ def test_validation_findings_are_stable_and_graph_builder_runs_the_engine():
         ["tests/fixtures/duplicate_ids.xml"]
     )
     assert any(finding.code == "duplicate_object" for finding in graph.findings)
+
+
+def test_finding_waiver_model_and_graph_document_serialization():
+    waiver = FindingWaiver(
+        findingId="f-1",
+        reason="Legacy accepted debt",
+        reviewer="auditor@company.com",
+        createdAt="2026-09-07T12:00:00Z",
+        expiresAt="2026-12-31T00:00:00Z",
+    )
+    assert waiver.to_dict() == {
+        "findingId": "f-1",
+        "reason": "Legacy accepted debt",
+        "reviewer": "auditor@company.com",
+        "createdAt": "2026-09-07T12:00:00Z",
+        "expiresAt": "2026-12-31T00:00:00Z",
+    }
+
+    doc_empty = GraphDocument()
+    assert "waivers" not in doc_empty.to_dict()
+
+    doc_with_waivers = GraphDocument(waivers=[waiver])
+    assert doc_with_waivers.to_dict()["waivers"] == [waiver.to_dict()]
+
+
+def test_graph_document_from_payload_waivers_roundtrip_and_validation():
+    import json
+    from pathlib import Path
+    import pytest
+
+    payload = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "tests"
+            / "fixtures"
+            / "portable_export_graph.json"
+        ).read_text(encoding="utf-8")
+    )
+    payload["waivers"] = [
+        {
+            "findingId": "finding-duplicate",
+            "reason": "Accepted duplicate across snapshots",
+            "reviewer": "alice",
+            "createdAt": "2026-09-07T12:00:00Z",
+            "expiresAt": None,
+        }
+    ]
+    doc = graph_document_from_payload(payload)
+    assert len(doc.waivers) == 1
+    assert doc.waivers[0].findingId == "finding-duplicate"
+    assert doc.waivers[0].reviewer == "alice"
+
+    # Test duplicate waiver rejection
+    payload["waivers"].append(
+        {
+            "findingId": "finding-duplicate",
+            "reason": "Duplicate waiver id",
+            "reviewer": "bob",
+        }
+    )
+    with pytest.raises(PortableGraphExportError, match="Duplicate waiver"):
+        graph_document_from_payload(payload)
+

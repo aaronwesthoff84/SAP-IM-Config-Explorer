@@ -413,10 +413,64 @@ select:disabled {
   margin-left: 14px;
 }
 
+.findings-workbench {
+  margin-bottom: 12px;
+}
+
+.findings-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.findings-filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.findings-filter-row label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.findings-filter-row select,
+.findings-filter-row input {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-background);
+  color: var(--text);
+}
+
+.findings-search-label {
+  width: 100%;
+}
+
+.findings-toolbar-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .validation-findings {
   border-bottom: 1px solid var(--border);
   margin: 0 -18px 18px;
-  max-height: 34vh;
+  max-height: 40vh;
   overflow: auto;
   padding: 0 18px 18px;
 }
@@ -440,22 +494,188 @@ select:disabled {
   border-left-width: 4px;
   border-radius: 4px;
   padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.finding:hover {
+  background: var(--surface);
+}
+
+.finding.selected {
+  outline: 2px solid var(--forest-green);
+  background: var(--surface);
 }
 
 .finding.error {
   border-color: var(--alert-red);
 }
 
+.finding.info {
+  border-color: #2196f3;
+}
+
+.finding.waived {
+  border-color: #78909c;
+  opacity: 0.92;
+}
+
+.finding.waiver-expired {
+  border-color: #e65100;
+}
+
+.finding-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.finding-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-severity-error {
+  background: var(--alert-red);
+  color: #ffffff;
+}
+
+.badge-severity-warning {
+  background: var(--warning-amber);
+  color: #212121;
+}
+
+.badge-severity-info {
+  background: #2196f3;
+  color: #ffffff;
+}
+
+.badge-snapshot {
+  background: var(--border);
+  color: var(--text);
+}
+
+.badge-waived {
+  background: #546e7a;
+  color: #ffffff;
+}
+
+.badge-waiver-expired {
+  background: #e65100;
+  color: #ffffff;
+}
+
 .finding-title {
   color: var(--warning-amber);
-  display: block;
-  font-size: 14px;
-  margin-bottom: 3px;
-  text-transform: capitalize;
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .finding.error .finding-title {
   color: var(--alert-red);
+}
+
+.finding.waived .finding-title {
+  color: #546e7a;
+}
+
+.waiver-box {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--input-background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.waiver-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.waiver-reason {
+  margin: 4px 0 8px;
+  font-style: italic;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.waiver-actions-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.waiver-form {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.waiver-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.waiver-form input,
+.waiver-form textarea {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-background);
+  color: var(--text);
+}
+
+.waiver-form-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.waiver-form-error {
+  color: var(--alert-red);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+button.danger {
+  color: var(--alert-red);
+  border-color: var(--alert-red);
+}
+
+button.danger:hover {
+  background: rgba(211, 47, 47, 0.1);
 }
 
 .migration-risk-container {
