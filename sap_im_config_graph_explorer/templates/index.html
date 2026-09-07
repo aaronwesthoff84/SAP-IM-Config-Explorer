@@ -47,6 +47,13 @@
             <option value="B">B</option>
           </select>
         </label>
+        <label>
+          <span>Visualization mode</span>
+          <select id="visualization-mode" name="visualization_mode">
+            <option value="2d" selected>2D</option>
+            <option value="3d">3D</option>
+          </select>
+        </label>
         <div class="button-row">
           <button type="button" id="html-button">Generate HTML</button>
           <button type="button" id="graph-button">Generate Graph</button>
@@ -144,6 +151,7 @@
           </div>
         </div>
         <div id="graph"></div>
+        <div id="graph-3d" hidden></div>
       </div>
       <div id="lineage-view" class="view">
         <div class="lineage-actions">

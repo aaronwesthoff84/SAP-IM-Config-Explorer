@@ -8,6 +8,8 @@ const state = {
   sessions: [], // List of saved sessions
   nodePositions: {}, // Map of node id -> { x, y } for position preservation
   activeLayout: "cose", // Active layout choice
+  graph3DInstance: null,
+  highlightedIds: null,
 };
 
 window.state = state;
@@ -174,6 +176,7 @@ const summaryEl = document.getElementById("node-summary");
 const findingsEl = document.getElementById("validation-findings");
 const riskContainer = document.getElementById("migration-risk-container");
 const riskReportEl = document.getElementById("migration-risk-report");
+const visualizationModeSelect = document.getElementById("visualization-mode");
 
 const layoutSelect = document.getElementById("layout-select");
 const relayoutButton = document.getElementById("relayout-button");
@@ -273,6 +276,14 @@ topologySelect.addEventListener("change", () => {
 });
 saveSessionButton.addEventListener("click", handleSaveSession);
 
+visualizationModeSelect.addEventListener("change", () => {
+  if (state.graph.nodes.length > 0) {
+    renderGraph();
+  } else {
+    setStatus(`Selected ${visualizationModeSelect.value.toUpperCase()} visualization mode.`);
+  }
+});
+
 initializeTheme();
 loadSessionsFromStorage();
 
@@ -296,6 +307,11 @@ function switchWorkspace(viewId) {
     state.lineageCy?.resize().fit();
   } else if (viewId === "graph-view") {
     state.cy?.resize();
+    if (state.graph3DInstance && visualizationModeSelect?.value === "3d") {
+      const container = document.getElementById("graph-3d");
+      const rect = container.getBoundingClientRect();
+      state.graph3DInstance.width(rect.width || 800).height(rect.height || 600);
+    }
   }
 }
 
@@ -723,6 +739,120 @@ function resetGraphView() {
   setStatus("Reset graph layout and view.");
 }
 
+function isWebGLSupported() {
+  try {
+    const canvas = document.createElement("canvas");
+    return !!(window.WebGLRenderingContext && (canvas.getContext("webgl") || canvas.getContext("experimental-webgl")));
+  } catch (e) {
+    return false;
+  }
+}
+
+async function load3DLibrary() {
+  if (typeof ForceGraph3D !== "undefined") {
+    return;
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/static/vendor/3d-force-graph.min.js";
+    script.onload = resolve;
+    script.onerror = () => {
+      reject(new Error("Failed to load 3D rendering dependency."));
+    };
+    document.body.appendChild(script);
+  });
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getHighlightedElements(nodeId) {
+  if (!state.cy) return new Set();
+  const cyNode = state.cy.getElementById(nodeId);
+  if (!cyNode || cyNode.length === 0) return new Set();
+  const neighborhood = cyNode.successors().union(cyNode.predecessors()).union(cyNode);
+  return new Set(neighborhood.map((el) => el.id()));
+}
+
+async function render3DGraph(nodes, links) {
+  document.getElementById("graph").hidden = true;
+  document.getElementById("graph-3d").hidden = false;
+
+  if (!isWebGLSupported()) {
+    setStatus("3D rendering is unsupported on this browser/device.");
+    visualizationModeSelect.value = "2d";
+    document.getElementById("graph").hidden = false;
+    document.getElementById("graph-3d").hidden = true;
+    return;
+  }
+
+  try {
+    await load3DLibrary();
+  } catch (error) {
+    setStatus(error.message);
+    visualizationModeSelect.value = "2d";
+    document.getElementById("graph").hidden = false;
+    document.getElementById("graph-3d").hidden = true;
+    return;
+  }
+
+  const nodesClone = nodes.map((n) => ({ ...n }));
+  const linksClone = links.map((l) => ({ ...l }));
+
+  const container = document.getElementById("graph-3d");
+  const rect = container.getBoundingClientRect();
+
+  if (!state.graph3DInstance) {
+    state.highlightedIds = null;
+    state.graph3DInstance = ForceGraph3D()(container)
+      .nodeColor((node) => {
+        const baseColor = colorForType(node.type);
+        if (state.highlightedIds) {
+          return state.highlightedIds.has(node.id) ? hexToRgba(baseColor, 1.0) : hexToRgba(baseColor, 0.1);
+        }
+        return hexToRgba(baseColor, 1.0);
+      })
+      .nodeLabel((node) => node.label)
+      .linkLabel((link) => link.relationship)
+      .linkColor((link) => {
+        const baseColor = "#708174";
+        if (state.highlightedIds) {
+          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
+          const targetId = typeof link.target === "object" ? link.target.id : link.target;
+          return state.highlightedIds.has(sourceId) && state.highlightedIds.has(targetId)
+            ? hexToRgba(baseColor, 1.0)
+            : hexToRgba(baseColor, 0.1);
+        }
+        return hexToRgba(baseColor, 1.0);
+      })
+      .onNodeClick((node) => {
+        state.highlightedIds = getHighlightedElements(node.id);
+        state.graph3DInstance.nodeColor(state.graph3DInstance.nodeColor());
+        state.graph3DInstance.linkColor(state.graph3DInstance.linkColor());
+        showNodeDetails(node);
+      })
+      .onBackgroundClick(() => {
+        state.highlightedIds = null;
+        state.graph3DInstance.nodeColor(state.graph3DInstance.nodeColor());
+        state.graph3DInstance.linkColor(state.graph3DInstance.linkColor());
+        clearSelectedRule();
+        summaryEl.innerHTML = "<dt>Selection</dt><dd>Select a graph item</dd>";
+        rawXmlEl.textContent = "";
+      })
+      .onLinkClick((link) => {
+        showEdgeDetails(link);
+      });
+  }
+
+  state.graph3DInstance.backgroundColor(currentTheme() === "dark" ? "#333333" : "#ffffff");
+  state.graph3DInstance.width(rect.width || 800).height(rect.height || 600);
+  state.graph3DInstance.graphData({ nodes: nodesClone, links: linksClone });
+}
+
 function renderGraph() {
   if (state.cy) {
     state.cy.nodes().forEach((n) => {
@@ -791,6 +921,14 @@ function renderGraph() {
     }
   });
   state.cy.on("tap", "edge", (event) => showEdgeDetails(event.target.data()));
+
+  const visualizationMode = visualizationModeSelect?.value || "2d";
+  if (visualizationMode === "3d") {
+    render3DGraph(nodes, links);
+  } else {
+    document.getElementById("graph-3d").hidden = true;
+    document.getElementById("graph").hidden = false;
+  }
 }
 
 function cytoscapeStyles(graphTheme) {

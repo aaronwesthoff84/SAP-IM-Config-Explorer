@@ -328,7 +328,8 @@ select:disabled {
   padding: 4px 10px;
 }
 
-#graph {
+#graph,
+#graph-3d {
   flex: 1;
   height: 100%;
   min-height: 550px;
