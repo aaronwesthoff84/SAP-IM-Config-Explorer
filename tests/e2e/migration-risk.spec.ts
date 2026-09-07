@@ -55,3 +55,54 @@ test('safely renders risk factors containing HTML characters without XSS', async
   // Ensure exact raw text is rendered safely inside text node
   await expect(factor).toContainText('Testing <img src=x onerror=alert(1)> and <b>bold text</b>');
 });
+
+test('displays every migration-risk factor associated with a selected node in details panel', async ({ page }) => {
+  await page.goto('/');
+
+  await page.evaluate(() => {
+    const mockNode = {
+      id: 'node-risk-test-1',
+      label: 'Multi-Risk Rule',
+      type: 'Rule',
+      sourceFile: 'test.xml',
+      xmlPath: '/DATA_IMPORT/RULE_SET/RULE',
+      metadata: {},
+      rawXml: '<RULE NAME="Multi-Risk Rule" />'
+    };
+    (window as any).state = (window as any).state || {};
+    (window as any).state.graph = {
+      nodes: [mockNode],
+      links: [],
+      findings: [],
+      migrationRisk: {
+        score: 50,
+        factors: [
+          {
+            code: 'duplicate_object',
+            severity: 'high',
+            weight: 40,
+            message: 'Duplicate object detected in NP',
+            nodeIds: ['node-risk-test-1']
+          },
+          {
+            code: 'changed_containment',
+            severity: 'medium',
+            weight: 10,
+            message: 'Rule containment moved to different component',
+            nodeIds: ['node-risk-test-1']
+          }
+        ]
+      }
+    };
+    (window as any).showNodeDetails(mockNode);
+  });
+
+  const summary = page.locator('#node-summary');
+  await expect(summary).toBeVisible();
+  await expect(summary).toContainText('Migration risk (2)');
+  await expect(summary).toContainText('duplicate_object');
+  await expect(summary).toContainText('(Weight: 40): Duplicate object detected in NP');
+  await expect(summary).toContainText('changed_containment');
+  await expect(summary).toContainText('(Weight: 10): Rule containment moved to different component');
+});
+
