@@ -260,12 +260,31 @@ class GraphProvenance:
         return {"origin": self.origin, "fileName": self.fileName}
 
 
+@dataclass(frozen=True)
+class FindingWaiver:
+    findingId: str
+    reason: str
+    reviewer: str
+    createdAt: str = ""
+    expiresAt: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "findingId": self.findingId,
+            "reason": self.reason,
+            "reviewer": self.reviewer,
+            "createdAt": self.createdAt,
+            "expiresAt": self.expiresAt,
+        }
+
+
 @dataclass
 class GraphDocument:
     snapshots: list[Snapshot] = field(default_factory=list)
     nodes: list[GraphNode] = field(default_factory=list)
     links: list[GraphLink] = field(default_factory=list)
     findings: list[ValidationFinding] = field(default_factory=list)
+    waivers: list[FindingWaiver] = field(default_factory=list)
     migrationRisk: MigrationRiskReport | None = None
     schemaVersion: str = GRAPH_SCHEMA_VERSION
     topologyMode: str = "core"
@@ -285,9 +304,12 @@ class GraphDocument:
             "links": [link.to_dict() for link in self.links],
             "findings": [finding.to_dict() for finding in self.findings],
         }
+        if self.waivers:
+            data["waivers"] = [waiver.to_dict() for waiver in self.waivers]
         if self.migrationRisk:
             data["migrationRisk"] = self.migrationRisk.to_dict()
         return data
+
 
 
 @dataclass

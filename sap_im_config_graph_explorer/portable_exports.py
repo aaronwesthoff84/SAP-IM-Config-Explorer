@@ -21,6 +21,7 @@ from sap_im_config_graph_explorer.models import (
     RELATIONSHIP_TYPES,
     SNAPSHOT_ROLES,
     TOPOLOGY_MODES,
+    FindingWaiver,
     GraphDocument,
     GraphLink,
     GraphNode,
@@ -96,12 +97,17 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
             "links",
             "findings",
         },
-        optional={"migrationRisk"},
+        optional={"migrationRisk", "waivers"},
     )
     snapshots = [_snapshot_from_payload(item) for item in _list(data, "snapshots")]
     nodes = [_node_from_payload(item) for item in _list(data, "nodes")]
     links = [_link_from_payload(item) for item in _list(data, "links")]
     findings = [_finding_from_payload(item) for item in _list(data, "findings")]
+    waivers = (
+        [_waiver_from_payload(item) for item in _list(data, "waivers")]
+        if "waivers" in data
+        else []
+    )
     migration_risk = _migration_risk_from_payload(data.get("migrationRisk"))
     provenance = _graph_provenance_from_payload(data.get("provenance"))
 
@@ -113,6 +119,7 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
             nodes=nodes,
             links=links,
             findings=findings,
+            waivers=waivers,
             migrationRisk=migration_risk,
             provenance=provenance,
         )
@@ -346,6 +353,24 @@ def _validate_findings(
         _json_value(finding.details, f"finding details for {finding.id}")
 
 
+def _validate_waivers(waivers: Sequence[FindingWaiver]) -> None:
+    waiver_ids: set[str] = set()
+    for waiver in waivers:
+        if not isinstance(waiver, FindingWaiver):
+            raise PortableGraphExportError("waivers must contain only objects.")
+        _non_empty_model_string(waiver.findingId, "waiver.findingId")
+        if waiver.findingId in waiver_ids:
+            raise PortableGraphExportError(
+                f"Duplicate waiver for finding ID: {waiver.findingId}"
+            )
+        waiver_ids.add(waiver.findingId)
+        _non_empty_model_string(waiver.reason, "waiver.reason")
+        _non_empty_model_string(waiver.reviewer, "waiver.reviewer")
+        _model_string(waiver.createdAt, "waiver.createdAt")
+        if waiver.expiresAt is not None:
+            _model_string(waiver.expiresAt, "waiver.expiresAt")
+
+
 def _validate_migration_risk(
     migration_risk: MigrationRiskReport | None,
     node_ids: set[str],
@@ -392,6 +417,7 @@ def validate_graph_document(document: GraphDocument) -> None:
     _validate_findings(
         document.findings, snapshot_ids, node_ids, node_snapshot_ids
     )
+    _validate_waivers(document.waivers)
     _validate_migration_risk(document.migrationRisk, node_ids)
     document._validated = True
 
@@ -1267,6 +1293,30 @@ def _finding_from_payload(value: object) -> ValidationFinding:
             nodeIds=tuple(_string_list(data, "nodeIds")),
             message=_string(data, "message"),
             details=_object(data, "details"),
+        )
+    except ValueError as exc:
+        raise PortableGraphExportError(str(exc)) from exc
+
+
+def _waiver_from_payload(value: object) -> FindingWaiver:
+    data = _mapping(value, "waiver")
+    _keys(
+        data,
+        "waiver",
+        required={"findingId", "reason", "reviewer"},
+        optional={"createdAt", "expiresAt"},
+    )
+    try:
+        return FindingWaiver(
+            findingId=_string(data, "findingId"),
+            reason=_string(data, "reason"),
+            reviewer=_string(data, "reviewer"),
+            createdAt=(
+                _string(data, "createdAt")
+                if "createdAt" in data and data["createdAt"] is not None
+                else ""
+            ),
+            expiresAt=_optional_string(data, "expiresAt"),
         )
     except ValueError as exc:
         raise PortableGraphExportError(str(exc)) from exc

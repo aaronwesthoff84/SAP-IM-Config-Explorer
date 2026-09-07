@@ -1,3 +1,60 @@
+const WAIVERS_STORAGE_KEY = "sap-im-config-explorer-waivers";
+
+function isWaiverExpired(waiver) {
+  if (!waiver || !waiver.expiresAt) return false;
+  const expiryDate = new Date(waiver.expiresAt);
+  if (isNaN(expiryDate.getTime())) return false;
+  // If date only (YYYY-MM-DD), count expiry at end of that day
+  if (/^\d{4}-\d{2}-\d{2}$/.test(waiver.expiresAt)) {
+    expiryDate.setHours(23, 59, 59, 999);
+  }
+  return Date.now() > expiryDate.getTime();
+}
+
+function loadWaivers() {
+  try {
+    const raw = localStorage.getItem(WAIVERS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return {};
+    }
+    const validated = {};
+    for (const [findingId, waiver] of Object.entries(parsed)) {
+      if (
+        waiver &&
+        typeof waiver === "object" &&
+        typeof waiver.findingId === "string" &&
+        waiver.findingId &&
+        typeof waiver.reason === "string" &&
+        waiver.reason.trim() &&
+        typeof waiver.reviewer === "string" &&
+        waiver.reviewer.trim()
+      ) {
+        validated[findingId] = {
+          findingId: waiver.findingId,
+          reason: waiver.reason.trim(),
+          reviewer: waiver.reviewer.trim(),
+          createdAt: typeof waiver.createdAt === "string" ? waiver.createdAt : new Date().toISOString(),
+          expiresAt: typeof waiver.expiresAt === "string" && waiver.expiresAt ? waiver.expiresAt : null,
+        };
+      }
+    }
+    return validated;
+  } catch (err) {
+    console.warn("Failed to load waivers from localStorage:", err);
+    return {};
+  }
+}
+
+function saveWaivers(waivers) {
+  try {
+    localStorage.setItem(WAIVERS_STORAGE_KEY, JSON.stringify(waivers));
+  } catch (err) {
+    console.warn("Failed to save waivers to localStorage:", err);
+  }
+}
+
 const state = {
   graph: { nodes: [], links: [], findings: [] },
   cy: null,
@@ -14,6 +71,16 @@ const state = {
   aiStatus: null,
   comparisonResult: null,
   compareActiveCategory: "all",
+  waivers: loadWaivers(),
+  findingFilters: {
+    severity: "",
+    code: "",
+    snapshot: "",
+    waiver: "all",
+    search: "",
+  },
+  selectedFindingId: null,
+  editingWaiverFindingId: null,
 };
 
 window.state = state;
@@ -178,6 +245,13 @@ const clearFiltersButton = document.getElementById("clear-filters");
 const rawXmlEl = document.getElementById("raw-xml");
 const summaryEl = document.getElementById("node-summary");
 const findingsEl = document.getElementById("validation-findings");
+const findingsSeverityFilter = document.getElementById("findings-severity-filter");
+const findingsCodeFilter = document.getElementById("findings-code-filter");
+const findingsSnapshotFilter = document.getElementById("findings-snapshot-filter");
+const findingsWaiverFilter = document.getElementById("findings-waiver-filter");
+const findingsSearchInput = document.getElementById("findings-search");
+const findingsCounterEl = document.getElementById("findings-counter");
+const findingsClearFiltersBtn = document.getElementById("findings-clear-filters");
 const riskContainer = document.getElementById("migration-risk-container");
 const riskReportEl = document.getElementById("migration-risk-report");
 const visualizationModeSelect = document.getElementById("visualization-mode");
@@ -228,6 +302,48 @@ confidenceFilter.addEventListener("change", renderGraph);
 effectiveDateFilter.addEventListener("input", renderGraph);
 clearFiltersButton.addEventListener("click", clearAllFilters);
 
+if (findingsSeverityFilter) {
+  findingsSeverityFilter.addEventListener("change", (e) => {
+    state.findingFilters.severity = e.target.value;
+    renderFindings();
+  });
+}
+if (findingsCodeFilter) {
+  findingsCodeFilter.addEventListener("change", (e) => {
+    state.findingFilters.code = e.target.value;
+    renderFindings();
+  });
+}
+if (findingsSnapshotFilter) {
+  findingsSnapshotFilter.addEventListener("change", (e) => {
+    state.findingFilters.snapshot = e.target.value;
+    renderFindings();
+  });
+}
+if (findingsWaiverFilter) {
+  findingsWaiverFilter.addEventListener("change", (e) => {
+    state.findingFilters.waiver = e.target.value;
+    renderFindings();
+  });
+}
+if (findingsSearchInput) {
+  findingsSearchInput.addEventListener("input", (e) => {
+    state.findingFilters.search = e.target.value;
+    renderFindings();
+  });
+}
+if (findingsClearFiltersBtn) {
+  findingsClearFiltersBtn.addEventListener("click", () => {
+    state.findingFilters = { severity: "", code: "", snapshot: "", waiver: "all", search: "" };
+    if (findingsSeverityFilter) findingsSeverityFilter.value = "";
+    if (findingsCodeFilter) findingsCodeFilter.value = "";
+    if (findingsSnapshotFilter) findingsSnapshotFilter.value = "";
+    if (findingsWaiverFilter) findingsWaiverFilter.value = "all";
+    if (findingsSearchInput) findingsSearchInput.value = "";
+    renderFindings();
+  });
+}
+
 function navigateToHtmlSectionForNode(node) {
   if (!state.html) {
     setStatus("HTML representation unavailable: No HTML generated yet.");
@@ -273,21 +389,160 @@ function navigateToHtmlSectionForNode(node) {
   }
 }
 
-findingsEl.addEventListener("click", (event) => {
-  const btn = event.target.closest(".finding-action-btn");
-  if (!btn) return;
-  const nodeId = btn.dataset.nodeId;
-  const node = state.graph.nodes.find((n) => n.id === nodeId);
-  if (!node) return;
+function selectFinding(finding) {
+  state.selectedFindingId = finding.id;
+  const findingElements = findingsEl.querySelectorAll(".finding");
+  findingElements.forEach((el) => {
+    if (el.dataset.findingId === finding.id) {
+      el.classList.add("selected");
+    } else {
+      el.classList.remove("selected");
+    }
+  });
 
-  if (btn.classList.contains("go-to-node")) {
-    selectAndFocusNode(node);
-    switchWorkspace("graph-view");
-  } else if (btn.classList.contains("view-xml")) {
-    selectAndFocusNode(node);
-  } else if (btn.classList.contains("view-html")) {
-    selectAndFocusNode(node);
-    navigateToHtmlSectionForNode(node);
+  if (!finding.nodeIds || finding.nodeIds.length === 0) return;
+
+  const matchingNodes = [];
+  finding.nodeIds.forEach((id) => {
+    let node = state.graph.nodes.find((n) => n.id === id);
+    if (!node && state.graph.nodes.length > 0) {
+      const parts = id.split("-");
+      const digest = parts.length > 1 ? parts[1] : "";
+      if (digest) {
+        node = state.graph.nodes.find((n) => n.id.endsWith(digest));
+      }
+    }
+    if (node) matchingNodes.push(node);
+  });
+
+  if (state.cy) {
+    state.cy.elements().unselect();
+    const nodeSelectors = finding.nodeIds.map((id) => `#${CSS.escape(id)}`).join(",");
+    let cyNodes = state.cy.nodes(nodeSelectors);
+    if (cyNodes.length === 0 && matchingNodes.length > 0) {
+      const resolvedSelectors = matchingNodes.map((n) => `#${CSS.escape(n.id)}`).join(",");
+      cyNodes = state.cy.nodes(resolvedSelectors);
+    }
+    if (cyNodes.length > 0) {
+      cyNodes.select();
+      state.highlightedIds = new Set(cyNodes.map((n) => n.id()));
+      state.cy.animate({
+        center: { eles: cyNodes },
+        zoom: Math.max(state.cy.zoom(), 1.0),
+        duration: 400,
+      });
+    }
+  }
+
+  if (matchingNodes.length > 0) {
+    showNodeDetails(matchingNodes[0]);
+  }
+}
+
+findingsEl.addEventListener("click", (event) => {
+  const findingItem = event.target.closest(".finding");
+  if (findingItem) {
+    const findingId = findingItem.dataset.findingId;
+    const finding = (state.graph.findings || []).find((f) => f.id === findingId);
+    if (finding && state.selectedFindingId !== findingId) {
+      selectFinding(finding);
+    }
+  }
+
+  const nodeBtn = event.target.closest(".finding-action-btn");
+  if (nodeBtn) {
+    const nodeId = nodeBtn.dataset.nodeId;
+    let node = state.graph.nodes.find((n) => n.id === nodeId);
+    if (!node && state.graph.nodes.length > 0) {
+      const parts = nodeId.split("-");
+      const digest = parts.length > 1 ? parts[1] : "";
+      if (digest) {
+        node = state.graph.nodes.find((n) => n.id.endsWith(digest));
+      }
+    }
+    if (!node) return;
+
+    if (nodeBtn.classList.contains("go-to-node")) {
+      selectAndFocusNode(node);
+      switchWorkspace("graph-view");
+    } else if (nodeBtn.classList.contains("view-xml")) {
+      selectAndFocusNode(node);
+    } else if (nodeBtn.classList.contains("view-html")) {
+      selectAndFocusNode(node);
+      navigateToHtmlSectionForNode(node);
+    }
+    return;
+  }
+
+  const waiveBtn = event.target.closest(".waive-finding-btn");
+  if (waiveBtn) {
+    state.editingWaiverFindingId = waiveBtn.dataset.findingId;
+    renderFindings();
+    return;
+  }
+
+  const editWaiverBtn = event.target.closest(".edit-waiver-btn");
+  if (editWaiverBtn) {
+    state.editingWaiverFindingId = editWaiverBtn.dataset.findingId;
+    renderFindings();
+    return;
+  }
+
+  const cancelBtn = event.target.closest(".cancel-waiver-btn");
+  if (cancelBtn) {
+    state.editingWaiverFindingId = null;
+    renderFindings();
+    return;
+  }
+
+  const saveBtn = event.target.closest(".save-waiver-btn");
+  if (saveBtn) {
+    const findingId = saveBtn.dataset.findingId;
+    const form = saveBtn.closest(".waiver-form");
+    if (!form) return;
+    const reviewerInput = form.querySelector(".waiver-input-reviewer");
+    const reasonInput = form.querySelector(".waiver-input-reason");
+    const expiryInput = form.querySelector(".waiver-input-expiry");
+    const errEl = form.querySelector(".waiver-form-error");
+
+    const reviewer = reviewerInput ? reviewerInput.value.trim() : "";
+    const reason = reasonInput ? reasonInput.value.trim() : "";
+    const expiry = expiryInput ? expiryInput.value.trim() : "";
+
+    if (!reviewer || !reason) {
+      if (errEl) {
+        errEl.textContent = "Reviewer and reason are required.";
+        errEl.style.display = "block";
+      }
+      return;
+    }
+
+    const existing = state.waivers[findingId];
+    state.waivers[findingId] = {
+      findingId,
+      reviewer,
+      reason,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      expiresAt: expiry || null,
+    };
+    saveWaivers(state.waivers);
+    state.editingWaiverFindingId = null;
+    renderFindings();
+    setStatus(`Saved waiver for finding ${findingId}.`);
+    return;
+  }
+
+  const revokeBtn = event.target.closest(".revoke-waiver-btn");
+  if (revokeBtn) {
+    const findingId = revokeBtn.dataset.findingId;
+    delete state.waivers[findingId];
+    saveWaivers(state.waivers);
+    if (state.editingWaiverFindingId === findingId) {
+      state.editingWaiverFindingId = null;
+    }
+    renderFindings();
+    setStatus(`Revoked waiver for finding ${findingId}.`);
+    return;
   }
 });
 
@@ -418,6 +673,21 @@ async function importGraphJson() {
 
 function loadGraphWorkspace(payload) {
   state.graph = payload;
+  state.waivers = loadWaivers();
+  if (payload.waivers && Array.isArray(payload.waivers)) {
+    payload.waivers.forEach((w) => {
+      if (w && w.findingId && w.reason && w.reviewer) {
+        state.waivers[w.findingId] = {
+          findingId: w.findingId,
+          reason: w.reason,
+          reviewer: w.reviewer,
+          createdAt: w.createdAt || new Date().toISOString(),
+          expiresAt: w.expiresAt || null,
+        };
+      }
+    });
+    saveWaivers(state.waivers);
+  }
   state.nodePositions = {};
   if (layoutSelect) layoutSelect.value = state.activeLayout || "cose";
   topologySelect.value = payload.topologyMode;
@@ -1154,7 +1424,107 @@ function clearAllFilters() {
   renderGraphAndHtmlOutput();
 }
 
+function getFilteredFindings(findings) {
+  if (!findings) return [];
+  const filters = state.findingFilters;
+  const term = (filters.search || "").trim().toLowerCase();
+
+  return findings.filter((finding) => {
+    if (filters.severity && finding.severity !== filters.severity) {
+      return false;
+    }
+    if (filters.code && finding.code !== filters.code) {
+      return false;
+    }
+    if (filters.snapshot && finding.snapshotId !== filters.snapshot) {
+      return false;
+    }
+
+    const waiver = state.waivers[finding.id];
+    const isWaived = Boolean(waiver);
+    const isExpired = isWaiverExpired(waiver);
+    const hasActiveWaiver = isWaived && !isExpired;
+
+    if (filters.waiver === "waived") {
+      if (!isWaived) return false;
+    } else if (filters.waiver === "unwaived") {
+      if (hasActiveWaiver) return false;
+    }
+
+    if (term) {
+      const codeMatch = (finding.code || "").toLowerCase().includes(term);
+      const msgMatch = (finding.message || "").toLowerCase().includes(term);
+      const snapMatch = (finding.snapshotId || "").toLowerCase().includes(term);
+      let nodeMatch = false;
+      if (finding.nodeIds && finding.nodeIds.length > 0) {
+        nodeMatch = finding.nodeIds.some((id) => {
+          if (id.toLowerCase().includes(term)) return true;
+          let node = state.graph.nodes?.find((n) => n.id === id);
+          if (!node && state.graph.nodes && state.graph.nodes.length > 0) {
+            const parts = id.split("-");
+            const digest = parts.length > 1 ? parts[1] : "";
+            if (digest) {
+              node = state.graph.nodes.find((n) => n.id.endsWith(digest));
+            }
+          }
+          if (node) {
+            if (node.label && node.label.toLowerCase().includes(term)) return true;
+            if (node.type && node.type.toLowerCase().includes(term)) return true;
+            if (node.sourceFile && node.sourceFile.toLowerCase().includes(term)) return true;
+          }
+          return false;
+        });
+      }
+      if (!codeMatch && !msgMatch && !snapMatch && !nodeMatch) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
 function renderFindings(findings) {
+  if (findings === undefined) {
+    findings = state.graph.findings || [];
+  } else {
+    state.graph.findings = findings;
+  }
+  state.graph.waivers = Object.values(state.waivers);
+
+  if (findingsCodeFilter) {
+    const currentCode = state.findingFilters.code;
+    const codes = Array.from(new Set(findings.map((f) => f.code).filter(Boolean))).sort();
+    findingsCodeFilter.innerHTML = '<option value="">All codes</option>' +
+      codes.map((c) => `<option value="${escapeHtml(c)}"${c === currentCode ? " selected" : ""}>${escapeHtml(c)}</option>`).join("");
+    if (codes.includes(currentCode)) {
+      findingsCodeFilter.value = currentCode;
+    } else {
+      state.findingFilters.code = "";
+      findingsCodeFilter.value = "";
+    }
+  }
+
+  if (findingsSnapshotFilter) {
+    const currentSnap = state.findingFilters.snapshot;
+    const snaps = Array.from(new Set(findings.map((f) => f.snapshotId).filter(Boolean))).sort();
+    findingsSnapshotFilter.innerHTML = '<option value="">All snapshots</option>' +
+      snaps.map((s) => `<option value="${escapeHtml(s)}"${s === currentSnap ? " selected" : ""}>${escapeHtml(s)}</option>`).join("");
+    if (snaps.includes(currentSnap)) {
+      findingsSnapshotFilter.value = currentSnap;
+    } else {
+      state.findingFilters.snapshot = "";
+      findingsSnapshotFilter.value = "";
+    }
+  }
+
+  const filtered = getFilteredFindings(findings);
+  const waivedCount = findings.filter((f) => state.waivers[f.id]).length;
+
+  if (findingsCounterEl) {
+    findingsCounterEl.textContent = `Showing ${filtered.length} of ${findings.length} findings (${waivedCount} waived)`;
+  }
+
   if (!findings.length) {
     findingsEl.innerHTML = '<p class="empty-findings">No validation findings.</p>';
     return;
@@ -1163,7 +1533,80 @@ function renderFindings(findings) {
   const errorCount = findings.filter((finding) => finding.severity === "error").length;
   const warningCount = findings.filter((finding) => finding.severity === "warning").length;
   const summary = `${errorCount} error${errorCount === 1 ? "" : "s"}, ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
-  const items = findings.map((finding) => {
+
+  if (!filtered.length) {
+    findingsEl.innerHTML = `<p class="findings-summary">${escapeHtml(summary)}</p><p class="empty-findings">No findings match the current filters. <button type="button" id="findings-inline-reset" class="secondary" style="padding: 2px 6px; font-size: 11px; margin-left: 6px;">Clear filters</button></p>`;
+    const inlineReset = document.getElementById("findings-inline-reset");
+    if (inlineReset) {
+      inlineReset.addEventListener("click", () => {
+        if (findingsClearFiltersBtn) findingsClearFiltersBtn.click();
+      });
+    }
+    return;
+  }
+
+  const items = filtered.map((finding) => {
+    const waiver = state.waivers[finding.id];
+    const isExpired = isWaiverExpired(waiver);
+    const isEditing = state.editingWaiverFindingId === finding.id;
+    const isSelected = state.selectedFindingId === finding.id;
+
+    let waiverBadgeHtml = '';
+    if (waiver) {
+      if (isExpired) {
+        waiverBadgeHtml = `<span class="badge badge-waiver-expired" title="Waiver expired on ${escapeHtml(waiver.expiresAt || "")}">[EXPIRED WAIVER]</span>`;
+      } else {
+        waiverBadgeHtml = `<span class="badge badge-waived" title="Waived by ${escapeHtml(waiver.reviewer)}">[WAIVED]</span>`;
+      }
+    }
+
+    let waiverContentHtml = '';
+    if (isEditing) {
+      waiverContentHtml = `
+        <div class="waiver-form" data-finding-id="${escapeHtml(finding.id)}">
+          <div style="font-weight: 600; font-size: 11px; margin-bottom: 2px;">${waiver ? "Edit Waiver" : "Waive Finding"}</div>
+          <label>
+            <span>Reviewer *</span>
+            <input type="text" class="waiver-input-reviewer" placeholder="e.g. auditor@company.com" value="${escapeHtml(waiver ? waiver.reviewer : "")}" required>
+          </label>
+          <label>
+            <span>Reason *</span>
+            <input type="text" class="waiver-input-reason" placeholder="e.g. Legacy accepted risk" value="${escapeHtml(waiver ? waiver.reason : "")}" required>
+          </label>
+          <label>
+            <span>Expiry Date (optional)</span>
+            <input type="date" class="waiver-input-expiry" value="${escapeHtml(waiver && waiver.expiresAt ? waiver.expiresAt.split('T')[0] : "")}">
+          </label>
+          <div class="waiver-form-error" style="display: none;"></div>
+          <div class="waiver-form-buttons">
+            <button type="button" class="primary save-waiver-btn" data-finding-id="${escapeHtml(finding.id)}" style="padding: 3px 8px; font-size: 11px;">Save Waiver</button>
+            <button type="button" class="secondary cancel-waiver-btn" data-finding-id="${escapeHtml(finding.id)}" style="padding: 3px 8px; font-size: 11px;">Cancel</button>
+          </div>
+        </div>
+      `;
+    } else if (waiver) {
+      waiverContentHtml = `
+        <div class="waiver-box">
+          <div class="waiver-meta-row">
+            <span><strong>Reviewer:</strong> ${escapeHtml(waiver.reviewer)}</span>
+            ${waiver.expiresAt ? `<span><strong>Expires:</strong> ${escapeHtml(waiver.expiresAt.split('T')[0])}</span>` : "<span><strong>Expires:</strong> Never</span>"}
+            ${isExpired ? `<span style="color: var(--alert-red); font-weight: bold;">(EXPIRED)</span>` : ""}
+          </div>
+          <div class="waiver-reason"><strong>Reason:</strong> ${escapeHtml(waiver.reason)}</div>
+          <div class="waiver-actions-row">
+            <button type="button" class="secondary edit-waiver-btn" data-finding-id="${escapeHtml(finding.id)}" style="padding: 2px 6px; font-size: 11px;">Edit Waiver</button>
+            <button type="button" class="secondary danger revoke-waiver-btn" data-finding-id="${escapeHtml(finding.id)}" style="padding: 2px 6px; font-size: 11px;">Revoke Waiver</button>
+          </div>
+        </div>
+      `;
+    } else {
+      waiverContentHtml = `
+        <div style="margin-top: 6px;">
+          <button type="button" class="secondary waive-finding-btn" data-finding-id="${escapeHtml(finding.id)}" style="padding: 2px 6px; font-size: 11px;">Waive Finding</button>
+        </div>
+      `;
+    }
+
     let actionButtons = '';
     if (finding.nodeIds && finding.nodeIds.length > 0) {
       const linksHtml = finding.nodeIds.map((nodeId) => {
@@ -1191,10 +1634,22 @@ function renderFindings(findings) {
         actionButtons = `<div class="finding-actions" style="margin-top: 6px;">${linksHtml}</div>`;
       }
     }
+
+    const stateClass = waiver ? (isExpired ? "waiver-expired" : "waived") : "";
+    const selectedClass = isSelected ? "selected" : "";
+
     return `
-      <li class="finding ${escapeHtml(finding.severity || "warning")}">
-        <strong class="finding-title">${escapeHtml(finding.code || "validation finding")}</strong>
+      <li class="finding ${escapeHtml(finding.severity || "warning")} ${stateClass} ${selectedClass}" data-finding-id="${escapeHtml(finding.id)}">
+        <div class="finding-header">
+          <div class="finding-badges">
+            <span class="badge badge-severity-${escapeHtml(finding.severity || "warning")}">${escapeHtml(finding.severity || "warning")}</span>
+            <span class="badge badge-snapshot">${escapeHtml(finding.snapshotId || "")}</span>
+            ${waiverBadgeHtml}
+          </div>
+          <strong class="finding-title">${escapeHtml(finding.code || "validation finding")}</strong>
+        </div>
         <p class="finding-message">${escapeHtml(finding.message || "No message supplied.")}</p>
+        ${waiverContentHtml}
         ${actionButtons}
       </li>
     `;
@@ -1622,6 +2077,7 @@ async function exportGraph(format) {
   if (!exportFormat) return setStatus("Unsupported graph export format.");
   try {
     while (pendingGraphGeneration) await pendingGraphGeneration;
+    state.graph.waivers = Object.values(state.waivers);
     const response = await fetch(exportFormat.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2240,6 +2696,7 @@ function serializeSession(name) {
       nodes: state.graph.nodes,
       links: state.graph.links,
       findings: state.graph.findings,
+      waivers: Object.values(state.waivers),
       migrationRisk: state.graph.migrationRisk
     }
   };
@@ -2391,6 +2848,20 @@ window.handleRestoreSession = handleRestoreSession;
 function restoreGraphAndLayout(session) {
   // Restore State Graph Data
   state.graph = session.graph || { nodes: [], links: [], findings: [] };
+  if (session.graph?.waivers && Array.isArray(session.graph.waivers)) {
+    session.graph.waivers.forEach((w) => {
+      if (w && w.findingId && w.reason && w.reviewer) {
+        state.waivers[w.findingId] = {
+          findingId: w.findingId,
+          reason: w.reason,
+          reviewer: w.reviewer,
+          createdAt: w.createdAt || new Date().toISOString(),
+          expiresAt: w.expiresAt || null,
+        };
+      }
+    });
+    saveWaivers(state.waivers);
+  }
   clearSelectedRule();
   destroyLineageRenderer();
   populateFilterControls(state.graph);

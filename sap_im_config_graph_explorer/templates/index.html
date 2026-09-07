@@ -257,6 +257,53 @@
         <div id="migration-risk-report" class="migration-risk-report"></div>
       </div>
       <h2>Validation Findings</h2>
+      <div id="findings-workbench" class="findings-workbench">
+        <div class="findings-toolbar">
+          <div class="findings-filter-row">
+            <label>
+              <span>Severity</span>
+              <select id="findings-severity-filter">
+                <option value="">All severities</option>
+                <option value="error">Error</option>
+                <option value="warning">Warning</option>
+                <option value="info">Info</option>
+              </select>
+            </label>
+            <label>
+              <span>Code</span>
+              <select id="findings-code-filter">
+                <option value="">All codes</option>
+              </select>
+            </label>
+          </div>
+          <div class="findings-filter-row">
+            <label>
+              <span>Snapshot</span>
+              <select id="findings-snapshot-filter">
+                <option value="">All snapshots</option>
+              </select>
+            </label>
+            <label>
+              <span>Waiver</span>
+              <select id="findings-waiver-filter">
+                <option value="all">All</option>
+                <option value="unwaived">Unwaived</option>
+                <option value="waived">Waived</option>
+              </select>
+            </label>
+          </div>
+          <div class="findings-filter-row">
+            <label class="findings-search-label">
+              <span>Search</span>
+              <input id="findings-search" type="search" placeholder="Search code, message, object...">
+            </label>
+          </div>
+          <div class="findings-toolbar-footer">
+            <span id="findings-counter" class="findings-counter" aria-live="polite">Showing 0 of 0 findings (0 waived)</span>
+            <button type="button" id="findings-clear-filters" class="secondary" style="padding: 2px 8px; font-size: 11px;">Reset</button>
+          </div>
+        </div>
+      </div>
       <div id="validation-findings" class="validation-findings">
         <p class="empty-findings">Generate a graph to review validation findings.</p>
       </div>
