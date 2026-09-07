@@ -289,6 +289,7 @@ class GraphDocument:
     schemaVersion: str = GRAPH_SCHEMA_VERSION
     topologyMode: str = "core"
     provenance: GraphProvenance = field(default_factory=GraphProvenance)
+    asOfDate: str | None = None
 
     def __post_init__(self) -> None:
         if self.topologyMode not in TOPOLOGY_MODES:
@@ -304,6 +305,8 @@ class GraphDocument:
             "links": [link.to_dict() for link in self.links],
             "findings": [finding.to_dict() for finding in self.findings],
         }
+        if self.asOfDate is not None:
+            data["asOfDate"] = self.asOfDate
         if self.waivers:
             data["waivers"] = [waiver.to_dict() for waiver in self.waivers]
         if self.migrationRisk:
@@ -401,6 +404,7 @@ class ChangedObjectRecord:
     summary: str
     sourceFile: str = ""
     candidateSourceFile: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -411,6 +415,7 @@ class ChangedObjectRecord:
             "summary": self.summary,
             "sourceFile": self.sourceFile,
             "candidateSourceFile": self.candidateSourceFile,
+            "metadata": self.metadata,
         }
 
 
@@ -465,9 +470,10 @@ class ComparisonResult:
     changed: list[ChangedObjectRecord] = field(default_factory=list)
     unchanged: list[ObjectRecord] = field(default_factory=list)
     error: str = ""
+    asOfDate: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "ok": self.ok,
             "baselineFile": self.baselineFile,
             "candidateFile": self.candidateFile,
@@ -478,4 +484,7 @@ class ComparisonResult:
             "unchanged": [item.to_dict() for item in self.unchanged],
             "error": self.error,
         }
+        if self.asOfDate is not None:
+            data["asOfDate"] = self.asOfDate
+        return data
 

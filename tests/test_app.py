@@ -150,6 +150,7 @@ def test_graph_endpoint_accepts_multiple_uploads():
         "duplicate_object",
         "unused_object",
         "orphaned_object",
+        "temporal_overlap",
     }
 
 

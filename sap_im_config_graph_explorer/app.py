@@ -438,6 +438,7 @@ async def compare_xml(
     baseline_file: UploadFile = File(...),
     candidate_file: UploadFile = File(...),
     topology_mode: str = Form("full"),
+    as_of_date: str | None = Form(None),
 ) -> dict[str, object]:
     if topology_mode not in TOPOLOGY_MODES:
         raise HTTPException(
@@ -465,6 +466,7 @@ async def compare_xml(
             candidate_content=c_bytes,
             baseline_filename=b_name,
             candidate_filename=c_name,
+            as_of_date=as_of_date,
         )
         return result.to_dict()
     except XmlLoadError as exc:
@@ -479,6 +481,7 @@ async def graph(
     np_files: list[UploadFile] | None = File(None),
     p_files: list[UploadFile] | None = File(None),
     topology_mode: str = Form("core"),
+    as_of_date: str | None = Form(None),
 ) -> dict[str, object]:
     if topology_mode not in TOPOLOGY_MODES:
         raise HTTPException(
@@ -522,6 +525,8 @@ async def graph(
         )
         if np_files and p_files:
             doc.migrationRisk = MigrationRiskEngine().analyze(doc)
+        if as_of_date and as_of_date.strip():
+            doc.asOfDate = as_of_date.strip()
         return doc.to_dict()
     except XmlLoadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

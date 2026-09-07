@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from sap_im_config_graph_explorer.models import GraphLink, GraphNode, ValidationFinding
+from sap_im_config_graph_explorer.temporal import detect_temporal_findings
 
 
 CONTAINMENT_RELATIONSHIPS = {
@@ -50,6 +51,7 @@ class ValidationEngine:
             )
         )
         findings.extend(self._orphaned_findings(nodes, indexes.linked_node_ids))
+        findings.extend(detect_temporal_findings(nodes))
         return findings
 
     @staticmethod

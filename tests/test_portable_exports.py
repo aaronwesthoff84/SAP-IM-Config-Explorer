@@ -373,3 +373,25 @@ def test_neo4j_route_returns_local_downloads_and_validates_payload():
     rejected = client.post("/api/export/graph-neo4j", json=payload)
     assert rejected.status_code == 422
     assert rejected.json() == {"error": "Unsupported graph node type: FUNCTION"}
+
+
+def test_portable_export_preserves_and_records_as_of_date():
+    client = TestClient(app)
+    payload = _fixture_payload()
+    payload["asOfDate"] = "2026-06-15"
+
+    doc = graph_document_from_payload(payload)
+    assert doc.asOfDate == "2026-06-15"
+    exported_dict = doc.to_dict()
+    assert exported_dict["asOfDate"] == "2026-06-15"
+
+    # Verify Markdown export records As-of Date in table
+    md_bytes = serialize_markdown(doc)
+    md_text = md_bytes.decode("utf-8")
+    assert "| As-of date | 2026-06-15 |" in md_text
+
+    # Route export
+    response = client.post("/api/export/graph-markdown", json=payload)
+    assert response.status_code == 200
+    assert "| As-of date | 2026-06-15 |" in response.text
+

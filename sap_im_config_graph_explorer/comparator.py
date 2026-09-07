@@ -43,6 +43,7 @@ class ConfigComparator:
         self,
         baseline_path: str | Path,
         candidate_path: str | Path,
+        as_of_date: str | None = None,
     ) -> ComparisonResult:
         baseline_path = Path(baseline_path)
         candidate_path = Path(candidate_path)
@@ -55,6 +56,7 @@ class ConfigComparator:
             candidate_doc=candidate_doc,
             baseline_filename=baseline_path.name,
             candidate_filename=candidate_path.name,
+            as_of_date=as_of_date,
         )
 
     def compare_xml_texts(
@@ -63,6 +65,7 @@ class ConfigComparator:
         candidate_content: str | bytes,
         baseline_filename: str = "baseline.xml",
         candidate_filename: str = "candidate.xml",
+        as_of_date: str | None = None,
     ) -> ComparisonResult:
         baseline_doc = load_xml_text(baseline_content, baseline_filename)
         candidate_doc = load_xml_text(candidate_content, candidate_filename)
@@ -72,6 +75,7 @@ class ConfigComparator:
             candidate_doc=candidate_doc,
             baseline_filename=baseline_filename,
             candidate_filename=candidate_filename,
+            as_of_date=as_of_date,
         )
 
     def compare_xml_documents(
@@ -80,6 +84,7 @@ class ConfigComparator:
         candidate_doc: XmlDocument,
         baseline_filename: str = "baseline.xml",
         candidate_filename: str = "candidate.xml",
+        as_of_date: str | None = None,
     ) -> ComparisonResult:
         builder = GraphBuilder(topology_mode=self.topology_mode)
         baseline_graph = builder.build_from_documents(
@@ -94,6 +99,7 @@ class ConfigComparator:
             candidate_graph=candidate_graph,
             baseline_filename=baseline_filename,
             candidate_filename=candidate_filename,
+            as_of_date=as_of_date,
         )
 
     def compare_graphs(
@@ -102,6 +108,7 @@ class ConfigComparator:
         candidate_graph: GraphDocument,
         baseline_filename: str = "baseline.xml",
         candidate_filename: str = "candidate.xml",
+        as_of_date: str | None = None,
     ) -> ComparisonResult:
         b_node_by_id = {node.id: node for node in baseline_graph.nodes}
         c_node_by_id = {node.id: node for node in candidate_graph.nodes}
@@ -158,6 +165,7 @@ class ConfigComparator:
                             summary=summary,
                             sourceFile=b_node.sourceFile,
                             candidateSourceFile=c_node.sourceFile,
+                            metadata=c_node.metadata,
                         )
                     )
                 else:
@@ -245,6 +253,7 @@ class ConfigComparator:
             removed=removed,
             changed=changed,
             unchanged=unchanged,
+            asOfDate=as_of_date,
         )
 
     def _index_graph_links(

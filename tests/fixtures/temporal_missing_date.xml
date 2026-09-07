@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Invalid Date Plan" EFFECTIVE_START_DATE="not-a-date" EFFECTIVE_END_DATE="2026-12-31" DESCRIPTION="Plan with unparseable start date">
+      <COMPONENT_REF NAME="Missing Date Component" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT ID="PC-MD1" NAME="Missing Date Component" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2026-06-30">
+      <RULE_REFS>
+        <RULE_REF NAME="Reversed Range Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+    <PLANCOMPONENT ID="PC-MD2" NAME="Missing Date Component" DESCRIPTION="Second version lacks date metadata">
+      <RULE_REFS>
+        <RULE_REF NAME="Reversed Range Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE NAME="Reversed Range Rule" TYPE="DIRECT_TRANSACTION_CREDIT" EFFECTIVE_START_DATE="2026-12-31" EFFECTIVE_END_DATE="2026-01-01" DESCRIPTION="Start after end" />
+  </RULE_SET>
+</DATA_IMPORT>

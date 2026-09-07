@@ -151,3 +151,21 @@ def test_compare_empty_xml_raises_load_error():
             baseline_content=b"",
             candidate_content=valid_content,
         )
+
+
+def test_compare_records_as_of_date_context():
+    comparator = ConfigComparator(topology_mode="full")
+    baseline_path = FIXTURES / "compare_baseline.xml"
+    candidate_path = FIXTURES / "compare_candidate.xml"
+
+    result = comparator.compare_files(
+        baseline_path,
+        candidate_path,
+        as_of_date="2026-06-15",
+    )
+
+    assert result.ok is True
+    assert result.asOfDate == "2026-06-15"
+    payload = result.to_dict()
+    assert payload["asOfDate"] == "2026-06-15"
+
