@@ -121,3 +121,80 @@ test('preserves graph viewport controls and item selection', async ({ page }) =>
   });
   expect(viewportStateIsFinite).toBe(true);
 });
+
+test('supports layout selection, relayout, fit, and reset controls', async ({ page }) => {
+  await page.setViewportSize(viewports[0]);
+  await loadComparisonGraph(page);
+
+  await expect(page.locator('#graph-toolbar')).toBeVisible();
+  await expect(page.locator('#layout-select')).toBeVisible();
+
+  // Test layout selection
+  await page.locator('#layout-select').selectOption('grid');
+  await expect(page.locator('#status')).toContainText('Applied Grid layout');
+
+  await page.locator('#layout-select').selectOption('circle');
+  await expect(page.locator('#status')).toContainText('Applied Circular layout');
+
+  // Test relayout button
+  await page.locator('#relayout-button').click();
+  await expect(page.locator('#status')).toContainText('Applied Circular layout');
+
+  // Test fit button
+  await page.locator('#fit-button').click();
+  await expect(page.locator('#status')).toContainText('Fitted graph to viewport');
+
+  // Test reset button
+  await page.locator('#reset-view-button').click();
+  await expect(page.locator('#status')).toContainText('Reset graph layout and view');
+  await expect(page.locator('#layout-select')).toHaveValue('cose');
+});
+
+test('preserves user-adjusted node positions across filtering', async ({ page }) => {
+  await page.setViewportSize(viewports[0]);
+  await loadComparisonGraph(page);
+
+  // Record initial position and manually move a node
+  const movedPos = await page.evaluate(() => {
+    const cy = (window as any).state.cy;
+    const node = cy.nodes().first();
+    node.position({ x: 555, y: 777 });
+    (window as any).state.nodePositions[node.id()] = { x: 555, y: 777 };
+    return { id: node.id(), x: 555, y: 777 };
+  });
+
+  // Apply search filter that still matches the node or its label
+  await page.locator('#type-filter').selectOption({ index: 1 });
+  await page.locator('#clear-filters').click();
+
+  // Check if position was preserved
+  const actualPos = await page.evaluate((nodeId) => {
+    const cy = (window as any).state.cy;
+    const node = cy.getElementById(nodeId);
+    return node.length > 0 ? node.position() : null;
+  }, movedPos.id);
+
+  expect(actualPos).not.toBeNull();
+  expect(actualPos?.x).toBe(555);
+  expect(actualPos?.y).toBe(777);
+});
+
+test('supports local-first PNG and SVG image exports', async ({ page }) => {
+  await page.setViewportSize(viewports[0]);
+  await loadComparisonGraph(page);
+
+  // Test PNG download
+  const [pngDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#export-png-button').click(),
+  ]);
+  expect(pngDownload.suggestedFilename()).toMatch(/^sap-im-config-graph-.*\.png$/);
+
+  // Test SVG download
+  const [svgDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#export-svg-button').click(),
+  ]);
+  expect(svgDownload.suggestedFilename()).toMatch(/^sap-im-config-graph-.*\.svg$/);
+});
+
