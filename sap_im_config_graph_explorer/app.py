@@ -54,13 +54,24 @@ def health() -> dict[str, str]:
 def _get_ai_config() -> dict[str, str]:
     provider = os.getenv("AI_PROVIDER")
     if not provider:
-        provider = "openai" if os.getenv("OPENAI_API_KEY") else "stub"
+        if os.getenv("OPENAI_API_KEY"):
+            provider = "openai"
+        elif os.getenv("GEMINI_API_KEY"):
+            provider = "gemini"
+        elif os.getenv("OLLAMA_HOST"):
+            provider = "ollama"
+        else:
+            provider = "stub"
 
     return {
         "provider": provider.lower(),
-        "api_key": os.getenv("OPENAI_API_KEY", ""),
-        "api_base": os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
-        "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        "openai_api_key": os.getenv("OPENAI_API_KEY", ""),
+        "openai_base_url": os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "https://api.openai.com/v1",
+        "openai_model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        "ollama_host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+        "ollama_model": os.getenv("OLLAMA_MODEL", "llama3.2"),
+        "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
+        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
     }
 
 
@@ -76,20 +87,65 @@ def ai_status() -> dict[str, object]:
             "message": "Deterministic local stub provider is ready."
         }
     elif provider == "openai":
-        has_key = bool(cfg["api_key"])
+        has_key = bool(cfg["openai_api_key"])
         return {
             "enabled": has_key,
             "provider": "openai",
             "configured": has_key,
             "message": "OpenAI provider is active and configured." if has_key else "OpenAI provider is enabled but OPENAI_API_KEY is missing."
         }
+    elif provider == "ollama":
+        return {
+            "enabled": True,
+            "provider": "ollama",
+            "configured": True,
+            "message": f"Ollama local provider configured at {cfg['ollama_host']} with model {cfg['ollama_model']}."
+        }
+    elif provider == "gemini":
+        has_key = bool(cfg["gemini_api_key"])
+        return {
+            "enabled": has_key,
+            "provider": "gemini",
+            "configured": has_key,
+            "message": "Gemini provider is active and configured." if has_key else "Gemini provider is enabled but GEMINI_API_KEY is missing."
+        }
     else:
         return {
             "enabled": False,
             "provider": provider,
             "configured": False,
-            "message": f"AI provider '{provider}' is not supported or not configured."
+            "message": f"AI provider '{provider}' is not supported. Supported providers are: openai, ollama, gemini, stub."
         }
+
+
+def _build_summary_prompts(req: SummaryRequest) -> tuple[str, str]:
+    raw_xml = req.rawXml or ""
+    truncated_note = ""
+    if len(raw_xml) > 8000:
+        raw_xml = raw_xml[:8000] + "\n... [TRUNCATED DUE TO SIZE] ..."
+        truncated_note = " (Note: The raw XML was truncated due to size constraints.)"
+
+    system_prompt = (
+        "You are a professional SAP Incentive Management systems assistant. "
+        "Your task is to generate a concise, professional, source-grounded summary of the provided configuration object. "
+        "You MUST only base your summary on the provided object attributes, XML, and relationships. "
+        "Do NOT make unsupported claims or speculate on undocumented behaviors. "
+        "Explicitly identify the source object's name, type, and source file in the summary."
+    )
+
+    user_content = (
+        f"Please summarize the following SAP Incentive Management configuration object:\n"
+        f"Name: {req.label}\n"
+        f"Type: {req.type}\n"
+        f"Source File: {req.sourceFile}\n"
+        f"XML Path: {req.xmlPath}\n"
+        f"Metadata: {req.metadata or {}}\n"
+        f"Associated Plans: {req.associatedPlans or []}\n"
+        f"Associated Plan Components: {req.associatedPlanComponents or []}\n"
+        f"Associated Rules: {req.associatedRules or []}\n"
+        f"Raw XML:\n```xml\n{raw_xml}\n```\n{truncated_note}"
+    )
+    return system_prompt, user_content
 
 
 @app.post("/api/ai/summary", response_model=SummaryResponse)
@@ -102,18 +158,31 @@ async def ai_summary(req: SummaryRequest) -> SummaryResponse:
         return SummaryResponse(summary=summary, provider="stub")
 
     elif provider == "openai":
-        if not cfg["api_key"]:
+        if not cfg["openai_api_key"]:
             raise HTTPException(
                 status_code=400,
-                detail="AI provider is configured to use OpenAI, but OPENAI_API_KEY is not set. Please set the OPENAI_API_KEY environment variable."
+                detail="OpenAI provider requires OPENAI_API_KEY to be set."
             )
         summary = await _generate_openai_summary(req, cfg)
         return SummaryResponse(summary=summary, provider="openai")
 
+    elif provider == "ollama":
+        summary = await _generate_ollama_summary(req, cfg)
+        return SummaryResponse(summary=summary, provider="ollama")
+
+    elif provider == "gemini":
+        if not cfg["gemini_api_key"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Gemini provider requires GEMINI_API_KEY to be set."
+            )
+        summary = await _generate_gemini_summary(req, cfg)
+        return SummaryResponse(summary=summary, provider="gemini")
+
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"AI Summary Provider '{provider}' is not supported or not configured."
+            detail=f"AI provider '{provider}' is not supported. Supported providers are: openai, ollama, gemini, stub."
         )
 
 
@@ -146,39 +215,13 @@ def _generate_stub_summary(req: SummaryRequest) -> str:
 
 
 async def _generate_openai_summary(req: SummaryRequest, cfg: dict[str, str]) -> str:
-    raw_xml = req.rawXml or ""
-    truncated_note = ""
-    if len(raw_xml) > 8000:
-        raw_xml = raw_xml[:8000] + "\n... [TRUNCATED DUE TO SIZE] ..."
-        truncated_note = " (Note: The raw XML was truncated due to size constraints.)"
-
-    system_prompt = (
-        "You are a professional SAP Incentive Management systems assistant. "
-        "Your task is to generate a concise, professional, source-grounded summary of the provided configuration object. "
-        "You MUST only base your summary on the provided object attributes, XML, and relationships. "
-        "Do NOT make unsupported claims or speculate on undocumented behaviors. "
-        "Explicitly identify the source object's name, type, and source file in the summary."
-    )
-
-    user_content = (
-        f"Please summarize the following SAP Incentive Management configuration object:\n"
-        f"Name: {req.label}\n"
-        f"Type: {req.type}\n"
-        f"Source File: {req.sourceFile}\n"
-        f"XML Path: {req.xmlPath}\n"
-        f"Metadata: {req.metadata or {}}\n"
-        f"Associated Plans: {req.associatedPlans or []}\n"
-        f"Associated Plan Components: {req.associatedPlanComponents or []}\n"
-        f"Associated Rules: {req.associatedRules or []}\n"
-        f"Raw XML:\n```xml\n{raw_xml}\n```\n{truncated_note}"
-    )
-
+    system_prompt, user_content = _build_summary_prompts(req)
     headers = {
-        "Authorization": f"Bearer {cfg['api_key']}",
+        "Authorization": f"Bearer {cfg['openai_api_key']}",
         "Content-Type": "application/json"
     }
     payload = {
-        "model": cfg["model"],
+        "model": cfg["openai_model"],
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
@@ -189,7 +232,7 @@ async def _generate_openai_summary(req: SummaryRequest, cfg: dict[str, str]) -> 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"{cfg['api_base']}/chat/completions",
+                f"{cfg['openai_base_url'].rstrip('/')}/chat/completions",
                 headers=headers,
                 json=payload
             )
@@ -204,7 +247,85 @@ async def _generate_openai_summary(req: SummaryRequest, cfg: dict[str, str]) -> 
     except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"AI summary provider is unavailable: {exc}"
+            detail=f"OpenAI provider connection failed: {exc}"
+        ) from exc
+
+
+async def _generate_ollama_summary(req: SummaryRequest, cfg: dict[str, str]) -> str:
+    system_prompt, user_content = _build_summary_prompts(req)
+    base = cfg["ollama_host"].rstrip("/")
+    payload = {
+        "model": cfg["ollama_model"],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ],
+        "stream": False
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{base}/api/chat",
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result["message"]["content"].strip()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"Ollama API error: {exc.response.text}"
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama provider connection failed: {exc}"
+        ) from exc
+
+
+async def _generate_gemini_summary(req: SummaryRequest, cfg: dict[str, str]) -> str:
+    system_prompt, user_content = _build_summary_prompts(req)
+    model = cfg["gemini_model"]
+    api_key = cfg["gemini_api_key"]
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "system_instruction": {
+            "parts": [{"text": system_prompt}]
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": user_content}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                url,
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+            candidates = result.get("candidates", [])
+            if not candidates or "content" not in candidates[0]:
+                raise ValueError("No content returned in Gemini response.")
+            parts = candidates[0]["content"].get("parts", [])
+            return "".join(p.get("text", "") for p in parts).strip()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"Gemini API error: {exc.response.text}"
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Gemini provider connection failed: {exc}"
         ) from exc
 
 

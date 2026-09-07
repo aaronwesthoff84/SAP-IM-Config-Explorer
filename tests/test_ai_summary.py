@@ -10,7 +10,10 @@ from sap_im_config_graph_explorer.models import SummaryRequest
 def clean_env():
     """Ensure environment variables are clean and restored after each test."""
     old_env = dict(os.environ)
-    for key in ["AI_PROVIDER", "OPENAI_API_KEY", "OPENAI_API_BASE", "OPENAI_MODEL"]:
+    for key in [
+        "AI_PROVIDER", "OPENAI_API_KEY", "OPENAI_API_BASE", "OPENAI_BASE_URL", "OPENAI_MODEL",
+        "OLLAMA_HOST", "OLLAMA_MODEL", "GEMINI_API_KEY", "GEMINI_MODEL"
+    ]:
         os.environ.pop(key, None)
     yield
     os.environ.clear()
@@ -114,7 +117,7 @@ async def test_ai_summary_openai_unconfigured():
     }
     response = client.post("/api/ai/summary", json=payload)
     assert response.status_code == 400
-    assert "OPENAI_API_KEY is not set" in response.json()["error"]
+    assert "OPENAI_API_KEY" in response.json()["error"]
 
 
 @pytest.mark.anyio
@@ -134,7 +137,6 @@ async def test_ai_summary_openai_success():
         ]
     }
 
-    # Mock httpx.AsyncClient.post
     with mock.patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
         client = TestClient(app)
         payload = {
@@ -151,7 +153,6 @@ async def test_ai_summary_openai_success():
         assert data["provider"] == "openai"
         assert data["summary"] == "This is a beautiful OpenAI-generated summary for Eligibility."
 
-        # Verify call arguments
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
         assert "/chat/completions" in args[0]
@@ -159,3 +160,139 @@ async def test_ai_summary_openai_success():
         payload_sent = kwargs["json"]
         assert payload_sent["model"] == "gpt-4o-mini"
         assert len(payload_sent["messages"]) == 2
+
+
+def test_ai_status_ollama():
+    os.environ["AI_PROVIDER"] = "ollama"
+    client = TestClient(app)
+    response = client.get("/api/ai/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "ollama"
+    assert data["enabled"] is True
+    assert data["configured"] is True
+
+
+@pytest.mark.anyio
+async def test_ai_summary_ollama_success():
+    os.environ["AI_PROVIDER"] = "ollama"
+    mock_response = mock.MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "message": {
+            "content": "Ollama generated summary for Eligibility."
+        }
+    }
+
+    with mock.patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
+        client = TestClient(app)
+        payload = {
+            "nodeId": "formula-eligibility",
+            "label": "Eligibility",
+            "type": "Formula",
+            "sourceFile": "export.xml",
+            "xmlPath": "/DATA_IMPORT/FORMULA_SET/FORMULA[1]",
+            "rawXml": "<FORMULA NAME=\"Eligibility\"></FORMULA>",
+        }
+        response = client.post("/api/ai/summary", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "ollama"
+        assert data["summary"] == "Ollama generated summary for Eligibility."
+        args, kwargs = mock_post.call_args
+        assert "/api/chat" in args[0]
+        assert kwargs["json"]["model"] == "llama3.2"
+
+
+def test_ai_status_gemini_without_key():
+    os.environ["AI_PROVIDER"] = "gemini"
+    client = TestClient(app)
+    response = client.get("/api/ai/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "gemini"
+    assert data["enabled"] is False
+    assert data["configured"] is False
+
+
+def test_ai_status_gemini_with_key():
+    os.environ["AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "gemini-test-key"
+    client = TestClient(app)
+    response = client.get("/api/ai/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "gemini"
+    assert data["enabled"] is True
+    assert data["configured"] is True
+
+
+@pytest.mark.anyio
+async def test_ai_summary_gemini_without_key():
+    os.environ["AI_PROVIDER"] = "gemini"
+    client = TestClient(app)
+    payload = {
+        "nodeId": "formula-eligibility",
+        "label": "Eligibility",
+        "type": "Formula",
+        "sourceFile": "export.xml",
+        "xmlPath": "/DATA_IMPORT/FORMULA_SET/FORMULA[1]",
+    }
+    response = client.post("/api/ai/summary", json=payload)
+    assert response.status_code == 400
+    assert "GEMINI_API_KEY" in response.json()["error"]
+
+
+@pytest.mark.anyio
+async def test_ai_summary_gemini_success():
+    os.environ["AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "gemini-test-key"
+    mock_response = mock.MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": "Gemini generated summary for Eligibility."}]
+                }
+            }
+        ]
+    }
+
+    with mock.patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
+        client = TestClient(app)
+        payload = {
+            "nodeId": "formula-eligibility",
+            "label": "Eligibility",
+            "type": "Formula",
+            "sourceFile": "export.xml",
+            "xmlPath": "/DATA_IMPORT/FORMULA_SET/FORMULA[1]",
+            "rawXml": "<FORMULA NAME=\"Eligibility\"></FORMULA>",
+        }
+        response = client.post("/api/ai/summary", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "gemini"
+        assert data["summary"] == "Gemini generated summary for Eligibility."
+        args, kwargs = mock_post.call_args
+        assert "generativelanguage.googleapis.com" in args[0]
+        assert "key=gemini-test-key" in args[0]
+
+
+def test_ai_unsupported_provider():
+    os.environ["AI_PROVIDER"] = "unsupported_unknown"
+    client = TestClient(app)
+    response = client.get("/api/ai/status")
+    assert response.status_code == 200
+    assert response.json()["enabled"] is False
+
+    payload = {
+        "nodeId": "n1",
+        "label": "Obj",
+        "type": "Formula",
+        "sourceFile": "f.xml",
+        "xmlPath": "/a/b",
+    }
+    resp = client.post("/api/ai/summary", json=payload)
+    assert resp.status_code == 400
+    assert "not supported" in resp.json()["error"]
