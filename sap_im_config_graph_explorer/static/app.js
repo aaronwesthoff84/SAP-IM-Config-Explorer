@@ -6,9 +6,30 @@ const state = {
   html: null,
   htmlDownloadUrl: "",
   sessions: [], // List of saved sessions
+  nodePositions: {}, // Map of node id -> { x, y } for position preservation
+  activeLayout: "cose", // Active layout choice
 };
 
 window.state = state;
+
+// Monkey-patch Cytoscape prototype fit to handle undefined/null/empty collections safely
+if (typeof cytoscape !== "undefined" && cytoscape.prototype) {
+  const originalFit = cytoscape.prototype.fit;
+  cytoscape.prototype.fit = function(eles, padding) {
+    let targetEles = eles;
+    let targetPadding = padding;
+    if (targetEles === undefined || targetEles === null) {
+      targetEles = this.elements();
+    } else if (typeof targetEles === "number") {
+      targetPadding = targetEles;
+      targetEles = this.elements();
+    }
+    if (!targetEles || targetEles.length === 0) {
+      return this;
+    }
+    return originalFit.call(this, targetEles, targetPadding);
+  };
+}
 
 function filterGraphElements(graph, filters) {
   const term = (filters.search || "").trim().toLowerCase();
@@ -154,6 +175,15 @@ const findingsEl = document.getElementById("validation-findings");
 const riskContainer = document.getElementById("migration-risk-container");
 const riskReportEl = document.getElementById("migration-risk-report");
 
+const layoutSelect = document.getElementById("layout-select");
+const relayoutButton = document.getElementById("relayout-button");
+const fitButton = document.getElementById("fit-button");
+const resetViewButton = document.getElementById("reset-view-button");
+const exportPngButton = document.getElementById("export-png-button");
+const exportSvgButton = document.getElementById("export-svg-button");
+const sidebarExportPngButton = document.getElementById("sidebar-export-png-button");
+const sidebarExportSvgButton = document.getElementById("sidebar-export-svg-button");
+
 document.getElementById("graph-button").addEventListener("click", requestGraphGeneration);
 document.getElementById("html-button").addEventListener("click", generateHtml);
 document.getElementById("export-button").addEventListener("click", () => exportGraph("json"));
@@ -162,6 +192,19 @@ document.getElementById("export-markdown-button").addEventListener("click", () =
 document.getElementById("export-graphml-button").addEventListener("click", () => exportGraph("graphml"));
 graphJsonInput.addEventListener("change", requestGraphImport);
 document.getElementById("export-neo4j-button").addEventListener("click", () => exportGraph("neo4j"));
+if (sidebarExportPngButton) sidebarExportPngButton.addEventListener("click", exportGraphAsPng);
+if (sidebarExportSvgButton) sidebarExportSvgButton.addEventListener("click", exportGraphAsSvg);
+if (layoutSelect) {
+  layoutSelect.addEventListener("change", () => {
+    state.activeLayout = layoutSelect.value;
+    triggerRelayout();
+  });
+}
+if (relayoutButton) relayoutButton.addEventListener("click", triggerRelayout);
+if (fitButton) fitButton.addEventListener("click", fitGraph);
+if (resetViewButton) resetViewButton.addEventListener("click", resetGraphView);
+if (exportPngButton) exportPngButton.addEventListener("click", exportGraphAsPng);
+if (exportSvgButton) exportSvgButton.addEventListener("click", exportGraphAsSvg);
 themeToggle.addEventListener("click", toggleTheme);
 searchInput.addEventListener("input", renderGraphAndHtmlOutput);
 typeFilter.addEventListener("change", renderGraphAndHtmlOutput);
@@ -329,6 +372,8 @@ async function importGraphJson() {
 
 function loadGraphWorkspace(payload) {
   state.graph = payload;
+  state.nodePositions = {};
+  if (layoutSelect) layoutSelect.value = state.activeLayout || "cose";
   topologySelect.value = payload.topologyMode;
   clearSelectedRule();
   destroyLineageRenderer();
@@ -598,8 +643,93 @@ function renderGraphAndHtmlOutput() {
   if (state.html) renderHtmlOutput();
 }
 
+function getLayoutConfig(name) {
+  switch (name) {
+    case "breadthfirst":
+      return {
+        name: "breadthfirst",
+        directed: true,
+        padding: 32,
+        spacingFactor: 1.25,
+        animate: false,
+      };
+    case "circle":
+      return { name: "circle", padding: 32, animate: false };
+    case "concentric":
+      return {
+        name: "concentric",
+        padding: 32,
+        minNodeSpacing: 40,
+        animate: false,
+      };
+    case "grid":
+      return { name: "grid", padding: 32, animate: false };
+    case "cose":
+    default:
+      return {
+        name: "cose",
+        animate: false,
+        componentSpacing: 48,
+        fit: true,
+        idealEdgeLength: 88,
+        nodeOverlap: 16,
+        padding: 24,
+        randomize: false,
+      };
+  }
+}
+
+function triggerRelayout() {
+  if (!state.cy || state.cy.nodes().length === 0) return;
+  state.nodePositions = {};
+  const layout = state.cy.layout(getLayoutConfig(state.activeLayout));
+  layout.on("layoutstop", () => {
+    if (!state.cy) return;
+    state.cy.nodes().forEach((n) => {
+      state.nodePositions[n.id()] = { ...n.position() };
+    });
+  });
+  layout.run();
+  if (typeof state.cy.fit === "function") {
+    state.cy.fit(state.cy.elements(), 48);
+  }
+  const layoutLabel = layoutSelect ? layoutSelect.options[layoutSelect.selectedIndex].text : state.activeLayout;
+  setStatus(`Applied ${layoutLabel} layout.`);
+}
+
+function fitGraph() {
+  if (state.cy && state.cy.elements().length > 0) {
+    state.cy.fit(state.cy.elements(), 48);
+    setStatus("Fitted graph to viewport.");
+  }
+}
+
+function resetGraphView() {
+  if (!state.cy || state.cy.elements().length === 0) return;
+  state.nodePositions = {};
+  state.activeLayout = "cose";
+  if (layoutSelect) layoutSelect.value = "cose";
+  const layout = state.cy.layout(getLayoutConfig("cose"));
+  layout.on("layoutstop", () => {
+    if (!state.cy) return;
+    state.cy.nodes().forEach((n) => {
+      state.nodePositions[n.id()] = { ...n.position() };
+    });
+    if (typeof state.cy.fit === "function") {
+      state.cy.fit(state.cy.elements(), 48);
+    }
+  });
+  layout.run();
+  setStatus("Reset graph layout and view.");
+}
+
 function renderGraph() {
-  if (state.cy) state.cy.destroy();
+  if (state.cy) {
+    state.cy.nodes().forEach((n) => {
+      state.nodePositions[n.id()] = { ...n.position() };
+    });
+    state.cy.destroy();
+  }
   const graphTheme = graphThemeColors();
   const { nodes, links } = filterGraphElements(state.graph, {
     search: searchInput.value,
@@ -611,29 +741,42 @@ function renderGraph() {
   });
   renderFilterSummary(nodes.length, links.length);
   const elements = [
-    ...nodes.map((node, index) => ({
-      data: { ...node, displayColor: colorForType(node.type) },
-      position: initialGraphPosition(index, nodes.length),
-    })),
+    ...nodes.map((node, index) => {
+      const saved = state.nodePositions[node.id];
+      return {
+        data: { ...node, displayColor: colorForType(node.type) },
+        position: saved ? { ...saved } : initialGraphPosition(index, nodes.length),
+      };
+    }),
     ...links.map((link, index) => ({
       data: { ...link, id: link.id || `edge-${index}` },
     })),
   ];
+
+  const hasSavedPositions = nodes.length > 0 && nodes.some((node) => Boolean(state.nodePositions[node.id]));
+  const layoutConfig = hasSavedPositions
+    ? { name: "preset", fit: false }
+    : getLayoutConfig(state.activeLayout);
+
   state.cy = cytoscape({
     container: graphEl,
     elements,
     style: cytoscapeStyles(graphTheme),
-    layout: {
-      name: "cose",
-      animate: false,
-      componentSpacing: 48,
-      fit: true,
-      idealEdgeLength: 88,
-      nodeOverlap: 16,
-      padding: 24,
-      randomize: false,
-    },
+    layout: layoutConfig,
   });
+
+  state.cy.on("dragfree", "node", (event) => {
+    const node = event.target;
+    state.nodePositions[node.id()] = { ...node.position() };
+  });
+
+  state.cy.on("layoutstop", () => {
+    if (!state.cy) return;
+    state.cy.nodes().forEach((n) => {
+      state.nodePositions[n.id()] = { ...n.position() };
+    });
+  });
+
   state.cy.on("tap", "node", (event) => {
     const node = event.target;
     highlightDependencies(node);
@@ -1263,6 +1406,275 @@ async function exportGraph(format) {
       ? error.message
       : "Unexpected local export error.";
     setStatus(`${exportFormat.label} export failed: ${detail}`);
+  }
+}
+
+function validateGraphForImageExport() {
+  if (!state.graph || !state.graph.nodes || state.graph.nodes.length === 0 || !state.cy) {
+    setStatus("Cannot export image: Graph is empty. Load or generate a graph first.");
+    return null;
+  }
+  const visibleNodes = state.cy.nodes().filter((node) => node.visible());
+  if (visibleNodes.length === 0) {
+    setStatus("Cannot export image: No visible nodes match current filters.");
+    return null;
+  }
+  if (visibleNodes.length > 1000) {
+    setStatus("Warning: Graph exceeds 1,000 nodes. Use filters to reduce graph size for optimal export.");
+  }
+  return visibleNodes;
+}
+
+function getExportProvenance(visibleNodesCount, totalNodesCount) {
+  const schemaVersion = state.graph.schemaVersion || "1.3";
+  const sourceFiles = Array.from(
+    new Set(
+      (state.graph.snapshots || [])
+        .flatMap((s) => s.sourceFiles || [])
+        .concat(state.graph.nodes.map((n) => n.sourceFile).filter(Boolean))
+    )
+  );
+  const fileNames =
+    sourceFiles.map((f) => f.split(/[/\\]/).pop()).join(", ") || "Active configuration";
+  const now = new Date();
+  const dateStr = now.toISOString().replace("T", " ").substring(0, 19) + " UTC";
+  const isFiltered = visibleNodesCount < totalNodesCount;
+  const statusLabel = isFiltered
+    ? `Filtered Graph (${visibleNodesCount} of ${totalNodesCount} nodes)`
+    : `Full Graph (${totalNodesCount} nodes)`;
+  const topology = topologyLabel(state.graph.topologyMode);
+  return {
+    schemaVersion,
+    fileNames,
+    timestamp: dateStr,
+    isFiltered,
+    statusLabel,
+    topology,
+  };
+}
+
+function escapeXml(str) {
+  return String(str ?? "").replace(/[<>&"']/g, (c) => {
+    switch (c) {
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case "&": return "&amp;";
+      case '"': return "&quot;";
+      case "'": return "&apos;";
+      default: return c;
+    }
+  });
+}
+
+async function exportGraphAsPng() {
+  const visibleNodes = validateGraphForImageExport();
+  if (!visibleNodes) return;
+  const themeColors = graphThemeColors();
+  const meta = getExportProvenance(visibleNodes.length, state.graph.nodes.length);
+  const visibleTypes = Array.from(
+    new Set(visibleNodes.map((n) => n.data("type")).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
+  try {
+    const cyPngData = state.cy.png({
+      full: true,
+      scale: 2,
+      bg: themeColors.background,
+    });
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return setStatus("PNG export failed: Canvas 2D context unavailable.");
+      }
+
+      const bannerHeight = 112;
+      const padding = 24;
+      canvas.width = Math.max(img.width, 820);
+      canvas.height = img.height + bannerHeight;
+
+      // Banner background
+      ctx.fillStyle = themeColors.surface;
+      ctx.fillRect(0, 0, canvas.width, bannerHeight);
+
+      // Separator line
+      ctx.strokeStyle = themeColors.border;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, bannerHeight);
+      ctx.lineTo(canvas.width, bannerHeight);
+      ctx.stroke();
+
+      // Title
+      ctx.fillStyle = themeColors.text;
+      ctx.font = "bold 16px Inter, -apple-system, sans-serif";
+      ctx.fillText(
+        `SAP IM Config Explorer - ${meta.topology} (${meta.statusLabel})`,
+        padding,
+        30
+      );
+
+      // Provenance metadata
+      ctx.fillStyle = themeColors.textMuted || themeColors.text;
+      ctx.font = "12px Inter, -apple-system, sans-serif";
+      ctx.fillText(
+        `Generated: ${meta.timestamp}  |  Schema: ${meta.schemaVersion}  |  Files: ${meta.fileNames}`,
+        padding,
+        54
+      );
+
+      // Dynamic Legend
+      ctx.font = "12px Inter, -apple-system, sans-serif";
+      let legendX = padding;
+      const legendY = 86;
+      ctx.fillStyle = themeColors.text;
+      ctx.fillText("Legend:", legendX, legendY);
+      legendX += 54;
+
+      visibleTypes.forEach((type) => {
+        const color = colorForType(type);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(legendX + 6, legendY - 4, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = themeColors.text;
+        ctx.fillText(type, legendX + 16, legendY);
+        legendX += ctx.measureText(type).width + 26;
+      });
+
+      // Graph body
+      ctx.fillStyle = themeColors.background;
+      ctx.fillRect(0, bannerHeight, canvas.width, img.height);
+      const offsetX = Math.floor((canvas.width - img.width) / 2);
+      ctx.drawImage(img, offsetX, bannerHeight);
+
+      // Download
+      canvas.toBlob((blob) => {
+        if (!blob) return setStatus("PNG export failed: Could not create image blob.");
+        const filename = `sap-im-config-graph-${meta.isFiltered ? "filtered" : "full"}.png`;
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        setStatus(`Exported visible graph as PNG image (${meta.statusLabel}).`);
+      }, "image/png");
+    };
+    img.onerror = () => {
+      setStatus("PNG export failed: Image rendering error.");
+    };
+    img.src = cyPngData;
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? error.message : "Export failed";
+    setStatus(`PNG export failed: ${detail}`);
+  }
+}
+
+function exportGraphAsSvg() {
+  const visibleNodes = validateGraphForImageExport();
+  if (!visibleNodes) return;
+  const themeColors = graphThemeColors();
+  const meta = getExportProvenance(visibleNodes.length, state.graph.nodes.length);
+  const visibleTypes = Array.from(
+    new Set(visibleNodes.map((n) => n.data("type")).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
+  try {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    visibleNodes.forEach((node) => {
+      const pos = node.position();
+      const w = 112;
+      const h = 48;
+      if (pos.x - w / 2 < minX) minX = pos.x - w / 2;
+      if (pos.y - h / 2 < minY) minY = pos.y - h / 2;
+      if (pos.x + w / 2 > maxX) maxX = pos.x + w / 2;
+      if (pos.y + h / 2 > maxY) maxY = pos.y + h / 2;
+    });
+
+    const margin = 48;
+    const bannerHeight = 112;
+    const graphWidth = Math.max(maxX - minX + margin * 2, 820);
+    const graphHeight = maxY - minY + margin * 2;
+    const totalWidth = Math.ceil(graphWidth);
+    const totalHeight = Math.ceil(graphHeight + bannerHeight);
+    const offsetX = Math.round(-minX + (totalWidth - (maxX - minX)) / 2);
+    const offsetY = Math.round(-minY + margin + bannerHeight);
+
+    let svg = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    svg += `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}">\n`;
+    svg += `  <defs>\n`;
+    svg += `    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">\n`;
+    svg += `      <path d="M 0 0 L 10 5 L 0 10 z" fill="${themeColors.edge}" />\n`;
+    svg += `    </marker>\n`;
+    svg += `  </defs>\n`;
+    svg += `  <rect width="100%" height="100%" fill="${themeColors.background}" />\n`;
+
+    // Banner
+    svg += `  <rect x="0" y="0" width="${totalWidth}" height="${bannerHeight}" fill="${themeColors.surface}" />\n`;
+    svg += `  <line x1="0" y1="${bannerHeight}" x2="${totalWidth}" y2="${bannerHeight}" stroke="${themeColors.border}" stroke-width="1" />\n`;
+
+    // Title & Provenance
+    svg += `  <text x="24" y="32" font-family="Inter, -apple-system, sans-serif" font-size="16" font-weight="bold" fill="${themeColors.text}">SAP IM Config Explorer - ${escapeXml(meta.topology)} (${escapeXml(meta.statusLabel)})</text>\n`;
+    svg += `  <text x="24" y="56" font-family="Inter, -apple-system, sans-serif" font-size="12" fill="${themeColors.textMuted || themeColors.text}">Generated: ${escapeXml(meta.timestamp)}  |  Schema: ${escapeXml(meta.schemaVersion)}  |  Files: ${escapeXml(meta.fileNames)}</text>\n`;
+
+    // Legend
+    svg += `  <text x="24" y="88" font-family="Inter, -apple-system, sans-serif" font-size="12" font-weight="600" fill="${themeColors.text}">Legend:</text>\n`;
+    let legX = 80;
+    visibleTypes.forEach((type) => {
+      const col = colorForType(type);
+      svg += `  <circle cx="${legX + 6}" cy="84" r="6" fill="${col}" />\n`;
+      svg += `  <text x="${legX + 16}" cy="88" font-family="Inter, -apple-system, sans-serif" font-size="12" fill="${themeColors.text}">${escapeXml(type)}</text>\n`;
+      legX += (type.length * 8) + 30;
+    });
+
+    // Visible Edges
+    const visibleEdges = state.cy.edges().filter((edge) => edge.visible());
+    visibleEdges.forEach((edge) => {
+      const src = edge.source();
+      const tgt = edge.target();
+      if (src.visible() && tgt.visible()) {
+        const sp = src.position();
+        const tp = tgt.position();
+        const x1 = Math.round(sp.x + offsetX);
+        const y1 = Math.round(sp.y + offsetY);
+        const x2 = Math.round(tp.x + offsetX);
+        const y2 = Math.round(tp.y + offsetY);
+        svg += `  <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${themeColors.edge}" stroke-width="1.5" marker-end="url(#arrow)" />\n`;
+      }
+    });
+
+    // Visible Nodes
+    visibleNodes.forEach((node) => {
+      const pos = node.position();
+      const w = 112;
+      const h = 48;
+      const x = Math.round(pos.x + offsetX - w / 2);
+      const y = Math.round(pos.y + offsetY - h / 2);
+      const col = node.data("displayColor") || colorForType(node.data("type"));
+      const label = node.data("label") || node.id();
+
+      svg += `  <g class="graph-node" data-id="${escapeXml(node.id())}">\n`;
+      svg += `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" ry="6" fill="${col}" stroke="${themeColors.border}" stroke-width="2" />\n`;
+      svg += `    <text x="${x + w / 2}" y="${y + h / 2 + 4}" font-family="Inter, -apple-system, sans-serif" font-size="11" text-anchor="middle" fill="${themeColors.text}">${escapeXml(label)}</text>\n`;
+      svg += `  </g>\n`;
+    });
+
+    svg += `</svg>\n`;
+
+    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const filename = `sap-im-config-graph-${meta.isFiltered ? "filtered" : "full"}.svg`;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setStatus(`Exported visible graph as SVG vector (${meta.statusLabel}).`);
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? error.message : "Export failed";
+    setStatus(`SVG export failed: ${detail}`);
   }
 }
 

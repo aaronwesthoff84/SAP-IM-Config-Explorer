@@ -336,3 +336,25 @@ def test_graph_endpoint_reports_malformed_xml():
 
     assert response.status_code == 400
     assert "Malformed XML" in response.json()["error"]
+
+
+def test_index_includes_graph_layout_and_image_export_controls():
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+    html = response.text
+
+    assert 'id="graph-toolbar"' in html
+    assert 'id="layout-select"' in html
+    assert 'value="cose"' in html
+    assert 'value="breadthfirst"' in html
+    assert 'value="circle"' in html
+    assert 'value="concentric"' in html
+    assert 'value="grid"' in html
+    assert 'id="relayout-button"' in html
+    assert 'id="fit-button"' in html
+    assert 'id="reset-view-button"' in html
+    assert 'id="export-png-button"' in html
+    assert 'id="export-svg-button"' in html
+    assert 'id="sidebar-export-png-button"' in html
+    assert 'id="sidebar-export-svg-button"' in html

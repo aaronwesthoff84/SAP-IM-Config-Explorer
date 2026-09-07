@@ -55,6 +55,8 @@
           <button type="button" id="export-markdown-button">Export Markdown</button>
           <button type="button" id="export-graphml-button">Export GraphML</button>
           <button type="button" id="export-neo4j-button">Export Neo4j</button>
+          <button type="button" id="sidebar-export-png-button">Export PNG</button>
+          <button type="button" id="sidebar-export-svg-button">Export SVG</button>
         </div>
       </form>
 
@@ -122,6 +124,25 @@
         <button class="tab" type="button" data-view="html-output-view">HTML Output</button>
       </div>
       <div id="graph-view" class="view active">
+        <div id="graph-toolbar" class="graph-toolbar" role="toolbar" aria-label="Graph visual controls">
+          <div class="graph-toolbar-group">
+            <label for="layout-select">Layout:</label>
+            <select id="layout-select" aria-label="Graph layout">
+              <option value="cose">Force-directed (CoSE)</option>
+              <option value="breadthfirst">Hierarchical (Tree)</option>
+              <option value="circle">Circular</option>
+              <option value="concentric">Concentric</option>
+              <option value="grid">Grid</option>
+            </select>
+            <button type="button" id="relayout-button" class="secondary" title="Recompute layout">Relayout</button>
+            <button type="button" id="fit-button" class="secondary" title="Fit graph to viewport">Fit</button>
+            <button type="button" id="reset-view-button" class="secondary" title="Reset view and zoom">Reset</button>
+          </div>
+          <div class="graph-toolbar-group">
+            <button type="button" id="export-png-button" class="secondary" title="Export visible graph as PNG image">Export PNG</button>
+            <button type="button" id="export-svg-button" class="secondary" title="Export visible graph as SVG vector">Export SVG</button>
+          </div>
+        </div>
         <div id="graph"></div>
       </div>
       <div id="lineage-view" class="view">
