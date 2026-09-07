@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import json
 import tempfile
 from pathlib import Path
@@ -21,6 +22,7 @@ from sap_im_config_graph_explorer.portable_exports import (
     serialize_graphml,
     serialize_markdown,
 )
+from sap_im_config_graph_explorer.ai import get_ai_provider, AIError
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError
 from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
 
@@ -39,6 +41,58 @@ def index() -> HTMLResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/ai/config")
+def get_ai_config() -> dict[str, object]:
+    try:
+        provider = get_ai_provider()
+        enabled = provider is not None
+        provider_name = os.environ.get("SAP_IM_AI_PROVIDER", "").strip()
+        model_name = os.environ.get("SAP_IM_AI_MODEL", "gpt-3.5-turbo").strip()
+        disclaimer = "This is an AI-generated draft and requires human review. It does not invent graph nodes."
+        return {
+            "enabled": enabled,
+            "provider": provider_name,
+            "model": model_name,
+            "privacy_disclaimer": disclaimer,
+        }
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "provider": os.environ.get("SAP_IM_AI_PROVIDER", "").strip(),
+            "model": os.environ.get("SAP_IM_AI_MODEL", "").strip(),
+            "privacy_disclaimer": f"AI feature configuration error: {exc}",
+        }
+
+
+@app.post("/api/ai/generate-document")
+async def generate_ai_document(
+    file: UploadFile = File(...),
+) -> dict[str, object]:
+    content = await file.read()
+    _validate_xml_upload_name(file.filename or "upload.xml")
+    if not content.strip():
+        raise HTTPException(status_code=400, detail=f"Empty XML file: {file.filename}")
+
+    try:
+        provider = get_ai_provider()
+        if not provider:
+            raise HTTPException(status_code=400, detail="AI Documentation features are disabled. Set SAP_IM_AI_PROVIDER to enable.")
+
+        graph = GraphBuilder(topology_mode="full").build_from_uploads([(file.filename or "upload.xml", content)])
+        nodes_info = [node.to_dict() for node in graph.nodes]
+
+        result = provider.generate_documentation(file.filename or "upload.xml", content, nodes_info)
+        return result
+    except AIError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except XmlLoadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise exc
+        raise HTTPException(status_code=500, detail=f"AI Document generation failed: {exc}") from exc
 
 
 @app.post("/api/convert/html")

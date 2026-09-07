@@ -530,3 +530,122 @@ pre {
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* AI Documentation styles */
+.ai-doc-container {
+  padding: 24px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.ai-info-box {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 16px;
+}
+
+.ai-info-box h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.ai-info-box h4 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.ai-info-box ol, .ai-info-box ul {
+  padding-left: 20px;
+  margin-bottom: 16px;
+}
+
+.ai-interactive-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 16px;
+}
+
+.ai-warning-disclaimer {
+  background: rgba(255, 160, 0, 0.1);
+  border-left: 4px solid var(--warning-amber);
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+.ai-warning-disclaimer p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.ai-warning-disclaimer p:first-child {
+  margin-bottom: 6px;
+}
+
+.ai-status-message {
+  margin-top: 12px;
+  font-weight: bold;
+  color: var(--text-muted);
+}
+
+.ai-output-container {
+  margin-top: 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+}
+
+.ai-metadata-bar {
+  background: var(--surface-muted);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  border-top-left-radius: 7px;
+  border-top-right-radius: 7px;
+}
+
+.ai-draft-label {
+  background: var(--warning-amber);
+  color: var(--charcoal-gray);
+  padding: 4px 12px;
+  font-weight: bold;
+  font-size: 12px;
+  text-align: center;
+}
+
+.ai-output-markdown {
+  padding: 20px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
+.ai-output-markdown h1,
+.ai-output-markdown h2,
+.ai-output-markdown h3 {
+  margin-top: 24px;
+  margin-bottom: 12px;
+}
+
+.ai-output-markdown h1:first-child {
+  margin-top: 0;
+}
+
+.ai-output-markdown p {
+  margin: 0 0 16px;
+}
+
+.ai-output-markdown ul, .ai-output-markdown ol {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-left: 20px;
+}
+
+.ai-output-markdown li {
+  margin-bottom: 6px;
+}
