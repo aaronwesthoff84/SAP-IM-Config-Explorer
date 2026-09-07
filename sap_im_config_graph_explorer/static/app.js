@@ -12,6 +12,8 @@ const state = {
   graph3DInstance: null,
   highlightedIds: null,
   aiStatus: null,
+  comparisonResult: null,
+  compareActiveCategory: "all",
 };
 
 window.state = state;
@@ -2588,3 +2590,260 @@ fetchAiStatus();
 document.getElementById("generate-summary-button")?.addEventListener("click", handleGenerateSummaryClick);
 document.getElementById("generate-ai-summary-button")?.addEventListener("click", handleGenerateSummaryClick);
 document.getElementById("generate-ai-docs-button")?.addEventListener("click", handleGenerateAiDocs);
+
+// --- Compare XML Feature ---
+const compareBaselineInput = document.getElementById("compare-baseline-file");
+const compareCandidateInput = document.getElementById("compare-candidate-file");
+const compareButton = document.getElementById("compare-button");
+const compareStatusEl = document.getElementById("compare-status");
+const compareErrorEl = document.getElementById("compare-error");
+const compareResultsContainer = document.getElementById("compare-results-container");
+const compareCountAdded = document.getElementById("compare-count-added");
+const compareCountRemoved = document.getElementById("compare-count-removed");
+const compareCountChanged = document.getElementById("compare-count-changed");
+const compareCountUnchanged = document.getElementById("compare-count-unchanged");
+const compareTypeFilter = document.getElementById("compare-type-filter");
+const compareCategoryFilter = document.getElementById("compare-category-filter");
+const compareSearchInput = document.getElementById("compare-search");
+const compareClearFiltersButton = document.getElementById("compare-clear-filters");
+const compareItemsList = document.getElementById("compare-items-list");
+const compareSummaryCards = document.querySelectorAll(".compare-card");
+
+async function runComparison() {
+  if (!compareBaselineInput || !compareCandidateInput) return;
+  const bFiles = compareBaselineInput.files;
+  const cFiles = compareCandidateInput.files;
+
+  if (!bFiles || bFiles.length === 0 || !cFiles || cFiles.length === 0) {
+    if (compareErrorEl) {
+      compareErrorEl.textContent = "Please select both a baseline and a candidate XML file to compare.";
+      compareErrorEl.hidden = false;
+    }
+    if (compareStatusEl) {
+      compareStatusEl.textContent = "Comparison requires two selected XML files.";
+    }
+    return;
+  }
+
+  const baselineFile = bFiles[0];
+  const candidateFile = cFiles[0];
+
+  const formData = new FormData();
+  formData.append("baseline_file", baselineFile);
+  formData.append("candidate_file", candidateFile);
+  formData.append("topology_mode", "full");
+
+  if (compareStatusEl) compareStatusEl.textContent = `Comparing "${baselineFile.name}" and "${candidateFile.name}"...`;
+  if (compareButton) compareButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/compare", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({ error: `Server error (${response.status})` }));
+      const msg = errData.error || errData.detail || "Comparison failed. Please verify your XML export files.";
+      if (compareErrorEl) {
+        compareErrorEl.textContent = msg;
+        compareErrorEl.hidden = false;
+      }
+      if (compareStatusEl) {
+        compareStatusEl.textContent = "Comparison failed.";
+      }
+      // Note: we preserve existing comparisonResult and compareResultsContainer without overwriting!
+      return;
+    }
+
+    const result = await response.json();
+    state.comparisonResult = result;
+    state.compareActiveCategory = "all";
+
+    if (compareErrorEl) {
+      compareErrorEl.hidden = true;
+      compareErrorEl.textContent = "";
+    }
+    if (compareStatusEl) {
+      compareStatusEl.textContent = `Comparison complete: ${result.summary.totalAdded} added, ${result.summary.totalRemoved} removed, ${result.summary.totalChanged} changed, ${result.summary.totalUnchanged} unchanged.`;
+    }
+
+    renderComparisonResults();
+  } catch (err) {
+    if (compareErrorEl) {
+      compareErrorEl.textContent = `Network or comparison error: ${err.message}`;
+      compareErrorEl.hidden = false;
+    }
+    if (compareStatusEl) {
+      compareStatusEl.textContent = "Comparison failed.";
+    }
+  } finally {
+    if (compareButton) compareButton.disabled = false;
+  }
+}
+
+function renderComparisonResults() {
+  if (!state.comparisonResult || !compareResultsContainer) return;
+  compareResultsContainer.hidden = false;
+
+  const summary = state.comparisonResult.summary;
+  if (compareCountAdded) compareCountAdded.textContent = summary.totalAdded;
+  if (compareCountRemoved) compareCountRemoved.textContent = summary.totalRemoved;
+  if (compareCountChanged) compareCountChanged.textContent = summary.totalChanged;
+  if (compareCountUnchanged) compareCountUnchanged.textContent = summary.totalUnchanged;
+
+  // Populate type filter
+  if (compareTypeFilter) {
+    const currentVal = compareTypeFilter.value;
+    const types = new Set();
+    state.comparisonResult.added.forEach((item) => types.add(item.type));
+    state.comparisonResult.removed.forEach((item) => types.add(item.type));
+    state.comparisonResult.changed.forEach((item) => types.add(item.type));
+    state.comparisonResult.unchanged.forEach((item) => types.add(item.type));
+
+    const sortedTypes = Array.from(types).sort();
+    compareTypeFilter.innerHTML = '<option value="">All types</option>';
+    sortedTypes.forEach((t) => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      compareTypeFilter.appendChild(opt);
+    });
+    if (types.has(currentVal)) {
+      compareTypeFilter.value = currentVal;
+    }
+  }
+
+  updateComparisonCardHighlights();
+  renderComparisonItems();
+}
+
+function updateComparisonCardHighlights() {
+  compareSummaryCards.forEach((card) => {
+    if (card.dataset.filter === state.compareActiveCategory) {
+      card.classList.add("active");
+    } else {
+      card.classList.remove("active");
+    }
+  });
+}
+
+function renderComparisonItems() {
+  if (!state.comparisonResult || !compareItemsList) return;
+
+  const category = state.compareActiveCategory || "all";
+  const selectedType = compareTypeFilter ? compareTypeFilter.value : "";
+  const searchTerm = compareSearchInput ? (compareSearchInput.value || "").trim().toLowerCase() : "";
+
+  const allItems = [];
+  state.comparisonResult.changed.forEach((item) => allItems.push({ ...item, category: "changed" }));
+  state.comparisonResult.added.forEach((item) => allItems.push({ ...item, category: "added" }));
+  state.comparisonResult.removed.forEach((item) => allItems.push({ ...item, category: "removed" }));
+  state.comparisonResult.unchanged.forEach((item) => allItems.push({ ...item, category: "unchanged" }));
+
+  const filtered = allItems.filter((item) => {
+    if (category !== "all" && item.category !== category) return false;
+    if (selectedType && item.type !== selectedType) return false;
+    if (searchTerm) {
+      const labelMatch = item.label && item.label.toLowerCase().includes(searchTerm);
+      const summaryMatch = item.summary && item.summary.toLowerCase().includes(searchTerm);
+      if (!labelMatch && !summaryMatch) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    compareItemsList.innerHTML = '<p class="empty-summary" style="padding: 12px 0;">No configuration objects match the selected filters.</p>';
+    return;
+  }
+
+  const html = filtered.map((item) => {
+    const badgeClass = item.category;
+    const badgeText = item.category.toUpperCase();
+
+    let detailsHtml = "";
+    if (item.category === "changed" && item.differences && item.differences.length > 0) {
+      const diffEntries = item.differences
+        .map((d) => `<li class="compare-diff-entry">${escapeHtml(d.description)}</li>`)
+        .join("");
+      detailsHtml = `
+        <div class="compare-diff-details">
+          <ul class="compare-diff-list">${diffEntries}</ul>
+        </div>
+      `;
+    }
+
+    let summaryText = "";
+    if (item.category === "changed") {
+      summaryText = item.summary || "Configuration differences detected.";
+    } else if (item.category === "added") {
+      summaryText = `Added in candidate configuration "${escapeHtml(state.comparisonResult.candidateFile)}".`;
+    } else if (item.category === "removed") {
+      summaryText = `Removed from baseline configuration "${escapeHtml(state.comparisonResult.baselineFile)}".`;
+    } else {
+      summaryText = "Identical in both configurations.";
+    }
+
+    return `
+      <div class="compare-item-card item-${badgeClass}">
+        <div class="compare-item-header">
+          <div class="compare-item-title">
+            <span class="compare-badge ${badgeClass}">${badgeText}</span>
+            <span>${escapeHtml(item.type)}: ${escapeHtml(item.label)}</span>
+          </div>
+        </div>
+        <div class="compare-item-summary">${escapeHtml(summaryText)}</div>
+        ${detailsHtml}
+      </div>
+    `;
+  }).join("");
+
+  compareItemsList.innerHTML = html;
+}
+
+if (compareButton) compareButton.addEventListener("click", runComparison);
+if (compareCategoryFilter) {
+  compareCategoryFilter.addEventListener("change", () => {
+    state.compareActiveCategory = compareCategoryFilter.value;
+    updateComparisonCardHighlights();
+    renderComparisonItems();
+  });
+}
+if (compareTypeFilter) {
+  compareTypeFilter.addEventListener("change", renderComparisonItems);
+}
+if (compareSearchInput) {
+  compareSearchInput.addEventListener("input", renderComparisonItems);
+}
+if (compareClearFiltersButton) {
+  compareClearFiltersButton.addEventListener("click", () => {
+    if (compareTypeFilter) compareTypeFilter.value = "";
+    if (compareCategoryFilter) compareCategoryFilter.value = "all";
+    if (compareSearchInput) compareSearchInput.value = "";
+    state.compareActiveCategory = "all";
+    updateComparisonCardHighlights();
+    renderComparisonItems();
+  });
+}
+compareSummaryCards.forEach((card) => {
+  const handler = () => {
+    const filter = card.dataset.filter;
+    if (state.compareActiveCategory === filter) {
+      state.compareActiveCategory = "all";
+      if (compareCategoryFilter) compareCategoryFilter.value = "all";
+    } else {
+      state.compareActiveCategory = filter;
+      if (compareCategoryFilter) compareCategoryFilter.value = filter;
+    }
+    updateComparisonCardHighlights();
+    renderComparisonItems();
+  };
+  card.addEventListener("click", handler);
+  card.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handler();
+    }
+  });
+});
+

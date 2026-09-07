@@ -419,3 +419,85 @@ def test_convert_html_endpoint_supports_multiple_files_and_preserves_duplicates(
     assert "COMP-2" in html
 
 
+def test_compare_endpoint_success():
+    client = TestClient(app)
+    b_path = ROOT / "tests" / "fixtures" / "compare_baseline.xml"
+    c_path = ROOT / "tests" / "fixtures" / "compare_candidate.xml"
+
+    with b_path.open("rb") as f1, c_path.open("rb") as f2:
+        response = client.post(
+            "/api/compare",
+            files={
+                "baseline_file": ("custom_baseline.xml", f1, "application/xml"),
+                "candidate_file": ("custom_candidate.xml", f2, "application/xml"),
+            },
+            data={"topology_mode": "full"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["baselineFile"] == "custom_baseline.xml"
+    assert data["candidateFile"] == "custom_candidate.xml"
+    assert data["summary"]["totalAdded"] >= 1
+    assert data["summary"]["totalRemoved"] >= 1
+    assert data["summary"]["totalChanged"] >= 1
+    assert len(data["added"]) > 0
+    assert len(data["removed"]) > 0
+    assert len(data["changed"]) > 0
+
+
+def test_compare_endpoint_invalid_xml_returns_400():
+    client = TestClient(app)
+    b_path = ROOT / "tests" / "fixtures" / "minimal_plan.xml"
+    inv_path = ROOT / "tests" / "fixtures" / "compare_invalid.xml"
+
+    with b_path.open("rb") as f1, inv_path.open("rb") as f2:
+        response = client.post(
+            "/api/compare",
+            files={
+                "baseline_file": ("minimal.xml", f1, "application/xml"),
+                "candidate_file": ("invalid.xml", f2, "application/xml"),
+            },
+        )
+
+    assert response.status_code == 400
+    assert "error" in response.json()
+    assert "XML" in response.json()["error"] or "mismatched" in response.json()["error"].lower() or "unclosed" in response.json()["error"].lower()
+
+
+def test_compare_endpoint_empty_file_returns_400():
+    client = TestClient(app)
+    b_path = ROOT / "tests" / "fixtures" / "minimal_plan.xml"
+
+    with b_path.open("rb") as f1:
+        response = client.post(
+            "/api/compare",
+            files={
+                "baseline_file": ("minimal.xml", f1, "application/xml"),
+                "candidate_file": ("empty.xml", b"", "application/xml"),
+            },
+        )
+
+    assert response.status_code == 400
+    assert "empty" in response.json()["error"].lower()
+
+
+def test_compare_endpoint_non_xml_filename_returns_400():
+    client = TestClient(app)
+    b_path = ROOT / "tests" / "fixtures" / "minimal_plan.xml"
+
+    with b_path.open("rb") as f1:
+        response = client.post(
+            "/api/compare",
+            files={
+                "baseline_file": ("minimal.txt", f1, "text/plain"),
+                "candidate_file": ("candidate.xml", f1, "application/xml"),
+            },
+        )
+
+    assert response.status_code == 400
+    assert "Only .xml files are supported" in response.json()["error"]
+
+
+

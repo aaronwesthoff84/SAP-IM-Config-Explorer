@@ -130,6 +130,7 @@
         <button id="lineage-tab" class="tab" type="button" data-view="lineage-view" disabled>Lineage</button>
         <button class="tab" type="button" data-view="html-output-view">HTML Output</button>
         <button id="ai-docs-tab" class="tab" type="button" data-view="ai-docs-view">AI Docs</button>
+        <button id="compare-tab" class="tab" type="button" data-view="compare-view">Compare XML</button>
       </div>
       <div id="graph-view" class="view active">
         <div id="graph-toolbar" class="graph-toolbar" role="toolbar" aria-label="Graph visual controls">
@@ -180,6 +181,72 @@
         <div id="ai-docs-content-container" class="ai-content-container" hidden>
           <div id="ai-docs-text" class="markdown-preview"></div>
           <div id="ai-docs-metadata" class="ai-metadata-footer"></div>
+        </div>
+      </div>
+      <div id="compare-view" class="view">
+        <div class="compare-actions-bar">
+          <form id="compare-form" class="compare-form" onsubmit="return false;">
+            <div class="compare-inputs-row">
+              <label class="compare-file-picker">
+                <span class="compare-label">Baseline XML</span>
+                <input id="compare-baseline-file" name="baseline_file" type="file" accept=".xml,application/xml,text/xml" aria-label="Baseline XML export file">
+              </label>
+              <label class="compare-file-picker">
+                <span class="compare-label">Candidate XML</span>
+                <input id="compare-candidate-file" name="candidate_file" type="file" accept=".xml,application/xml,text/xml" aria-label="Candidate XML export file">
+              </label>
+              <button type="button" id="compare-button" class="primary">Compare Configurations</button>
+            </div>
+          </form>
+          <div class="compare-meta-bar">
+            <span id="compare-status" class="compare-status" role="status" aria-live="polite">Select baseline and candidate XML files to compare configuration changes.</span>
+            <div id="compare-error" class="compare-error" role="alert" aria-live="assertive" hidden></div>
+          </div>
+        </div>
+        <div id="compare-results-container" class="compare-results-container" hidden>
+          <div class="compare-summary-cards" role="region" aria-label="Comparison summary metrics">
+            <div class="compare-card card-added" data-filter="added" role="button" tabindex="0" title="Click to filter added objects">
+              <span class="compare-card-number" id="compare-count-added">0</span>
+              <span class="compare-card-label">Added</span>
+            </div>
+            <div class="compare-card card-removed" data-filter="removed" role="button" tabindex="0" title="Click to filter removed objects">
+              <span class="compare-card-number" id="compare-count-removed">0</span>
+              <span class="compare-card-label">Removed</span>
+            </div>
+            <div class="compare-card card-changed" data-filter="changed" role="button" tabindex="0" title="Click to filter changed objects">
+              <span class="compare-card-number" id="compare-count-changed">0</span>
+              <span class="compare-card-label">Changed</span>
+            </div>
+            <div class="compare-card card-unchanged" data-filter="unchanged" role="button" tabindex="0" title="Click to filter unchanged objects">
+              <span class="compare-card-number" id="compare-count-unchanged">0</span>
+              <span class="compare-card-label">Unchanged</span>
+            </div>
+          </div>
+          <div class="compare-filter-toolbar">
+            <label>
+              <span>Object type</span>
+              <select id="compare-type-filter" aria-label="Filter comparison by object type">
+                <option value="">All types</option>
+              </select>
+            </label>
+            <label>
+              <span>Category</span>
+              <select id="compare-category-filter" aria-label="Filter comparison by category">
+                <option value="all">All categories</option>
+                <option value="changed">Changed only</option>
+                <option value="added">Added only</option>
+                <option value="removed">Removed only</option>
+                <option value="unchanged">Unchanged only</option>
+              </select>
+            </label>
+            <label>
+              <span>Search</span>
+              <input id="compare-search" type="search" placeholder="Search objects..." aria-label="Search comparison objects">
+            </label>
+            <button type="button" id="compare-clear-filters" class="secondary">Reset Filters</button>
+          </div>
+          <div id="compare-items-list" class="compare-items-list" role="feed" aria-label="Configuration comparison changes">
+          </div>
         </div>
       </div>
     </section>
