@@ -104,17 +104,115 @@ if (typeof cytoscape !== "undefined" && cytoscape.prototype) {
   };
 }
 
+function isValidIsoDateString(str) {
+  if (typeof str !== "string") return false;
+  const trimmed = str.trim();
+  if (!trimmed) return false;
+  const datePart = trimmed.split("T")[0].split(" ")[0];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return false;
+  const [y, m, d] = datePart.split("-").map(Number);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const date = new Date(datePart + "T00:00:00Z");
+  return !isNaN(date.getTime()) && date.toISOString().startsWith(datePart);
+}
+
+function computeTemporalStatus(node, asOfDate) {
+  const metadata = node && node.metadata ? node.metadata : {};
+  const rawStart = (metadata.effectiveStartDate || "").trim();
+  const rawEnd = (metadata.effectiveEndDate || "").trim();
+  const rawAsOf = (asOfDate || "").trim();
+
+  if (!rawStart && !rawEnd) {
+    return {
+      status: "undated",
+      label: "Undated",
+      range: "None",
+      explanation: "Object does not define effective dates in configuration source.",
+    };
+  }
+
+  const validStart = !rawStart || isValidIsoDateString(rawStart);
+  const validEnd = !rawEnd || isValidIsoDateString(rawEnd);
+
+  if (!validStart || !validEnd) {
+    const badDate = !validStart ? rawStart : rawEnd;
+    return {
+      status: "unknown",
+      label: "Unknown / Invalid",
+      range: `${rawStart || "None"} to ${rawEnd || "None"}`,
+      explanation: `Unsupported or invalid effective date format: '${badDate}'.`,
+    };
+  }
+
+  if (rawStart && rawEnd && rawStart > rawEnd) {
+    return {
+      status: "unknown",
+      label: "Unknown / Invalid",
+      range: `${rawStart} to ${rawEnd}`,
+      explanation: `Invalid date range: start date (${rawStart}) is after end date (${rawEnd}).`,
+    };
+  }
+
+  const rangeStr = `${rawStart || "Beginning"} to ${rawEnd || "Indefinite"}`;
+
+  if (!rawAsOf) {
+    return {
+      status: "active",
+      label: "Dated",
+      range: rangeStr,
+      explanation: `Effective from ${rangeStr}.`,
+    };
+  }
+
+  if (!isValidIsoDateString(rawAsOf)) {
+    return {
+      status: "unknown",
+      label: "Unknown / Invalid",
+      range: rangeStr,
+      explanation: `Unsupported or invalid as-of date filter: '${rawAsOf}'.`,
+    };
+  }
+
+  if (rawStart && rawAsOf < rawStart) {
+    return {
+      status: "future",
+      label: "Future",
+      range: rangeStr,
+      explanation: `Effective starting ${rawStart} (future relative to selected as-of date ${rawAsOf}).`,
+    };
+  }
+
+  if (rawEnd && rawAsOf > rawEnd) {
+    return {
+      status: "expired",
+      label: "Expired",
+      range: rangeStr,
+      explanation: `Expired on ${rawEnd} (prior to selected as-of date ${rawAsOf}).`,
+    };
+  }
+
+  return {
+    status: "active",
+    label: "Active",
+    range: rangeStr,
+    explanation: `Active on ${rawAsOf} (effective ${rangeStr}).`,
+  };
+}
+
+window.computeTemporalStatus = computeTemporalStatus;
+
 function filterGraphElements(graph, filters) {
   const term = (filters.search || "").trim().toLowerCase();
-  const effectiveDate = filters.effectiveDate || "";
+  const effectiveDate = (filters.effectiveDate || "").trim();
   const nodes = graph.nodes.filter((node) => {
-    const startDate = node.metadata?.effectiveStartDate || "";
-    const endDate = node.metadata?.effectiveEndDate || "";
     const matchesSearch = !term || node.label.toLowerCase().includes(term);
     const matchesType = !filters.type || node.type === filters.type;
     const matchesSourceFile = !filters.sourceFile || node.sourceFile === filters.sourceFile;
-    const matchesEffectiveDate = !effectiveDate
-      || ((!startDate || startDate <= effectiveDate) && (!endDate || effectiveDate <= endDate));
+    let matchesEffectiveDate = true;
+    if (effectiveDate) {
+      const temporal = computeTemporalStatus(node, effectiveDate);
+      matchesEffectiveDate = (temporal.status === "active" || temporal.status === "undated");
+    }
     return matchesSearch && matchesType && matchesSourceFile && matchesEffectiveDate;
   });
   const nodeIds = new Set(nodes.map((node) => node.id));
@@ -299,7 +397,10 @@ typeFilter.addEventListener("change", renderGraphAndHtmlOutput);
 sourceFileFilter.addEventListener("change", renderGraph);
 relationshipFilter.addEventListener("change", renderGraph);
 confidenceFilter.addEventListener("change", renderGraph);
-effectiveDateFilter.addEventListener("input", renderGraph);
+effectiveDateFilter.addEventListener("input", () => {
+  renderGraph();
+  if (state.selectedNode) showNodeDetails(state.selectedNode);
+});
 clearFiltersButton.addEventListener("click", clearAllFilters);
 
 if (findingsSeverityFilter) {
@@ -695,6 +796,9 @@ function loadGraphWorkspace(payload) {
   destroyLineageRenderer();
   resetDetails();
   populateFilterControls(payload);
+  if (effectiveDateFilter && payload.asOfDate) {
+    effectiveDateFilter.value = payload.asOfDate;
+  }
   renderFindings(payload.findings || []);
   renderRiskReport(payload.migrationRisk);
   renderWorkspaceOrigin(payload.provenance);
@@ -1422,6 +1526,7 @@ function clearAllFilters() {
   confidenceFilter.value = "";
   effectiveDateFilter.value = "";
   renderGraphAndHtmlOutput();
+  if (state.selectedNode) showNodeDetails(state.selectedNode);
 }
 
 function getFilteredFindings(findings) {
@@ -1854,10 +1959,19 @@ function showNodeDetails(node) {
     }
   }
 
+  const asOfVal = effectiveDateFilter ? effectiveDateFilter.value : "";
+  const temporal = computeTemporalStatus(node, asOfVal);
+
   summaryEl.innerHTML = `
     <dt>Name</dt><dd>${escapeHtml(node.label)}</dd>
     ${riskHtml}
     <dt>Type</dt><dd>${escapeHtml(node.type)}</dd>
+    <dt>Temporal status</dt>
+    <dd>
+      <span class="temporal-badge ${escapeHtml(temporal.status)}">${escapeHtml(temporal.label)}</span>
+      <div class="temporal-explanation">${escapeHtml(temporal.explanation)}</div>
+    </dd>
+    <dt>Effective range</dt><dd>${escapeHtml(temporal.range)}</dd>
     ${node.type === "Rule" ? '<dt>Lineage</dt><dd><button id="open-lineage-button" type="button">Open lineage</button></dd>' : ""}
     <dt>HTML Preview</dt><dd>${htmlLinksHtml}</dd>
     <dt>Associated plans</dt><dd>${escapeHtml(hierarchy.plans.join(", ") || "None")}</dd>
@@ -1896,6 +2010,8 @@ function showNodeDetails(node) {
 
   setupAiSummaryForNode(node, hierarchy);
 }
+
+window.showNodeDetails = showNodeDetails;
 
 function clearSelectedRule() {
   state.selectedRule = null;
@@ -2078,6 +2194,12 @@ async function exportGraph(format) {
   try {
     while (pendingGraphGeneration) await pendingGraphGeneration;
     state.graph.waivers = Object.values(state.waivers);
+    const asOfDate = effectiveDateFilter?.value?.trim() || null;
+    if (asOfDate) {
+      state.graph.asOfDate = asOfDate;
+    } else {
+      delete state.graph.asOfDate;
+    }
     const response = await fetch(exportFormat.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2136,6 +2258,7 @@ function getExportProvenance(visibleNodesCount, totalNodesCount) {
     ? `Filtered Graph (${visibleNodesCount} of ${totalNodesCount} nodes)`
     : `Full Graph (${totalNodesCount} nodes)`;
   const topology = topologyLabel(state.graph.topologyMode);
+  const asOfDate = effectiveDateFilter?.value?.trim() || null;
   return {
     schemaVersion,
     fileNames,
@@ -2143,6 +2266,7 @@ function getExportProvenance(visibleNodesCount, totalNodesCount) {
     isFiltered,
     statusLabel,
     topology,
+    asOfDate,
   };
 }
 
@@ -2210,10 +2334,11 @@ async function exportGraphAsPng() {
       );
 
       // Provenance metadata
+      const asOfStr = meta.asOfDate ? `  |  As-of Date: ${meta.asOfDate}` : "";
       ctx.fillStyle = themeColors.textMuted || themeColors.text;
       ctx.font = "12px Inter, -apple-system, sans-serif";
       ctx.fillText(
-        `Generated: ${meta.timestamp}  |  Schema: ${meta.schemaVersion}  |  Files: ${meta.fileNames}`,
+        `Generated: ${meta.timestamp}  |  Schema: ${meta.schemaVersion}  |  Files: ${meta.fileNames}${asOfStr}`,
         padding,
         54
       );
@@ -2311,7 +2436,8 @@ function exportGraphAsSvg() {
 
     // Title & Provenance
     svg += `  <text x="24" y="32" font-family="Inter, -apple-system, sans-serif" font-size="16" font-weight="bold" fill="${themeColors.text}">SAP IM Config Explorer - ${escapeXml(meta.topology)} (${escapeXml(meta.statusLabel)})</text>\n`;
-    svg += `  <text x="24" y="56" font-family="Inter, -apple-system, sans-serif" font-size="12" fill="${themeColors.textMuted || themeColors.text}">Generated: ${escapeXml(meta.timestamp)}  |  Schema: ${escapeXml(meta.schemaVersion)}  |  Files: ${escapeXml(meta.fileNames)}</text>\n`;
+    const asOfStr = meta.asOfDate ? `  |  As-of Date: ${escapeXml(meta.asOfDate)}` : "";
+    svg += `  <text x="24" y="56" font-family="Inter, -apple-system, sans-serif" font-size="12" fill="${themeColors.textMuted || themeColors.text}">Generated: ${escapeXml(meta.timestamp)}  |  Schema: ${escapeXml(meta.schemaVersion)}  |  Files: ${escapeXml(meta.fileNames)}${asOfStr}</text>\n`;
 
     // Legend
     svg += `  <text x="24" y="88" font-family="Inter, -apple-system, sans-serif" font-size="12" font-weight="600" fill="${themeColors.text}">Legend:</text>\n`;
@@ -3076,6 +3202,7 @@ const compareCountUnchanged = document.getElementById("compare-count-unchanged")
 const compareTypeFilter = document.getElementById("compare-type-filter");
 const compareCategoryFilter = document.getElementById("compare-category-filter");
 const compareSearchInput = document.getElementById("compare-search");
+const compareAsOfDateInput = document.getElementById("compare-as-of-date");
 const compareClearFiltersButton = document.getElementById("compare-clear-filters");
 const compareItemsList = document.getElementById("compare-items-list");
 const compareSummaryCards = document.querySelectorAll(".compare-card");
@@ -3103,6 +3230,10 @@ async function runComparison() {
   formData.append("baseline_file", baselineFile);
   formData.append("candidate_file", candidateFile);
   formData.append("topology_mode", "full");
+  const asOfDate = compareAsOfDateInput ? compareAsOfDateInput.value.trim() : "";
+  if (asOfDate) {
+    formData.append("as_of_date", asOfDate);
+  }
 
   if (compareStatusEl) compareStatusEl.textContent = `Comparing "${baselineFile.name}" and "${candidateFile.name}"...`;
   if (compareButton) compareButton.disabled = true;
@@ -3157,6 +3288,10 @@ function renderComparisonResults() {
   if (!state.comparisonResult || !compareResultsContainer) return;
   compareResultsContainer.hidden = false;
 
+  if (state.comparisonResult.asOfDate && compareAsOfDateInput && !compareAsOfDateInput.value) {
+    compareAsOfDateInput.value = state.comparisonResult.asOfDate;
+  }
+
   const summary = state.comparisonResult.summary;
   if (compareCountAdded) compareCountAdded.textContent = summary.totalAdded;
   if (compareCountRemoved) compareCountRemoved.textContent = summary.totalRemoved;
@@ -3205,6 +3340,7 @@ function renderComparisonItems() {
   const category = state.compareActiveCategory || "all";
   const selectedType = compareTypeFilter ? compareTypeFilter.value : "";
   const searchTerm = compareSearchInput ? (compareSearchInput.value || "").trim().toLowerCase() : "";
+  const asOfDate = (compareAsOfDateInput && compareAsOfDateInput.value ? compareAsOfDateInput.value.trim() : "") || (state.comparisonResult && state.comparisonResult.asOfDate ? state.comparisonResult.asOfDate : "");
 
   const allItems = [];
   state.comparisonResult.changed.forEach((item) => allItems.push({ ...item, category: "changed" }));
@@ -3220,17 +3356,30 @@ function renderComparisonItems() {
       const summaryMatch = item.summary && item.summary.toLowerCase().includes(searchTerm);
       if (!labelMatch && !summaryMatch) return false;
     }
+    if (compareAsOfDateInput && compareAsOfDateInput.value.trim()) {
+      const temporal = computeTemporalStatus(item, compareAsOfDateInput.value.trim());
+      if (temporal.status !== "active" && temporal.status !== "undated") return false;
+    }
     return true;
   });
 
+  let asOfBannerHtml = "";
+  if (asOfDate) {
+    asOfBannerHtml = `<div class="compare-as-of-banner"><strong>As-of Date:</strong> ${escapeHtml(asOfDate)}</div>`;
+  }
+
   if (filtered.length === 0) {
-    compareItemsList.innerHTML = '<p class="empty-summary" style="padding: 12px 0;">No configuration objects match the selected filters.</p>';
+    compareItemsList.innerHTML = `${asOfBannerHtml}<p class="empty-summary" style="padding: 12px 0;">No configuration objects match the selected filters.</p>`;
     return;
   }
 
   const html = filtered.map((item) => {
     const badgeClass = item.category;
     const badgeText = item.category.toUpperCase();
+    const temporal = asOfDate ? computeTemporalStatus(item, asOfDate) : null;
+    const temporalBadgeHtml = temporal
+      ? `<span class="temporal-badge ${escapeHtml(temporal.status)}">${escapeHtml(temporal.label)}</span>`
+      : "";
 
     let detailsHtml = "";
     if (item.category === "changed" && item.differences && item.differences.length > 0) {
@@ -3262,6 +3411,7 @@ function renderComparisonItems() {
             <span class="compare-badge ${badgeClass}">${badgeText}</span>
             <span>${escapeHtml(item.type)}: ${escapeHtml(item.label)}</span>
           </div>
+          ${temporalBadgeHtml}
         </div>
         <div class="compare-item-summary">${escapeHtml(summaryText)}</div>
         ${detailsHtml}
@@ -3269,7 +3419,7 @@ function renderComparisonItems() {
     `;
   }).join("");
 
-  compareItemsList.innerHTML = html;
+  compareItemsList.innerHTML = asOfBannerHtml + html;
 }
 
 if (compareButton) compareButton.addEventListener("click", runComparison);
@@ -3286,11 +3436,15 @@ if (compareTypeFilter) {
 if (compareSearchInput) {
   compareSearchInput.addEventListener("input", renderComparisonItems);
 }
+if (compareAsOfDateInput) {
+  compareAsOfDateInput.addEventListener("input", renderComparisonItems);
+}
 if (compareClearFiltersButton) {
   compareClearFiltersButton.addEventListener("click", () => {
     if (compareTypeFilter) compareTypeFilter.value = "";
     if (compareCategoryFilter) compareCategoryFilter.value = "all";
     if (compareSearchInput) compareSearchInput.value = "";
+    if (compareAsOfDateInput) compareAsOfDateInput.value = "";
     state.compareActiveCategory = "all";
     updateComparisonCardHighlights();
     renderComparisonItems();

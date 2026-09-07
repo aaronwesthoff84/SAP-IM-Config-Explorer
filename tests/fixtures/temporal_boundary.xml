@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Temporal Boundary Plan" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Boundary test plan">
+      <COMPONENT_REF NAME="Boundary Component" />
+      <COMPONENT_REF NAME="Timeless Component" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT ID="PC-B1" NAME="Boundary Component" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2026-06-30" DESCRIPTION="First boundary period">
+      <RULE_REFS>
+        <RULE_REF NAME="Credit Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+    <PLANCOMPONENT ID="PC-B2" NAME="Boundary Component" EFFECTIVE_START_DATE="2026-07-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Second boundary period">
+      <RULE_REFS>
+        <RULE_REF NAME="Credit Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+    <PLANCOMPONENT ID="PC-TIMELESS" NAME="Timeless Component" DESCRIPTION="Undated timeless component" />
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE NAME="Credit Rule" TYPE="DIRECT_TRANSACTION_CREDIT" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Credit calculation rule" />
+  </RULE_SET>
+</DATA_IMPORT>

@@ -97,7 +97,7 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
             "links",
             "findings",
         },
-        optional={"migrationRisk", "waivers"},
+        optional={"migrationRisk", "waivers", "asOfDate"},
     )
     snapshots = [_snapshot_from_payload(item) for item in _list(data, "snapshots")]
     nodes = [_node_from_payload(item) for item in _list(data, "nodes")]
@@ -110,6 +110,7 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
     )
     migration_risk = _migration_risk_from_payload(data.get("migrationRisk"))
     provenance = _graph_provenance_from_payload(data.get("provenance"))
+    as_of_date = _optional_string(data, "asOfDate") if "asOfDate" in data else None
 
     try:
         document = GraphDocument(
@@ -122,6 +123,7 @@ def graph_document_from_payload(payload: Mapping[str, Any]) -> GraphDocument:
             waivers=waivers,
             migrationRisk=migration_risk,
             provenance=provenance,
+            asOfDate=as_of_date,
         )
     except ValueError as exc:
         raise PortableGraphExportError(str(exc)) from exc
@@ -462,6 +464,11 @@ def serialize_markdown(document: GraphDocument) -> bytes:
             (
                 ("Schema version", document.schemaVersion),
                 ("Topology mode", document.topologyMode),
+                *(
+                    (("As-of date", document.asOfDate),)
+                    if document.asOfDate
+                    else ()
+                ),
             ),
         ),
         "",

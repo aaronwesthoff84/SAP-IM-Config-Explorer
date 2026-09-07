@@ -1247,3 +1247,94 @@ html[data-theme="dark"] .ai-unconfigured-panel {
   font-weight: bold;
 }
 
+/* Temporal status badges and narrative */
+.temporal-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.temporal-badge.active {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+}
+
+.temporal-badge.future {
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #90caf9;
+}
+
+.temporal-badge.expired {
+  background: #f5f5f5;
+  color: #757575;
+  border: 1px solid #bdbdbd;
+}
+
+.temporal-badge.undated {
+  background: #f3e5f5;
+  color: #6a1b9a;
+  border: 1px solid #ce93d8;
+}
+
+.temporal-badge.unknown {
+  background: #fff8e1;
+  color: #e65100;
+  border: 1px solid #ffe082;
+}
+
+:root[data-theme="dark"] .temporal-badge.active {
+  background: #1b5e20;
+  color: #a5d6a7;
+  border-color: #2e7d32;
+}
+
+:root[data-theme="dark"] .temporal-badge.future {
+  background: #0d47a1;
+  color: #90caf9;
+  border-color: #1565c0;
+}
+
+:root[data-theme="dark"] .temporal-badge.expired {
+  background: #424242;
+  color: #bdbdbd;
+  border-color: #616161;
+}
+
+:root[data-theme="dark"] .temporal-badge.undated {
+  background: #4a148c;
+  color: #e1bee7;
+  border-color: #6a1b9a;
+}
+
+:root[data-theme="dark"] .temporal-badge.unknown {
+  background: #e65100;
+  color: #ffe082;
+  border-color: #ffb74d;
+}
+
+.temporal-explanation {
+  font-size: 12px;
+  margin-top: 4px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.compare-as-of-banner {
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+
