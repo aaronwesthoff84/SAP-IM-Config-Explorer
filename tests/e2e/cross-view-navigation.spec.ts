@@ -4,6 +4,7 @@ import path from 'node:path';
 const minimalPlanFixture = path.resolve('tests/fixtures/minimal_plan.xml');
 const sharedRuleFixture = path.resolve('tests/fixtures/shared_rule_lineage.xml');
 const validationFindingsFixture = path.resolve('tests/fixtures/validation_findings.xml');
+const duplicateRulesFixture = path.resolve('tests/fixtures/duplicate_rules_components.xml');
 
 function collectBrowserErrors(page, errors: string[]) {
   page.on('pageerror', error => errors.push(error.message));
@@ -196,6 +197,45 @@ test.describe('Cross-view Navigation', () => {
     await viewHtmlBtn.click();
     // Since HTML is not generated, it should set appropriate status message
     await expect(page.locator('#status')).toContainText('HTML representation unavailable');
+
+    expect(browserErrors).toEqual([]);
+  });
+
+  test('navigates from duplicate object findings to each distinct HTML instance', async ({ page }) => {
+    const browserErrors: string[] = [];
+    collectBrowserErrors(page, browserErrors);
+
+    await page.goto('/');
+    await page.locator('#np-xml-files').setInputFiles(duplicateRulesFixture);
+    await page.getByRole('button', { name: 'Generate Graph' }).click();
+    await page.getByRole('button', { name: 'Generate HTML' }).click();
+
+    await expect(page.locator('#html-output-view')).toBeVisible();
+
+    // Verify findings list has duplicate findings
+    const findingsList = page.locator('#validation-findings');
+    const dupFindings = findingsList.locator('li.finding').filter({ hasText: 'Shared Component' });
+    await expect(dupFindings.first()).toBeVisible();
+
+    // The findings have view-html buttons pointing to different nodeIds
+    const viewHtmlBtns = dupFindings.locator('.finding-action-btn.view-html');
+    const count = await viewHtmlBtns.count();
+    expect(count).toBeGreaterThanOrEqual(2);
+
+    // Click the first duplicate finding's View HTML button
+    await viewHtmlBtns.first().click();
+    await expect(page.locator('#html-output-view')).toBeVisible();
+    await expect(page.locator('#status')).toContainText('Navigated to HTML section');
+
+    // Click the second duplicate finding's View HTML button
+    await viewHtmlBtns.nth(1).click();
+    await expect(page.locator('#html-output-view')).toBeVisible();
+    await expect(page.locator('#status')).toContainText('Navigated to HTML section');
+
+    // Verify preview frame contains the duplicate metadata and badges
+    const preview = page.frameLocator('#html-output-preview');
+    await expect(preview.locator('text=Duplicate instance (1 of 2)').first()).toBeVisible();
+    await expect(preview.locator('text=Duplicate instance (2 of 2)').first()).toBeVisible();
 
     expect(browserErrors).toEqual([]);
   });

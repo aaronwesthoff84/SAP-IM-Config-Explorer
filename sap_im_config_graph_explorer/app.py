@@ -378,33 +378,58 @@ async def _generate_gemini_summary(req: SummaryRequest, cfg: dict[str, str]) -> 
 
 @app.post("/api/convert/html")
 async def convert_html(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    files: list[UploadFile] | None = File(None),
     variant: str = Form("auto"),
     theme: str = Form("light"),
+    snapshot_id: str = Form("configuration"),
 ) -> dict[str, object]:
-    content = await file.read()
-    _validate_xml_upload_name(file.filename or "upload.xml")
-    if not content.strip():
-        raise HTTPException(status_code=400, detail=f"Empty XML file: {file.filename}")
+    uploaded_files: list[UploadFile] = []
+    if files:
+        uploaded_files = files
+    elif file:
+        uploaded_files = [file]
+
+    if not uploaded_files:
+        raise HTTPException(status_code=400, detail="No XML files provided.")
     if theme not in {"light", "dark"}:
         raise HTTPException(status_code=400, detail=f"Unsupported theme: {theme}")
-    temp_path = _write_temp_xml(content, file.filename or "upload.xml")
+
+    temp_paths: list[Path] = []
+    uploads_for_graph: list[tuple[str, bytes]] = []
+    input_files: list[str] = []
+
     try:
         transformer = Transformer(variant="A" if variant.lower() == "auto" else variant.upper())
-        transformer.parse(str(temp_path))
-        graph = GraphBuilder().build_from_uploads([(file.filename or "upload.xml", content)])
-        output_name = f"{Path(file.filename or 'output.xml').stem}.html"
+        for upload in uploaded_files:
+            fname = upload.filename or "upload.xml"
+            _validate_xml_upload_name(fname)
+            content = await upload.read()
+            if not content.strip():
+                raise HTTPException(status_code=400, detail=f"Empty XML file: {fname}")
+            tpath = _write_temp_xml(content, fname)
+            temp_paths.append(tpath)
+            uploads_for_graph.append((fname, content))
+            input_files.append(fname)
+            transformer.parse(str(tpath), source_file=fname, snapshot_id=snapshot_id)
+
+        graph = GraphBuilder().build_from_uploads(uploads_for_graph, snapshot_id=snapshot_id, role=snapshot_id)
+        first_stem = Path(input_files[0]).stem
+        output_name = f"{first_stem}.html" if len(input_files) == 1 else f"{first_stem}-combined.html"
+
         return ConversionResult(
             ok=True,
             html=transformer.html(theme=theme),
             outputFile=output_name,
             variant=transformer.v,
             findings=[finding.to_dict() for finding in graph.findings],
+            inputFiles=input_files,
         ).to_dict()
     except (XErr, XmlLoadError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
-        temp_path.unlink(missing_ok=True)
+        for p in temp_paths:
+            p.unlink(missing_ok=True)
 
 
 @app.post("/api/graph")
