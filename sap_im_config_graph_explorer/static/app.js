@@ -1316,8 +1316,16 @@ function showNodeDetails(node) {
     updateAiSummaryPanel();
   }
   const hierarchy = hierarchyFor(node);
-  const riskFactor = state.graph.migrationRisk?.factors?.find((f) => f.nodeIds?.includes(node.id));
-  const riskHtml = riskFactor ? `<dt>Migration risk</dt><dd class="risk-factor ${riskFactor.severity}"><strong>${riskFactor.code}</strong>: ${riskFactor.message}</dd>` : "";
+  const riskFactors = (state.graph.migrationRisk?.factors || []).filter((f) => f.nodeIds?.includes(node.id));
+  const riskHtml = riskFactors.length > 0
+    ? `<dt>Migration risk (${riskFactors.length})</dt>` +
+      riskFactors
+        .map(
+          (rf) =>
+            `<dd class="risk-factor ${escapeHtml(rf.severity || "")}"><strong>${escapeHtml(rf.code || "")}</strong> (Weight: ${escapeHtml(String(rf.weight ?? ""))}): ${escapeHtml(rf.message || "")}</dd>`
+        )
+        .join("")
+    : "";
 
   // Get HTML anchors and generate HTML links
   let htmlLinksHtml = "";

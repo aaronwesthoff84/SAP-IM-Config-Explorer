@@ -1,4 +1,8 @@
-from __future__ import annotations
+import json
+import math
+import os
+from dataclasses import dataclass
+from typing import Any
 
 from sap_im_config_graph_explorer.models import (
     GraphDocument,
@@ -8,9 +12,96 @@ from sap_im_config_graph_explorer.models import (
 )
 
 
-HIGH_RISK_WEIGHT = 40.0
-MEDIUM_RISK_WEIGHT = 10.0
-LOW_RISK_WEIGHT = 2.0
+class MigrationRiskConfigError(ValueError):
+    """Raised when migration risk weight configuration is invalid."""
+
+
+@dataclass(frozen=True)
+class MigrationRiskWeights:
+    """Configurable weights for migration risk calculation."""
+
+    high: float = 40.0
+    medium: float = 10.0
+    low: float = 2.0
+    missing_relationship: float = 5.0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MigrationRiskWeights:
+        if not isinstance(data, dict):
+            raise MigrationRiskConfigError(
+                "Migration risk weights configuration must be a dictionary."
+            )
+
+        valid_keys = {"high", "medium", "low", "missing_relationship"}
+        invalid_keys = set(data.keys()) - valid_keys
+        if invalid_keys:
+            raise MigrationRiskConfigError(
+                f"Unknown migration risk weight configuration key(s): {', '.join(sorted(invalid_keys))}"
+            )
+
+        parsed_values: dict[str, float] = {}
+        for key in valid_keys:
+            if key in data:
+                val = data[key]
+                if (
+                    not isinstance(val, (int, float))
+                    or isinstance(val, bool)
+                    or not math.isfinite(val)
+                ):
+                    raise MigrationRiskConfigError(
+                        f"Migration risk weight '{key}' must be a finite number."
+                    )
+                if val < 0.0:
+                    raise MigrationRiskConfigError(
+                        f"Migration risk weight '{key}' must be non-negative (>= 0.0)."
+                    )
+                parsed_values[key] = float(val)
+
+        return cls(
+            high=parsed_values.get("high", 40.0),
+            medium=parsed_values.get("medium", 10.0),
+            low=parsed_values.get("low", 2.0),
+            missing_relationship=parsed_values.get("missing_relationship", 5.0),
+        )
+
+    @classmethod
+    def from_env(cls) -> MigrationRiskWeights:
+        env_val = os.getenv("MIGRATION_RISK_WEIGHTS")
+        if not env_val or not env_val.strip():
+            return cls()
+
+        trimmed = env_val.strip()
+        if os.path.isfile(trimmed):
+            try:
+                with open(trimmed, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as e:
+                raise MigrationRiskConfigError(
+                    f"Failed to read migration risk weights file '{trimmed}': {e}"
+                ) from e
+        else:
+            try:
+                data = json.loads(trimmed)
+            except Exception as e:
+                raise MigrationRiskConfigError(
+                    f"Failed to parse MIGRATION_RISK_WEIGHTS JSON: {e}"
+                ) from e
+
+        return cls.from_dict(data)
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "high": self.high,
+            "medium": self.medium,
+            "low": self.low,
+            "missing_relationship": self.missing_relationship,
+        }
+
+
+DEFAULT_WEIGHTS = MigrationRiskWeights()
+HIGH_RISK_WEIGHT = DEFAULT_WEIGHTS.high
+MEDIUM_RISK_WEIGHT = DEFAULT_WEIGHTS.medium
+LOW_RISK_WEIGHT = DEFAULT_WEIGHTS.low
 CONTAINMENT_RELATIONS = {
     "belongs_to_plan",
     "belongs_to_plan_component",
@@ -20,6 +111,20 @@ CONTAINMENT_RELATIONS = {
 
 class MigrationRiskEngine:
     """Analyze a graph document for migration risks by comparing snapshots."""
+
+    def __init__(
+        self, weights: MigrationRiskWeights | dict[str, Any] | None = None
+    ):
+        if weights is None:
+            self.weights = MigrationRiskWeights.from_env()
+        elif isinstance(weights, MigrationRiskWeights):
+            self.weights = weights
+        elif isinstance(weights, dict):
+            self.weights = MigrationRiskWeights.from_dict(weights)
+        else:
+            raise MigrationRiskConfigError(
+                f"weights must be MigrationRiskWeights or dict, got {type(weights).__name__}"
+            )
 
     def analyze(self, doc: GraphDocument) -> MigrationRiskReport | None:
         np_snapshot = next(
@@ -56,7 +161,7 @@ class MigrationRiskEngine:
                         code=finding.code,
                         severity="high",
                         message=finding.message,
-                        weight=HIGH_RISK_WEIGHT,
+                        weight=self.weights.high,
                         nodeIds=finding.nodeIds,
                     )
                 )
@@ -66,7 +171,7 @@ class MigrationRiskEngine:
                         code=finding.code,
                         severity="low",
                         message=finding.message,
-                        weight=LOW_RISK_WEIGHT,
+                        weight=self.weights.low,
                         nodeIds=finding.nodeIds,
                     )
                 )
@@ -212,7 +317,7 @@ class MigrationRiskEngine:
                     code="changed_containment",
                     severity="medium",
                     message=f"{message_prefix} {change}",
-                    weight=MEDIUM_RISK_WEIGHT,
+                    weight=self.weights.medium,
                     nodeIds=(child_node.id,),
                 )
             )
@@ -240,7 +345,7 @@ class MigrationRiskEngine:
                         code="missing_relationship",
                         severity="medium",
                         message=f"{source_node.type} '{source_node.label}' no longer uses {r.replace('uses_', '')} '{target_label}'",
-                        weight=5.0,
+                        weight=self.weights.missing_relationship,
                         nodeIds=(source_node.id,),
                     )
                 )
