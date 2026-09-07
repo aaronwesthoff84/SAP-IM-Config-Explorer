@@ -19,6 +19,7 @@ from sap_im_config_graph_explorer.ai_provider import (
     generate_documentation,
     AIProviderError,
 )
+from sap_im_config_graph_explorer.comparator import ConfigComparator
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
 from sap_im_config_graph_explorer.migration import MigrationRiskEngine
 from sap_im_config_graph_explorer.models import (
@@ -430,6 +431,46 @@ async def convert_html(
     finally:
         for p in temp_paths:
             p.unlink(missing_ok=True)
+
+
+@app.post("/api/compare")
+async def compare_xml(
+    baseline_file: UploadFile = File(...),
+    candidate_file: UploadFile = File(...),
+    topology_mode: str = Form("full"),
+) -> dict[str, object]:
+    if topology_mode not in TOPOLOGY_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported topology mode: {topology_mode}",
+        )
+
+    b_name = baseline_file.filename or "baseline.xml"
+    c_name = candidate_file.filename or "candidate.xml"
+    _validate_xml_upload_name(b_name)
+    _validate_xml_upload_name(c_name)
+
+    b_bytes = await baseline_file.read()
+    c_bytes = await candidate_file.read()
+
+    if not b_bytes.strip():
+        raise HTTPException(status_code=400, detail=f"Baseline XML file is empty: {b_name}")
+    if not c_bytes.strip():
+        raise HTTPException(status_code=400, detail=f"Candidate XML file is empty: {c_name}")
+
+    try:
+        comparator = ConfigComparator(topology_mode=topology_mode)
+        result = comparator.compare_xml_texts(
+            baseline_content=b_bytes,
+            candidate_content=c_bytes,
+            baseline_filename=b_name,
+            candidate_filename=c_name,
+        )
+        return result.to_dict()
+    except XmlLoadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}") from exc
 
 
 @app.post("/api/graph")
