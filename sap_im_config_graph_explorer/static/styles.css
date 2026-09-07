@@ -669,3 +669,113 @@ pre {
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* AI Features Styles */
+.ai-meta {
+  font-size: 13px;
+  color: var(--graph-label-text);
+  margin-left: 12px;
+}
+
+.ai-docs-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: var(--graph-label-background);
+  border: 1px solid var(--light-green);
+  border-radius: 4px;
+}
+
+.ai-unconfigured-panel {
+  padding: 16px;
+  background-color: #fff9c4;
+  border: 1px solid #fbc02d;
+  color: #333333;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+html[data-theme="dark"] .ai-unconfigured-panel {
+  background-color: #332d00;
+  border-color: #fbc02d;
+  color: #ffeb3b;
+}
+
+.ai-content-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: calc(100% - 70px);
+  overflow-y: auto;
+  border: 1px solid var(--graph-edge);
+  border-radius: 4px;
+  padding: 16px;
+  background-color: var(--workspace-background);
+}
+
+.markdown-preview {
+  font-family: inherit;
+  line-height: 1.6;
+  white-space: pre-wrap; /* simple rendering for markdown text */
+  font-size: 14px;
+  color: var(--foreground);
+}
+
+.markdown-preview h1, .markdown-preview h2, .markdown-preview h3 {
+  color: var(--forest-green);
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.markdown-preview p {
+  margin-bottom: 12px;
+}
+
+.markdown-preview ul {
+  margin-left: 20px;
+  margin-bottom: 12px;
+  list-style-type: disc;
+}
+
+.ai-metadata-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px dashed var(--graph-edge);
+  font-size: 11px;
+  color: var(--graph-label-text);
+  line-height: 1.4;
+}
+
+.ai-summary-container {
+  margin-top: 16px;
+  border: 1px solid var(--graph-edge);
+  border-radius: 4px;
+  padding: 12px;
+  background-color: var(--workspace-background);
+}
+
+.ai-summary-actions {
+  margin-bottom: 12px;
+}
+
+.ai-summary-content {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.empty-summary {
+  color: var(--graph-label-text);
+  font-style: italic;
+}
+
+.ai-disclaimer {
+  font-weight: bold;
+  color: var(--forest-green);
+  margin-bottom: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+}

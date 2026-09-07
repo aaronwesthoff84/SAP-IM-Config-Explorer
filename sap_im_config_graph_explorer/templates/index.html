@@ -129,6 +129,7 @@
         <button class="tab active" type="button" data-view="graph-view">Graph</button>
         <button id="lineage-tab" class="tab" type="button" data-view="lineage-view" disabled>Lineage</button>
         <button class="tab" type="button" data-view="html-output-view">HTML Output</button>
+        <button id="ai-docs-tab" class="tab" type="button" data-view="ai-docs-view">AI Docs</button>
       </div>
       <div id="graph-view" class="view active">
         <div id="graph-toolbar" class="graph-toolbar" role="toolbar" aria-label="Graph visual controls">
@@ -169,6 +170,18 @@
         </div>
         <iframe id="html-output-preview" title="HTML output preview"></iframe>
       </div>
+      <div id="ai-docs-view" class="view">
+        <div class="ai-docs-actions">
+          <button id="generate-ai-docs-button" type="button">Generate Documentation</button>
+          <a id="download-ai-docs" download="sap-im-config-docs.md" hidden>Download Markdown</a>
+          <span id="ai-docs-status" class="ai-meta">AI Documentation is optional.</span>
+        </div>
+        <div id="ai-docs-unconfigured" class="ai-unconfigured-panel" hidden></div>
+        <div id="ai-docs-content-container" class="ai-content-container" hidden>
+          <div id="ai-docs-text" class="markdown-preview"></div>
+          <div id="ai-docs-metadata" class="ai-metadata-footer"></div>
+        </div>
+      </div>
     </section>
 
     <aside class="panel details">
@@ -189,9 +202,15 @@
       <div id="ai-summary-container" class="ai-summary-container" style="display: none; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; margin-bottom: 12px;">
         <h3>AI Summary</h3>
         <p id="ai-summary-status" style="font-size: 13px; color: var(--text-muted); margin: 6px 0;"></p>
-        <div id="ai-summary-label" style="font-weight: bold; font-size: 12px; text-transform: uppercase; margin-bottom: 4px; display: none; color: var(--forest-green);"></div>
-        <div id="ai-summary-content" style="font-size: 14px; margin-top: 8px; line-height: 1.4; display: none; border-left: 3px solid var(--light-green); padding-left: 8px; margin-bottom: 10px;"></div>
-        <button id="generate-summary-button" class="primary" type="button" style="width: 100%; margin-top: 8px;">Generate Summary</button>
+        <div id="ai-summary-unconfigured" class="ai-unconfigured-panel" hidden></div>
+        <div id="ai-summary-actions" class="ai-summary-actions" style="margin-top: 8px;">
+          <button id="generate-summary-button" class="primary" type="button" style="width: 100%;">Generate Summary</button>
+          <button id="generate-ai-summary-button" class="primary" type="button" style="width: 100%; display: none;">Generate AI Summary</button>
+        </div>
+        <div id="ai-summary-label" style="font-weight: bold; font-size: 12px; text-transform: uppercase; margin-top: 8px; margin-bottom: 4px; display: none; color: var(--forest-green);"></div>
+        <div id="ai-summary-content" style="font-size: 14px; margin-top: 8px; line-height: 1.4; display: none; border-left: 3px solid var(--light-green); padding-left: 8px; margin-bottom: 10px;">
+          <p class="empty-summary">Select a node to generate an AI summary.</p>
+        </div>
       </div>
 
       <pre id="raw-xml"></pre>
