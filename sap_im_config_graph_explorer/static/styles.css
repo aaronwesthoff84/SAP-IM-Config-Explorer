@@ -50,6 +50,40 @@
   display: none !important;
 }
 
+.skip-link {
+  position: absolute;
+  top: -60px;
+  left: 12px;
+  background: var(--forest-green);
+  color: var(--neutral-white);
+  padding: 10px 16px;
+  text-decoration: none;
+  font-weight: 700;
+  z-index: 9999;
+  border-radius: 4px;
+  transition: top 150ms ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.skip-link:focus {
+  top: 12px;
+  outline: 3px solid var(--neutral-white);
+  outline-offset: 2px;
+}
+
+.sr-only,
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 body {
   background: var(--background);
   color: var(--text);
@@ -194,10 +228,20 @@ button {
   transition: box-shadow 150ms ease, transform 150ms ease;
 }
 
-button:hover,
-button:focus-visible {
+button:hover {
   box-shadow: 0 0 0 3px rgba(129, 199, 132, 0.42);
-  outline: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--forest-green) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.25) !important;
+}
+
+:root[data-theme="dark"] :focus-visible {
+  outline: 2px solid var(--light-green) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px rgba(129, 199, 132, 0.35) !important;
 }
 
 button:active {
@@ -1505,6 +1549,170 @@ html[data-theme="dark"] .ai-unconfigured-panel {
 .pipeline-evidence-field strong {
   color: var(--text-muted);
 }
+
+/* Accessibility: Graph Tree Alternative */
+.accessible-graph-tree {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 8px 12px;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 2px 8px var(--shadow-color);
+  z-index: 5;
+}
+
+.accessible-tree-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.accessible-tree-count {
+  font-weight: normal;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.accessible-node-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  max-height: 220px;
+}
+
+.accessible-node-list:focus {
+  outline: 2px solid var(--forest-green);
+}
+
+.accessible-node-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.accessible-node-item:hover,
+.accessible-node-item:focus-visible,
+.accessible-node-item.focused {
+  background: var(--surface-muted);
+  outline: 2px solid var(--forest-green);
+}
+
+.accessible-node-item[aria-selected="true"] {
+  background: rgba(129, 199, 132, 0.25);
+  font-weight: 600;
+  border-left: 4px solid var(--forest-green);
+}
+
+.accessible-node-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accessible-node-shape {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  font-family: monospace;
+}
+
+.accessible-node-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.accessible-empty-state {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Accessibility: Non-color status & severity indicators */
+.badge-severity-error::before {
+  content: "▲ [!] ";
+  font-weight: bold;
+}
+
+.badge-severity-warning::before {
+  content: "◆ [?] ";
+  font-weight: bold;
+}
+
+.badge-severity-info::before {
+  content: "● [i] ";
+  font-weight: bold;
+}
+
+.compare-card.card-added .compare-card-label::before {
+  content: "[+] ";
+  font-weight: bold;
+}
+
+.compare-card.card-removed .compare-card-label::before {
+  content: "[-] ";
+  font-weight: bold;
+}
+
+.compare-card.card-changed .compare-card-label::before {
+  content: "[~] ";
+  font-weight: bold;
+}
+
+.compare-card.card-unchanged .compare-card-label::before {
+  content: "[=] ";
+  font-weight: bold;
+}
+
+/* Accessibility: Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Accessibility: High Contrast / Forced Colors */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid Highlight !important;
+    outline-offset: 2px !important;
+  }
+  .tab.active {
+    border-bottom: 3px solid Highlight !important;
+  }
+  .badge,
+  .accessible-node-shape,
+  .compare-card {
+    border: 1px solid CanvasText !important;
+  }
+}
+
 
 
 

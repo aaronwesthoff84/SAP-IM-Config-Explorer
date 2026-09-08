@@ -701,6 +701,22 @@ findingsEl.addEventListener("click", (event) => {
   }
 });
 
+findingsEl.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    if (event.target.tagName === "BUTTON" || event.target.tagName === "INPUT" || event.target.tagName === "SELECT") return;
+    const findingItem = event.target.closest(".finding");
+    if (findingItem) {
+      event.preventDefault();
+      const findingId = findingItem.dataset.findingId;
+      const finding = (state.graph.findings || []).find((f) => f.id === findingId);
+      if (finding) {
+        selectFinding(finding);
+        announceA11y(`Selected finding ${finding.code}, severity ${finding.severity}`);
+      }
+    }
+  }
+});
+
 document.getElementById("lineage-back-button").addEventListener("click", () => switchWorkspace("graph-view"));
 topologySelect.addEventListener("change", () => {
   if (npFileInput.files.length || pFileInput.files.length) {
@@ -723,22 +739,79 @@ initializeTheme();
 loadSessionsFromStorage();
 fetchAiStatus();
 
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    if (tab.dataset.view === "lineage-view" && state.selectedRule) {
-      const rule = state.graph.nodes.find(
-        (node) => node.id === state.selectedRule.id && node.snapshotId === state.selectedRule.snapshotId
-      );
-      if (rule) return openRuleLineage(rule);
-    }
-    switchWorkspace(tab.dataset.view);
+function announceA11y(message) {
+  const el = document.getElementById("a11y-announcements");
+  if (!el || !message) return;
+  el.textContent = "";
+  setTimeout(() => {
+    el.textContent = message;
+  }, 40);
+}
+
+function initializeTabs() {
+  const tabsContainer = document.querySelector(".tabs");
+  if (!tabsContainer) return;
+
+  tabsContainer.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      if (tab.dataset.view === "lineage-view" && state.selectedRule) {
+        const rule = state.graph.nodes.find(
+          (node) => node.id === state.selectedRule.id && node.snapshotId === state.selectedRule.snapshotId
+        );
+        if (rule) return openRuleLineage(rule);
+      }
+      switchWorkspace(tab.dataset.view);
+    });
   });
-});
+
+  tabsContainer.addEventListener("keydown", (e) => {
+    const tabs = Array.from(tabsContainer.querySelectorAll(".tab:not([disabled])"));
+    if (!tabs.length) return;
+    const currentIndex = tabs.findIndex((t) => t.classList.contains("active"));
+
+    let targetTab = null;
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      targetTab = tabs[(currentIndex + 1) % tabs.length];
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      targetTab = tabs[(currentIndex - 1 + tabs.length) % tabs.length];
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      targetTab = tabs[0];
+    } else if (e.key === "End") {
+      e.preventDefault();
+      targetTab = tabs[tabs.length - 1];
+    }
+
+    if (targetTab) {
+      targetTab.focus();
+      targetTab.click();
+    }
+  });
+}
+initializeTabs();
 
 function switchWorkspace(viewId) {
-  document.querySelectorAll(".tab, .view").forEach((el) => el.classList.remove("active"));
-  document.querySelector(`.tab[data-view="${viewId}"]`).classList.add("active");
-  document.getElementById(viewId).classList.add("active");
+  const tabs = document.querySelectorAll(".tab");
+  tabs.forEach((el) => {
+    const isActive = el.dataset.view === viewId;
+    el.classList.toggle("active", isActive);
+    el.setAttribute("aria-selected", isActive ? "true" : "false");
+    el.setAttribute("tabindex", isActive ? "0" : "-1");
+  });
+
+  document.querySelectorAll(".view").forEach((el) => el.classList.remove("active"));
+  const targetView = document.getElementById(viewId);
+  if (targetView) {
+    targetView.classList.add("active");
+  }
+
+  const activeTab = document.querySelector(`.tab[data-view="${viewId}"]`);
+  if (activeTab) {
+    announceA11y(`Switched to ${activeTab.textContent.trim()} view`);
+  }
+
   if (viewId === "lineage-view") {
     state.lineageCy?.resize().fit();
   } else if (viewId === "graph-view") {
@@ -1349,6 +1422,164 @@ async function render3DGraph(nodes, links) {
   state.graph3DInstance.graphData({ nodes: nodesClone, links: linksClone });
 }
 
+function renderAccessibleGraphTree(nodes, links) {
+  const countEl = document.getElementById("accessible-tree-count");
+  const listEl = document.getElementById("accessible-node-list");
+  if (!listEl) return;
+
+  const nodeCount = nodes ? nodes.length : 0;
+  if (countEl) {
+    countEl.textContent = `${nodeCount} node${nodeCount === 1 ? "" : "s"}`;
+  }
+
+  if (!nodes || nodes.length === 0) {
+    listEl.innerHTML = '<li class="accessible-empty-state" role="option">No nodes match current filters.</li>';
+    return;
+  }
+
+  const linkCountByNodeId = {};
+  (links || []).forEach((l) => {
+    const s = typeof l.source === "object" ? l.source.id : l.source;
+    const t = typeof l.target === "object" ? l.target.id : l.target;
+    linkCountByNodeId[s] = (linkCountByNodeId[s] || 0) + 1;
+    linkCountByNodeId[t] = (linkCountByNodeId[t] || 0) + 1;
+  });
+
+  const findingsByNodeId = {};
+  (state.graph.findings || []).forEach((f) => {
+    (f.nodeIds || []).forEach((nid) => {
+      findingsByNodeId[nid] = findingsByNodeId[nid] || [];
+      findingsByNodeId[nid].push(f);
+    });
+  });
+
+  const sortedNodes = [...nodes].sort((a, b) => {
+    const typeCompare = (a.type || "").localeCompare(b.type || "");
+    if (typeCompare !== 0) return typeCompare;
+    return (a.label || a.name || a.id || "").localeCompare(b.label || b.name || b.id || "");
+  });
+
+  const shapePrefixes = {
+    Plan: "[PLAN]",
+    PlanComponent: "[COMP]",
+    Rule: "[RULE]",
+    Formula: "[FORM]",
+    MDLookupTable: "[TABL]",
+    Territory: "[TERR]",
+    Position: "[POSN]",
+    Title: "[TITL]",
+    FixedValue: "[VALU]",
+  };
+
+  listEl.innerHTML = sortedNodes
+    .map((node, index) => {
+      const isSelected = state.selectedNode && state.selectedNode.id === node.id;
+      const shape = shapePrefixes[node.type] || `[${(node.type || "NODE").slice(0, 4).toUpperCase()}]`;
+      const nodeLinks = linkCountByNodeId[node.id] || 0;
+      const nodeFindings = findingsByNodeId[node.id] || [];
+      const errorCount = nodeFindings.filter((f) => f.severity === "error").length;
+      const warnCount = nodeFindings.filter((f) => f.severity === "warning").length;
+
+      let findingBadge = "";
+      if (errorCount > 0) {
+        findingBadge = `<span class="accessible-node-badge" style="color: var(--alert-red);" title="${errorCount} error(s)">▲ [! ${errorCount}]</span>`;
+      } else if (warnCount > 0) {
+        findingBadge = `<span class="accessible-node-badge" style="color: var(--warning-amber);" title="${warnCount} warning(s)">◆ [? ${warnCount}]</span>`;
+      }
+
+      const effectiveText = node.effectiveStartDate
+        ? ` (${node.effectiveStartDate.slice(0, 10)}${node.effectiveEndDate ? " to " + node.effectiveEndDate.slice(0, 10) : ""})`
+        : "";
+
+      return `
+        <li class="accessible-node-item"
+            role="option"
+            id="a11y-node-${escapeHtml(node.id)}"
+            data-node-id="${escapeHtml(node.id)}"
+            aria-selected="${isSelected ? "true" : "false"}"
+            tabindex="${index === 0 ? "0" : "-1"}">
+          <div class="accessible-node-info">
+            <span class="accessible-node-shape" aria-hidden="true">${shape}</span>
+            <span class="accessible-node-label"><strong>${escapeHtml(node.label || node.name || node.id)}</strong>${escapeHtml(effectiveText)}</span>
+          </div>
+          <div class="accessible-node-meta">
+            ${findingBadge}
+            <span class="accessible-node-badge" title="Connection count">[Links: ${nodeLinks}]</span>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+}
+
+function initializeAccessibleTree() {
+  const toggleBtn = document.getElementById("toggle-accessible-tree");
+  const treeContainer = document.getElementById("accessible-graph-tree");
+  const listEl = document.getElementById("accessible-node-list");
+
+  if (toggleBtn && treeContainer) {
+    toggleBtn.addEventListener("click", () => {
+      const willShow = treeContainer.hidden;
+      treeContainer.hidden = !willShow;
+      toggleBtn.setAttribute("aria-expanded", String(willShow));
+      if (willShow) {
+        const first = listEl?.querySelector(".accessible-node-item[tabindex='0']") || listEl?.querySelector(".accessible-node-item");
+        if (first) first.focus();
+        announceA11y("Accessible Graph Tree opened");
+      } else {
+        announceA11y("Accessible Graph Tree closed");
+      }
+    });
+  }
+
+  if (listEl) {
+    listEl.addEventListener("click", (e) => {
+      const item = e.target.closest(".accessible-node-item");
+      if (!item) return;
+      const nodeId = item.dataset.nodeId;
+      const node = state.graph.nodes.find((n) => n.id === nodeId);
+      if (node) selectAndFocusNode(node);
+    });
+
+    listEl.addEventListener("keydown", (e) => {
+      const items = Array.from(listEl.querySelectorAll(".accessible-node-item"));
+      if (!items.length) return;
+      const currentIndex = items.findIndex((item) => item === document.activeElement || item.getAttribute("aria-selected") === "true");
+
+      let nextIndex = -1;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        nextIndex = currentIndex >= 0 && currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        nextIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        e.preventDefault();
+        nextIndex = items.length - 1;
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const currentItem = (document.activeElement && document.activeElement.closest(".accessible-node-item")) || items[Math.max(0, currentIndex)];
+        if (currentItem) {
+          const nodeId = currentItem.dataset.nodeId;
+          const node = state.graph.nodes.find((n) => n.id === nodeId);
+          if (node) selectAndFocusNode(node);
+        }
+        return;
+      }
+
+      if (nextIndex >= 0) {
+        items.forEach((item) => (item.tabIndex = -1));
+        items[nextIndex].tabIndex = 0;
+        items[nextIndex].focus();
+      }
+    });
+  }
+}
+initializeAccessibleTree();
+
 function renderGraph() {
   if (state.cy) {
     state.cy.nodes().forEach((n) => {
@@ -1366,6 +1597,7 @@ function renderGraph() {
     effectiveDate: effectiveDateFilter.value,
   });
   renderFilterSummary(nodes.length, links.length);
+  renderAccessibleGraphTree(nodes, links);
   const elements = [
     ...nodes.map((node, index) => {
       const saved = state.nodePositions[node.id];
@@ -1583,6 +1815,7 @@ function renderFilterSummary(visibleNodeCount, visibleLinkCount) {
     ? `Active filters: ${activeFilters.map(([label, value]) => `${label}: ${value}`).join("; ")}`
     : "Active filters: None";
   clearFiltersButton.disabled = activeFilters.length === 0;
+  announceA11y(filterResultsEl.textContent);
 }
 
 function clearAllFilters() {
@@ -1593,6 +1826,7 @@ function clearAllFilters() {
   confidenceFilter.value = "";
   effectiveDateFilter.value = "";
   renderGraphAndHtmlOutput();
+  announceA11y("All filters cleared. Showing all nodes.");
   if (state.selectedNode) showNodeDetails(state.selectedNode);
 }
 
@@ -1811,7 +2045,7 @@ function renderFindings(findings) {
     const selectedClass = isSelected ? "selected" : "";
 
     return `
-      <li class="finding ${escapeHtml(finding.severity || "warning")} ${stateClass} ${selectedClass}" data-finding-id="${escapeHtml(finding.id)}">
+      <li class="finding ${escapeHtml(finding.severity || "warning")} ${stateClass} ${selectedClass}" data-finding-id="${escapeHtml(finding.id)}" tabindex="0" role="article" aria-label="Finding ${escapeHtml(finding.code || "")}, severity ${escapeHtml(finding.severity || "warning")}">
         <div class="finding-header">
           <div class="finding-badges">
             <span class="badge badge-severity-${escapeHtml(finding.severity || "warning")}">${escapeHtml(finding.severity || "warning")}</span>
@@ -1955,7 +2189,25 @@ function getHtmlAnchorsForNode(node) {
 }
 
 function selectAndFocusNode(node) {
-  if (!state.cy) return;
+  if (!node) return;
+
+  // Sync accessible graph tree selection
+  const listItems = document.querySelectorAll("#accessible-node-list .accessible-node-item");
+  listItems.forEach((li) => {
+    const isThisNode = li.dataset.nodeId === node.id;
+    li.setAttribute("aria-selected", isThisNode ? "true" : "false");
+    li.tabIndex = isThisNode ? 0 : -1;
+    if (isThisNode) {
+      li.scrollIntoView({ block: "nearest" });
+    }
+  });
+
+  announceA11y(`Selected ${node.type}: ${node.label || node.name || node.id}`);
+
+  if (!state.cy) {
+    showNodeDetails(node);
+    return;
+  }
   const cyNode = state.cy.getElementById(node.id);
   if (cyNode && cyNode.length > 0) {
     state.cy.elements().unselect();
