@@ -8,3 +8,6 @@ node_modules/
 playwright-report/
 test-results/
 pytest_tmp/
+dist/
+wheels/
+.runtime/
