@@ -81,6 +81,10 @@ const state = {
   },
   selectedFindingId: null,
   editingWaiverFindingId: null,
+  pipelineCy: null,
+  pipelineFlow: null,
+  selectedPipelinePlan: "",
+  selectedPipelineOrderStatus: "",
 };
 
 window.state = state;
@@ -331,6 +335,19 @@ const lineageTab = document.getElementById("lineage-tab");
 const lineageSummaryEl = document.getElementById("lineage-summary");
 const lineageDescriptionEl = document.getElementById("lineage-description");
 const lineageEmptyEl = document.getElementById("lineage-empty");
+const pipelineTab = document.getElementById("pipeline-tab");
+const pipelinePlanFilter = document.getElementById("pipeline-plan-filter");
+const pipelineOrderFilter = document.getElementById("pipeline-order-filter");
+const pipelineRelayoutButton = document.getElementById("pipeline-relayout-button");
+const pipelineFitButton = document.getElementById("pipeline-fit-button");
+const pipelineSummaryText = document.getElementById("pipeline-summary-text");
+const pipelineSummaryMetrics = document.getElementById("pipeline-summary-metrics");
+const pipelineEmptyEl = document.getElementById("pipeline-empty");
+const pipelineGraphEl = document.getElementById("pipeline-graph");
+const pipelineEvidencePanel = document.getElementById("pipeline-evidence-panel");
+const pipelineEvidenceTitle = document.getElementById("pipeline-evidence-title");
+const pipelineEvidenceBody = document.getElementById("pipeline-evidence-body");
+const pipelineEvidenceClose = document.getElementById("pipeline-evidence-close");
 const typeFilter = document.getElementById("type-filter");
 const searchInput = document.getElementById("search");
 const sourceFileFilter = document.getElementById("source-file-filter");
@@ -402,6 +419,43 @@ effectiveDateFilter.addEventListener("input", () => {
   if (state.selectedNode) showNodeDetails(state.selectedNode);
 });
 clearFiltersButton.addEventListener("click", clearAllFilters);
+
+if (pipelinePlanFilter) {
+  pipelinePlanFilter.addEventListener("change", () => {
+    state.selectedPipelinePlan = pipelinePlanFilter.value;
+    renderPipelineFlow();
+  });
+}
+if (pipelineOrderFilter) {
+  pipelineOrderFilter.addEventListener("change", () => {
+    state.selectedPipelineOrderStatus = pipelineOrderFilter.value;
+    renderPipelineFlow();
+  });
+}
+if (pipelineRelayoutButton) {
+  pipelineRelayoutButton.addEventListener("click", () => {
+    if (state.pipelineCy) {
+      state.pipelineCy.layout({
+        name: "breadthfirst",
+        directed: true,
+        animate: false,
+        fit: true,
+        padding: 36,
+        spacingFactor: 1.4,
+      }).run();
+    }
+  });
+}
+if (pipelineFitButton) {
+  pipelineFitButton.addEventListener("click", () => {
+    state.pipelineCy?.fit(undefined, 36);
+  });
+}
+if (pipelineEvidenceClose) {
+  pipelineEvidenceClose.addEventListener("click", () => {
+    if (pipelineEvidencePanel) pipelineEvidencePanel.hidden = true;
+  });
+}
 
 if (findingsSeverityFilter) {
   findingsSeverityFilter.addEventListener("change", (e) => {
@@ -698,6 +752,12 @@ function switchWorkspace(viewId) {
     if (typeof updateAiDocsPanel === "function") {
       updateAiDocsPanel();
     }
+  } else if (viewId === "pipeline-view") {
+    if (!state.pipelineFlow) {
+      renderPipelineFlow();
+    } else {
+      state.pipelineCy?.resize().fit(undefined, 36);
+    }
   }
 }
 
@@ -794,6 +854,10 @@ function loadGraphWorkspace(payload) {
   topologySelect.value = payload.topologyMode;
   clearSelectedRule();
   destroyLineageRenderer();
+  if (pipelineTab) pipelineTab.disabled = false;
+  populatePipelinePlanFilter(payload);
+  state.pipelineFlow = null;
+  destroyPipelineRenderer();
   resetDetails();
   populateFilterControls(payload);
   if (effectiveDateFilter && payload.asOfDate) {
@@ -1073,6 +1137,9 @@ function applyTheme(theme, persist = true) {
     renderHtmlOutput();
   }
   if (state.graph.nodes.length) renderGraph();
+  if (state.pipelineCy) {
+    state.pipelineCy.style(pipelineCytoscapeStyles(graphThemeColors()));
+  }
 }
 
 function currentTheme() {
@@ -2103,6 +2170,374 @@ function destroyLineageRenderer() {
   lineageSummaryEl.textContent = "Select a Rule to view its resolved containment lineage.";
   lineageDescriptionEl.replaceChildren();
 }
+
+const PIPELINE_STAGE_COLORS = {
+  allocate: { bg: "#7b1fa2", text: "#ffffff", border: "#4a148c" },
+  credit: { bg: "#1976d2", text: "#ffffff", border: "#0d47a1" },
+  primary_measurement: { bg: "#0097a7", text: "#ffffff", border: "#006064" },
+  secondary_measurement: { bg: "#00796b", text: "#ffffff", border: "#004d40" },
+  incentive: { bg: "#2e7d32", text: "#ffffff", border: "#1b5e20" },
+  deposit: { bg: "#ef6c00", text: "#ffffff", border: "#e65100" },
+  payment: { bg: "#c62828", text: "#ffffff", border: "#b71c1c" },
+  unknown: { bg: "#616161", text: "#ffffff", border: "#424242" },
+};
+
+function populatePipelinePlanFilter(graph) {
+  if (!pipelinePlanFilter) return;
+  const plans = (graph?.nodes || []).filter((n) => n.type === "Plan");
+  const currentVal = pipelinePlanFilter.value;
+  pipelinePlanFilter.innerHTML = '<option value="">All Plans / Full Model</option>';
+  plans.forEach((plan) => {
+    const opt = document.createElement("option");
+    opt.value = plan.id;
+    opt.textContent = plan.label;
+    pipelinePlanFilter.appendChild(opt);
+  });
+  if (plans.some((p) => p.id === currentVal)) {
+    pipelinePlanFilter.value = currentVal;
+  } else {
+    pipelinePlanFilter.value = "";
+  }
+}
+
+function destroyPipelineRenderer() {
+  if (state.pipelineCy) {
+    state.pipelineCy.destroy();
+    state.pipelineCy = null;
+  }
+  if (pipelineGraphEl) {
+    pipelineGraphEl.replaceChildren();
+  }
+  if (pipelineEvidencePanel) {
+    pipelineEvidencePanel.hidden = true;
+  }
+  if (pipelineSummaryText) {
+    pipelineSummaryText.textContent = "Select or load configuration to analyze pipeline execution flow.";
+  }
+  if (pipelineSummaryMetrics) {
+    pipelineSummaryMetrics.replaceChildren();
+  }
+  if (pipelineEmptyEl) {
+    pipelineEmptyEl.hidden = true;
+  }
+}
+
+function pipelineCytoscapeStyles(graphTheme) {
+  return [
+    {
+      selector: "node",
+      style: {
+        shape: "round-rectangle",
+        "background-color": "data(stageBg)",
+        "border-color": "data(nodeBorderColor)",
+        "border-width": 2,
+        "border-style": "data(borderStyle)",
+        color: "#ffffff",
+        label: "data(label)",
+        "font-size": 11,
+        "font-weight": 600,
+        height: 52,
+        width: 140,
+        "text-valign": "center",
+        "text-halign": "center",
+        "text-wrap": "wrap",
+        "text-max-width": 130,
+        padding: 6,
+      },
+    },
+    {
+      selector: "node[orderStatus = 'unknown']",
+      style: {
+        "border-style": "dashed",
+        "border-color": "#ffa726",
+        "border-width": 3,
+      },
+    },
+    {
+      selector: "node:selected",
+      style: {
+        "border-color": "#ffffff",
+        "border-width": 4,
+      },
+    },
+    {
+      selector: "edge",
+      style: {
+        "curve-style": "bezier",
+        "line-color": "#2e7d32",
+        "target-arrow-color": "#2e7d32",
+        "target-arrow-shape": "triangle",
+        width: 2,
+        label: "data(edgeLabel)",
+        "font-size": 9,
+        color: graphTheme.text,
+        "text-background-color": graphTheme.labelBackground,
+        "text-background-opacity": 0.85,
+        "text-background-padding": 2,
+      },
+    },
+    {
+      selector: "edge[orderStatus = 'unknown']",
+      style: {
+        "line-style": "dashed",
+        "line-color": "#e65100",
+        "target-arrow-color": "#e65100",
+        "target-arrow-shape": "triangle",
+        width: 2.5,
+      },
+    },
+    {
+      selector: "edge:selected",
+      style: {
+        width: 4,
+        "line-color": graphTheme.accent,
+        "target-arrow-color": graphTheme.accent,
+      },
+    },
+  ];
+}
+
+async function renderPipelineFlow() {
+  if (!state.graph || !state.graph.nodes || state.graph.nodes.length === 0) {
+    if (pipelineSummaryText) {
+      pipelineSummaryText.textContent = "Load a configuration to view pipeline execution flow.";
+    }
+    return;
+  }
+
+  const planId = pipelinePlanFilter ? pipelinePlanFilter.value : "";
+  const orderFilter = pipelineOrderFilter ? pipelineOrderFilter.value : "";
+
+  let flowData = null;
+  try {
+    const url = `/api/pipeline-flow${planId ? `?plan_id=${encodeURIComponent(planId)}` : ""}`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.graph),
+    });
+    if (resp.ok) {
+      flowData = await resp.json();
+    }
+  } catch (err) {
+    console.warn("Failed to fetch pipeline flow from API:", err);
+  }
+
+  if (!flowData) {
+    if (pipelineSummaryText) {
+      pipelineSummaryText.textContent = "Unable to compute pipeline execution flow.";
+    }
+    return;
+  }
+
+  state.pipelineFlow = flowData;
+
+  let steps = flowData.steps || [];
+  let transitions = flowData.transitions || [];
+
+  if (orderFilter === "known") {
+    steps = steps.filter((s) => s.orderStatus === "known");
+    const stepIds = new Set(steps.map((s) => s.id));
+    transitions = transitions.filter((t) => t.orderStatus === "known" && stepIds.has(t.sourceStepId) && stepIds.has(t.targetStepId));
+  } else if (orderFilter === "unknown") {
+    const unknownTrans = transitions.filter((t) => t.orderStatus === "unknown");
+    const unknownNodeIds = new Set([
+      ...steps.filter((s) => s.orderStatus === "unknown").map((s) => s.id),
+      ...unknownTrans.flatMap((t) => [t.sourceStepId, t.targetStepId]),
+    ]);
+    steps = steps.filter((s) => unknownNodeIds.has(s.id));
+    const stepIds = new Set(steps.map((s) => s.id));
+    transitions = unknownTrans.filter((t) => stepIds.has(t.sourceStepId) && stepIds.has(t.targetStepId));
+  }
+
+  const scopeLabel = flowData.scopedPlanLabel || "Full Configuration";
+  if (pipelineSummaryText) {
+    pipelineSummaryText.textContent = `Pipeline execution flow for ${scopeLabel}: ${steps.length} step${steps.length === 1 ? "" : "s"}, ${transitions.length} transition${transitions.length === 1 ? "" : "s"}.`;
+  }
+
+  const knownCount = flowData.summary?.knownCount ?? transitions.filter((t) => t.orderStatus === "known").length;
+  const unknownCount = flowData.summary?.unknownCount ?? transitions.filter((t) => t.orderStatus === "unknown").length;
+
+  if (pipelineSummaryMetrics) {
+    pipelineSummaryMetrics.innerHTML = `
+      <span class="pipeline-badge known" title="${knownCount} transitions with verifiable deterministic execution order">${knownCount} Known Order</span>
+      ${unknownCount > 0 ? `<span class="pipeline-badge unknown" title="${unknownCount} transitions with unknown execution order (cannot be determined from source XML)">${unknownCount} Unknown Execution Order</span>` : ""}
+    `;
+  }
+
+  if (steps.length === 0) {
+    if (state.pipelineCy) {
+      state.pipelineCy.destroy();
+      state.pipelineCy = null;
+    }
+    if (pipelineEmptyEl) pipelineEmptyEl.hidden = false;
+    if (pipelineGraphEl) pipelineGraphEl.hidden = true;
+    return;
+  }
+
+  if (pipelineEmptyEl) pipelineEmptyEl.hidden = true;
+  if (pipelineGraphEl) pipelineGraphEl.hidden = false;
+
+  const graphTheme = graphThemeColors();
+
+  const cyElements = [];
+
+  steps.forEach((step) => {
+    const stageKey = step.stage || "unknown";
+    const stageColor = PIPELINE_STAGE_COLORS[stageKey] || PIPELINE_STAGE_COLORS.unknown;
+    const seqLabel = step.sequenceNumber !== null && step.sequenceNumber !== undefined ? ` (Seq: ${step.sequenceNumber})` : "";
+    const orderBadge = step.orderStatus === "unknown" ? " [Unknown Order]" : "";
+    cyElements.push({
+      data: {
+        id: step.id,
+        ruleId: step.ruleId,
+        label: `${step.label}\n[${step.stageLabel}]${seqLabel}${orderBadge}`,
+        stage: step.stage,
+        stageLabel: step.stageLabel,
+        stageBg: stageColor.bg,
+        nodeBorderColor: stageColor.border,
+        borderStyle: step.orderStatus === "unknown" ? "dashed" : "solid",
+        orderStatus: step.orderStatus,
+        sequenceNumber: step.sequenceNumber,
+        ruleSubtype: step.ruleSubtype,
+        planLabel: step.planLabel,
+        componentLabel: step.componentLabel,
+        sourceFile: step.sourceFile,
+        evidence: step.sourceEvidence,
+        isStep: true,
+      },
+    });
+  });
+
+  transitions.forEach((t) => {
+    const isUnknown = t.orderStatus === "unknown";
+    let edgeLabel = "";
+    if (isUnknown) {
+      edgeLabel = "Unknown Order";
+    } else if (t.transitionType === "explicit_sequence") {
+      edgeLabel = "Sequence";
+    }
+    cyElements.push({
+      data: {
+        id: t.id || `t_${t.sourceStepId}_${t.targetStepId}`,
+        source: t.sourceStepId,
+        target: t.targetStepId,
+        orderStatus: t.orderStatus,
+        transitionType: t.transitionType,
+        evidence: t.sourceEvidence,
+        sourceRuleLabel: t.sourceRuleLabel,
+        targetRuleLabel: t.targetRuleLabel,
+        edgeLabel,
+        isTransition: true,
+      },
+    });
+  });
+
+  if (state.pipelineCy) {
+    state.pipelineCy.destroy();
+    state.pipelineCy = null;
+  }
+
+  state.pipelineCy = cytoscape({
+    container: pipelineGraphEl,
+    elements: cyElements,
+    style: pipelineCytoscapeStyles(graphTheme),
+    layout: {
+      name: "breadthfirst",
+      directed: true,
+      animate: false,
+      fit: true,
+      padding: 36,
+      spacingFactor: 1.4,
+    },
+  });
+
+  state.pipelineCy.on("tap", "node", (evt) => {
+    showPipelineStepEvidence(evt.target.data());
+  });
+
+  state.pipelineCy.on("tap", "edge", (evt) => {
+    showPipelineTransitionEvidence(evt.target.data());
+  });
+
+  state.pipelineCy.on("tap", (evt) => {
+    if (evt.target === state.pipelineCy) {
+      if (pipelineEvidencePanel) pipelineEvidencePanel.hidden = true;
+    }
+  });
+}
+
+function showPipelineStepEvidence(d) {
+  if (!pipelineEvidencePanel || !pipelineEvidenceBody || !pipelineEvidenceTitle) return;
+  pipelineEvidenceTitle.textContent = `Pipeline Step: ${d.label.split('\n')[0]}`;
+  const isUnknown = d.orderStatus === "unknown";
+  const badgeClass = isUnknown ? "unknown" : "known";
+  const badgeText = isUnknown ? "Unknown Execution Order" : "Known Execution Order";
+
+  pipelineEvidenceBody.innerHTML = `
+    <div class="pipeline-evidence-field">
+      <span class="pipeline-badge ${badgeClass}">${escapeHtml(badgeText)}</span>
+    </div>
+    <div class="pipeline-evidence-field">
+      <strong>Stage:</strong> ${escapeHtml(d.stageLabel || d.stage)}
+    </div>
+    ${d.sequenceNumber !== null && d.sequenceNumber !== undefined ? `
+    <div class="pipeline-evidence-field">
+      <strong>Sequence / Order:</strong> ${escapeHtml(String(d.sequenceNumber))}
+    </div>` : ""}
+    <div class="pipeline-evidence-field">
+      <strong>Rule Type:</strong> ${escapeHtml(d.ruleSubtype || "Rule")}
+    </div>
+    ${d.planLabel ? `
+    <div class="pipeline-evidence-field">
+      <strong>Plan:</strong> ${escapeHtml(d.planLabel)}
+    </div>` : ""}
+    ${d.componentLabel ? `
+    <div class="pipeline-evidence-field">
+      <strong>Plan Component:</strong> ${escapeHtml(d.componentLabel)}
+    </div>` : ""}
+    ${d.sourceFile ? `
+    <div class="pipeline-evidence-field">
+      <strong>Source File:</strong> ${escapeHtml(d.sourceFile)}
+    </div>` : ""}
+    <div class="pipeline-evidence-field" style="margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 6px;">
+      <strong>Classification Evidence:</strong>
+      <div style="margin-top: 4px; color: var(--text-muted); font-style: italic;">${escapeHtml(d.evidence || "No evidence recorded.")}</div>
+    </div>
+  `;
+  pipelineEvidencePanel.hidden = false;
+}
+
+function showPipelineTransitionEvidence(d) {
+  if (!pipelineEvidencePanel || !pipelineEvidenceBody || !pipelineEvidenceTitle) return;
+  pipelineEvidenceTitle.textContent = "Pipeline Transition Evidence";
+  const isUnknown = d.orderStatus === "unknown";
+  const badgeClass = isUnknown ? "unknown" : "known";
+  const badgeText = isUnknown ? "Unknown Execution Order" : "Deterministic Precedence";
+
+  pipelineEvidenceBody.innerHTML = `
+    <div class="pipeline-evidence-field">
+      <span class="pipeline-badge ${badgeClass}">${escapeHtml(badgeText)}</span>
+    </div>
+    <div class="pipeline-evidence-field">
+      <strong>Transition Type:</strong> ${escapeHtml(d.transitionType || "transition")}
+    </div>
+    <div class="pipeline-evidence-field">
+      <strong>Source Rule:</strong> ${escapeHtml(d.sourceRuleLabel || d.source)}
+    </div>
+    <div class="pipeline-evidence-field">
+      <strong>Target Rule:</strong> ${escapeHtml(d.targetRuleLabel || d.target)}
+    </div>
+    <div class="pipeline-evidence-field" style="margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 6px;">
+      <strong>Order Determination Evidence:</strong>
+      <div style="margin-top: 4px; color: var(--text-muted); line-height: 1.4;">${escapeHtml(d.evidence || "No evidence recorded.")}</div>
+    </div>
+  `;
+  pipelineEvidencePanel.hidden = false;
+}
+
+window.renderPipelineFlow = renderPipelineFlow;
+window.PIPELINE_STAGE_COLORS = PIPELINE_STAGE_COLORS;
 
 function hierarchyFor(node) {
   const nodesById = new Map(state.graph.nodes.map((item) => [item.id, item]));

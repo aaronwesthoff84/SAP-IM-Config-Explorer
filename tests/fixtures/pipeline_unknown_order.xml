@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Ambiguous Execution Plan" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Plan with unsequenced sibling rules">
+      <COMPONENT_REF NAME="Unsequenced Component" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT ID="PC-UNSEQ" NAME="Unsequenced Component" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Unsequenced rules container">
+      <RULE_REFS>
+        <RULE_REF NAME="Commission Plan A" />
+        <RULE_REF NAME="Commission Plan B" />
+        <RULE_REF NAME="Custom Legacy Handler" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE ID="R-COMM-A" NAME="Commission Plan A" TYPE="COMMISSION" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Commission rule A without sequence" />
+    <RULE ID="R-COMM-B" NAME="Commission Plan B" TYPE="COMMISSION" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Commission rule B without sequence" />
+    <RULE ID="R-CUSTOM" NAME="Custom Legacy Handler" TYPE="CUSTOM_WORKFLOW_PLUGIN" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Unmapped stage rule" />
+  </RULE_SET>
+</DATA_IMPORT>

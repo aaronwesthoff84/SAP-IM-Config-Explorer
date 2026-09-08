@@ -52,6 +52,12 @@ class _RuleExtractor:
         if description and description.strip():
             metadata["description"] = description.strip()
 
+        for seq_attr in ("SEQUENCE", "ORDER", "PRIORITY", "PROCESSING_ORDER"):
+            val = element.get(seq_attr) or element.get(seq_attr.lower())
+            if val is not None and val.strip():
+                metadata["sequence"] = val.strip()
+                break
+
         return ExtractionBatch(
             objects=[
                 ObjectCandidate(
