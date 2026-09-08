@@ -4,7 +4,18 @@ SAP IM Config Explorer is a local-first tool for reviewing XML configuration exp
 
 The application runs entirely on the workstation. It does not require cloud services or runtime CDN assets.
 
-## Install
+## Windows Offline Launcher & Operations
+
+For offline Windows deployment without manual development setup:
+- Run `.\scripts\windows\launch.ps1` (or double-click `scripts\windows\launch.bat`).
+- Health check: `.\scripts\windows\healthcheck.ps1`
+- Stop server: `.\scripts\windows\stop.ps1`
+- Safe uninstall: `.\scripts\windows\uninstall.ps1`
+- Build offline package: `.\scripts\windows\package.ps1`
+
+See [DISTRIBUTION.md](DISTRIBUTION.md) for full offline architecture, operational lifecycle, user data location, and upgrade policy.
+
+## Install (Development)
 
 Use PowerShell from this project directory:
 
