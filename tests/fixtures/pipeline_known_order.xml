@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DATA_IMPORT VERSION="16.0">
+  <PLAN_SET>
+    <PLAN NAME="Sales Commission Plan" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Sales commission pipeline test plan">
+      <COMPONENT_REF NAME="Crediting Component" />
+      <COMPONENT_REF NAME="Measurement Component" />
+      <COMPONENT_REF NAME="Incentive Component" />
+      <COMPONENT_REF NAME="Deposit Component" />
+    </PLAN>
+  </PLAN_SET>
+  <PLANCOMPONENT_SET>
+    <PLANCOMPONENT ID="PC-CREDIT" NAME="Crediting Component" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Crediting container">
+      <RULE_REFS>
+        <RULE_REF NAME="Direct Credit Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+    <PLANCOMPONENT ID="PC-MEASURE" NAME="Measurement Component" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Measurement container">
+      <RULE_REFS>
+        <RULE_REF NAME="Base Measurement Rule" />
+        <RULE_REF NAME="Tier Measurement Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+    <PLANCOMPONENT ID="PC-INCENTIVE" NAME="Incentive Component" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Incentive container">
+      <RULE_REFS>
+        <RULE_REF NAME="Standard Commission Rule" />
+        <RULE_REF NAME="Accelerator Commission Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+    <PLANCOMPONENT ID="PC-DEPOSIT" NAME="Deposit Component" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Deposit container">
+      <RULE_REFS>
+        <RULE_REF NAME="Standard Deposit Rule" />
+      </RULE_REFS>
+    </PLANCOMPONENT>
+  </PLANCOMPONENT_SET>
+  <RULE_SET>
+    <RULE ID="R-CREDIT" NAME="Direct Credit Rule" TYPE="DIRECT_TRANSACTION_CREDIT" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Credit allocation rule">
+      <ACTION_EXPRESSION_SET>
+        <ACTION_EXPRESSION>
+          <FUNCTION ID="DIRECT_TRANSACTION_CREDIT_ALLGAs">
+            <CREDIT_TYPE>Sales Revenue</CREDIT_TYPE>
+          </FUNCTION>
+        </ACTION_EXPRESSION>
+      </ACTION_EXPRESSION_SET>
+    </RULE>
+    <RULE ID="R-MEASURE-1" NAME="Base Measurement Rule" TYPE="PRIMARY_MEASUREMENT" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Primary measurement rule" />
+    <RULE ID="R-MEASURE-2" NAME="Tier Measurement Rule" TYPE="SECONDARY_MEASUREMENT" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Secondary measurement rule" />
+    <RULE ID="R-COMM-1" NAME="Standard Commission Rule" TYPE="COMMISSION" SEQUENCE="1" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Primary commission calculation" />
+    <RULE ID="R-COMM-2" NAME="Accelerator Commission Rule" TYPE="COMMISSION" SEQUENCE="2" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Accelerator bonus calculation" />
+    <RULE ID="R-DEPOSIT" NAME="Standard Deposit Rule" TYPE="DEPOSIT" EFFECTIVE_START_DATE="2026-01-01" EFFECTIVE_END_DATE="2200-01-01" DESCRIPTION="Deposit release rule" />
+  </RULE_SET>
+</DATA_IMPORT>

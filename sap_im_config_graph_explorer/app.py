@@ -6,10 +6,12 @@ import os
 from pathlib import Path
 import httpx
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone
+
+from sap_im_config_graph_explorer.pipeline import derive_pipeline_flow
 
 from sap_im_config_graph_explorer import graph_import
 from sap_im_config_graph_explorer.ai_provider import (
@@ -600,6 +602,22 @@ async def export_graph_neo4j(payload: dict[str, object]) -> Response:
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{NEO4J_BUNDLE_FILENAME}"'},
     )
+
+
+@app.post("/api/pipeline-flow")
+async def get_pipeline_flow(
+    payload: dict[str, Any] = Body(...),
+    plan_id: str | None = Query(None),
+) -> dict[str, Any]:
+    try:
+        graph_data = payload.get("graph", payload)
+        doc = graph_document_from_payload(graph_data)
+        flow = derive_pipeline_flow(doc, plan_id=plan_id)
+        return flow.to_dict()
+    except PortableGraphExportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Pipeline flow derivation failed: {exc}") from exc
 
 
 @app.get("/api/ai/config")

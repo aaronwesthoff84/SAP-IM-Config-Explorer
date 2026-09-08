@@ -501,4 +501,26 @@ def test_compare_endpoint_non_xml_filename_returns_400():
     assert "Only .xml files are supported" in response.json()["error"]
 
 
+def test_pipeline_flow_endpoint_returns_flow_analysis():
+    client = TestClient(app)
+    fixture_path = ROOT / "tests" / "fixtures" / "pipeline_known_order.xml"
+    with fixture_path.open("rb") as f:
+        graph_res = client.post(
+            "/api/graph",
+            data={"topology_mode": "full"},
+            files={"np_files": ("pipeline_known_order.xml", f, "application/xml")},
+        )
+    assert graph_res.status_code == 200
+    graph_payload = graph_res.json()
+
+    flow_res = client.post("/api/pipeline-flow", json=graph_payload)
+    assert flow_res.status_code == 200
+    flow_data = flow_res.json()
+    assert flow_data["ok"] is True
+    assert flow_data["summary"]["totalSteps"] == 6
+    assert len(flow_data["stages"]) >= 5
+    assert len(flow_data["transitions"]) > 0
+
+
+
 

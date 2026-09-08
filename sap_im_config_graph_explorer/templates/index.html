@@ -128,6 +128,7 @@
       <div class="tabs">
         <button class="tab active" type="button" data-view="graph-view">Graph</button>
         <button id="lineage-tab" class="tab" type="button" data-view="lineage-view" disabled>Lineage</button>
+        <button id="pipeline-tab" class="tab" type="button" data-view="pipeline-view" disabled>Pipeline Flow</button>
         <button class="tab" type="button" data-view="html-output-view">HTML Output</button>
         <button id="ai-docs-tab" class="tab" type="button" data-view="ai-docs-view">AI Docs</button>
         <button id="compare-tab" class="tab" type="button" data-view="compare-view">Compare XML</button>
@@ -163,6 +164,39 @@
         <div id="lineage-empty" class="lineage-empty" role="status" hidden></div>
         <ul id="lineage-description" class="visually-hidden" aria-label="Lineage contents"></ul>
         <div id="lineage-graph" aria-describedby="lineage-summary lineage-description" aria-label="Rule lineage graph" role="img" hidden></div>
+      </div>
+      <div id="pipeline-view" class="view">
+        <div id="pipeline-toolbar" class="pipeline-toolbar" role="toolbar" aria-label="Pipeline controls">
+          <div class="pipeline-toolbar-group">
+            <label for="pipeline-plan-filter">Plan:</label>
+            <select id="pipeline-plan-filter" aria-label="Filter pipeline by plan">
+              <option value="">All Plans / Full Model</option>
+            </select>
+            <label for="pipeline-order-filter">Order Status:</label>
+            <select id="pipeline-order-filter" aria-label="Filter pipeline by order status">
+              <option value="">All Statuses</option>
+              <option value="known">Known Order Only</option>
+              <option value="unknown">Unknown Order Only</option>
+            </select>
+            <button type="button" id="pipeline-relayout-button" class="secondary" title="Recompute layout">Relayout</button>
+            <button type="button" id="pipeline-fit-button" class="secondary" title="Fit pipeline to viewport">Fit</button>
+          </div>
+        </div>
+        <div id="pipeline-summary" class="pipeline-summary" aria-live="polite">
+          <span id="pipeline-summary-text">Select or load configuration to analyze pipeline execution flow.</span>
+          <div id="pipeline-summary-metrics" class="pipeline-summary-metrics"></div>
+        </div>
+        <div id="pipeline-empty" class="pipeline-empty" role="status" hidden>
+          <p>No pipeline flow rules or steps found for the selected scope.</p>
+        </div>
+        <div id="pipeline-graph" aria-describedby="pipeline-summary" aria-label="Pipeline execution flow graph" role="img"></div>
+        <div id="pipeline-evidence-panel" class="pipeline-evidence-panel" hidden>
+          <div class="pipeline-evidence-header">
+            <h3 id="pipeline-evidence-title">Transition Evidence</h3>
+            <button type="button" id="pipeline-evidence-close" class="pipeline-evidence-close" aria-label="Close evidence panel">&times;</button>
+          </div>
+          <div id="pipeline-evidence-body" class="pipeline-evidence-body"></div>
+        </div>
       </div>
       <div id="html-output-view" class="view">
         <div class="html-actions">

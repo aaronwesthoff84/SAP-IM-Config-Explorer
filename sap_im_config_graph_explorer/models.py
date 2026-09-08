@@ -488,3 +488,109 @@ class ComparisonResult:
             data["asOfDate"] = self.asOfDate
         return data
 
+
+@dataclass
+class PipelineStepRecord:
+    id: str
+    ruleId: str
+    label: str
+    stage: str
+    stageLabel: str
+    stageRank: int
+    ruleSubtype: str = ""
+    sourceFile: str = ""
+    planId: str | None = None
+    planLabel: str | None = None
+    componentId: str | None = None
+    componentLabel: str | None = None
+    sequenceNumber: int | None = None
+    orderStatus: str = "known"
+    sourceEvidence: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "ruleId": self.ruleId,
+            "label": self.label,
+            "stage": self.stage,
+            "stageLabel": self.stageLabel,
+            "stageRank": self.stageRank,
+            "ruleSubtype": self.ruleSubtype,
+            "sourceFile": self.sourceFile,
+            "planId": self.planId,
+            "planLabel": self.planLabel,
+            "componentId": self.componentId,
+            "componentLabel": self.componentLabel,
+            "sequenceNumber": self.sequenceNumber,
+            "orderStatus": self.orderStatus,
+            "sourceEvidence": self.sourceEvidence,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class PipelineTransitionRecord:
+    id: str
+    sourceStepId: str
+    targetStepId: str
+    sourceRuleLabel: str
+    targetRuleLabel: str
+    transitionType: str
+    orderStatus: str
+    sourceEvidence: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "sourceStepId": self.sourceStepId,
+            "targetStepId": self.targetStepId,
+            "sourceRuleLabel": self.sourceRuleLabel,
+            "targetRuleLabel": self.targetRuleLabel,
+            "transitionType": self.transitionType,
+            "orderStatus": self.orderStatus,
+            "sourceEvidence": self.sourceEvidence,
+        }
+
+
+@dataclass
+class PipelineStageGroupRecord:
+    stage: str
+    label: str
+    rank: int
+    steps: list[PipelineStepRecord] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage": self.stage,
+            "label": self.label,
+            "rank": self.rank,
+            "steps": [s.to_dict() for s in self.steps],
+        }
+
+
+@dataclass
+class PipelineFlowResult:
+    ok: bool
+    scopedPlanId: str | None = None
+    scopedPlanLabel: str | None = None
+    availablePlans: list[dict[str, str]] = field(default_factory=list)
+    stages: list[PipelineStageGroupRecord] = field(default_factory=list)
+    steps: list[PipelineStepRecord] = field(default_factory=list)
+    transitions: list[PipelineTransitionRecord] = field(default_factory=list)
+    summary: dict[str, Any] = field(default_factory=dict)
+    error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "scopedPlanId": self.scopedPlanId,
+            "scopedPlanLabel": self.scopedPlanLabel,
+            "availablePlans": self.availablePlans,
+            "stages": [stage.to_dict() for stage in self.stages],
+            "steps": [step.to_dict() for step in self.steps],
+            "transitions": [trans.to_dict() for trans in self.transitions],
+            "summary": self.summary,
+            "error": self.error,
+        }
+
