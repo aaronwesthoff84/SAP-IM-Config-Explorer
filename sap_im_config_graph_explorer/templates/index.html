@@ -7,16 +7,18 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  <div id="a11y-announcements" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <header class="topbar">
     <h1>SAP IM Config Explorer</h1>
     <div class="topbar-actions">
       <div id="workspace-origin" class="workspace-origin" role="status" aria-live="polite">No graph loaded</div>
-      <div id="status" class="status">Ready</div>
+      <div id="status" class="status" role="status" aria-live="polite">Ready</div>
       <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
     </div>
   </header>
 
-  <main class="layout">
+  <main id="main-content" class="layout" tabindex="-1">
     <section class="panel controls">
       <h2>Files</h2>
       <form id="upload-form">
@@ -125,15 +127,15 @@
     </section>
 
     <section class="workspace">
-      <div class="tabs">
-        <button class="tab active" type="button" data-view="graph-view">Graph</button>
-        <button id="lineage-tab" class="tab" type="button" data-view="lineage-view" disabled>Lineage</button>
-        <button id="pipeline-tab" class="tab" type="button" data-view="pipeline-view" disabled>Pipeline Flow</button>
-        <button class="tab" type="button" data-view="html-output-view">HTML Output</button>
-        <button id="ai-docs-tab" class="tab" type="button" data-view="ai-docs-view">AI Docs</button>
-        <button id="compare-tab" class="tab" type="button" data-view="compare-view">Compare XML</button>
+      <div class="tabs" role="tablist" aria-label="Workspace views">
+        <button id="tab-graph-view" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="graph-view" tabindex="0" data-view="graph-view">Graph</button>
+        <button id="lineage-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="lineage-view" tabindex="-1" data-view="lineage-view" disabled>Lineage</button>
+        <button id="pipeline-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="pipeline-view" tabindex="-1" data-view="pipeline-view" disabled>Pipeline Flow</button>
+        <button id="tab-html-output-view" class="tab" type="button" role="tab" aria-selected="false" aria-controls="html-output-view" tabindex="-1" data-view="html-output-view">HTML Output</button>
+        <button id="ai-docs-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="ai-docs-view" tabindex="-1" data-view="ai-docs-view">AI Docs</button>
+        <button id="compare-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="compare-view" tabindex="-1" data-view="compare-view">Compare XML</button>
       </div>
-      <div id="graph-view" class="view active">
+      <div id="graph-view" class="view active" role="tabpanel" aria-labelledby="tab-graph-view" tabindex="0">
         <div id="graph-toolbar" class="graph-toolbar" role="toolbar" aria-label="Graph visual controls">
           <div class="graph-toolbar-group">
             <label for="layout-select">Layout:</label>
@@ -147,16 +149,26 @@
             <button type="button" id="relayout-button" class="secondary" title="Recompute layout">Relayout</button>
             <button type="button" id="fit-button" class="secondary" title="Fit graph to viewport">Fit</button>
             <button type="button" id="reset-view-button" class="secondary" title="Reset view and zoom">Reset</button>
+            <button type="button" id="toggle-accessible-tree" class="secondary" aria-expanded="false" aria-controls="accessible-graph-tree" title="Toggle accessible graph tree alternative">Accessible Tree</button>
           </div>
           <div class="graph-toolbar-group">
             <button type="button" id="export-png-button" class="secondary" title="Export visible graph as PNG image">Export PNG</button>
             <button type="button" id="export-svg-button" class="secondary" title="Export visible graph as SVG vector">Export SVG</button>
           </div>
         </div>
-        <div id="graph"></div>
+        <div id="accessible-graph-tree" class="accessible-graph-tree" role="region" aria-label="Accessible graph navigation" hidden>
+          <div class="accessible-tree-header">
+            <span class="accessible-tree-title">Accessible Graph Tree</span>
+            <span id="accessible-tree-count" class="accessible-tree-count" aria-live="polite">0 nodes</span>
+          </div>
+          <ul id="accessible-node-list" class="accessible-node-list" role="listbox" aria-label="Graph nodes list" tabindex="0">
+            <li class="accessible-empty-state">Generate a graph to explore nodes with keyboard.</li>
+          </ul>
+        </div>
+        <div id="graph" role="region" aria-label="Interactive graph canvas"></div>
         <div id="graph-3d" hidden></div>
       </div>
-      <div id="lineage-view" class="view">
+      <div id="lineage-view" class="view" role="tabpanel" aria-labelledby="lineage-tab" tabindex="0">
         <div class="lineage-actions">
           <button id="lineage-back-button" class="secondary" type="button">Back to Graph</button>
           <p id="lineage-summary" aria-live="polite">Select a Rule to view its resolved containment lineage.</p>
@@ -165,7 +177,7 @@
         <ul id="lineage-description" class="visually-hidden" aria-label="Lineage contents"></ul>
         <div id="lineage-graph" aria-describedby="lineage-summary lineage-description" aria-label="Rule lineage graph" role="img" hidden></div>
       </div>
-      <div id="pipeline-view" class="view">
+      <div id="pipeline-view" class="view" role="tabpanel" aria-labelledby="pipeline-tab" tabindex="0">
         <div id="pipeline-toolbar" class="pipeline-toolbar" role="toolbar" aria-label="Pipeline controls">
           <div class="pipeline-toolbar-group">
             <label for="pipeline-plan-filter">Plan:</label>
@@ -198,14 +210,14 @@
           <div id="pipeline-evidence-body" class="pipeline-evidence-body"></div>
         </div>
       </div>
-      <div id="html-output-view" class="view">
+      <div id="html-output-view" class="view" role="tabpanel" aria-labelledby="tab-html-output-view" tabindex="0">
         <div class="html-actions">
           <a id="html-output-download" download="sap-im-plan.html" hidden>Download HTML</a>
           <span id="html-output-meta" class="html-meta">Select an XML file and generate HTML.</span>
         </div>
         <iframe id="html-output-preview" title="HTML output preview" sandbox="allow-same-origin"></iframe>
       </div>
-      <div id="ai-docs-view" class="view">
+      <div id="ai-docs-view" class="view" role="tabpanel" aria-labelledby="ai-docs-tab" tabindex="0">
         <div class="ai-docs-actions">
           <button id="generate-ai-docs-button" type="button">Generate Documentation</button>
           <a id="download-ai-docs" download="sap-im-config-docs.md" hidden>Download Markdown</a>
@@ -217,7 +229,7 @@
           <div id="ai-docs-metadata" class="ai-metadata-footer"></div>
         </div>
       </div>
-      <div id="compare-view" class="view">
+      <div id="compare-view" class="view" role="tabpanel" aria-labelledby="compare-tab" tabindex="0">
         <div class="compare-actions-bar">
           <form id="compare-form" class="compare-form" onsubmit="return false;">
             <div class="compare-inputs-row">
@@ -289,7 +301,7 @@
       </div>
     </section>
 
-    <aside class="panel details">
+    <aside class="panel details" aria-label="Item details and validation findings">
       <div id="migration-risk-container" class="migration-risk-container" hidden>
         <h2>Migration Risk</h2>
         <div id="migration-risk-report" class="migration-risk-report"></div>
@@ -342,11 +354,11 @@
           </div>
         </div>
       </div>
-      <div id="validation-findings" class="validation-findings">
+      <div id="validation-findings" class="validation-findings" role="region" aria-label="Validation findings">
         <p class="empty-findings">Generate a graph to review validation findings.</p>
       </div>
       <h2>Details</h2>
-      <dl id="node-summary">
+      <dl id="node-summary" role="region" aria-label="Selected node details">
         <dt>Selection</dt>
         <dd>Select a graph item</dd>
       </dl>
