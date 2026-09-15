@@ -24,6 +24,22 @@ test('downloads the complete current graph as CSV, Markdown, and GraphML', async
     ['#export-markdown-button', 'sap-im-config-graph.md', 'Markdown'],
     ['#export-graphml-button', 'sap-im-config-graph.graphml', 'GraphML'],
     ['#export-neo4j-button', 'sap-im-config-graph-neo4j.zip', 'Neo4j'],
+    ['#export-cytoscape-button', 'sap-im-config-graph-cytoscape.json', 'Cytoscape JSON'],
+    ['#export-gexf-button', 'sap-im-config-graph.gexf', 'GEXF'],
+    ['#export-standalone-svg-button', 'sap-im-config-graph-interactive.svg', 'Interactive SVG'],
+  ]) {
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator(button).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(filename);
+    await expect(page.locator('#status')).toContainText(`graph ${label}`);
+  }
+
+  // Also verify toolbar export triggers
+  for (const [button, filename, label] of [
+    ['#toolbar-export-cytoscape-button', 'sap-im-config-graph-cytoscape.json', 'Cytoscape JSON'],
+    ['#toolbar-export-gexf-button', 'sap-im-config-graph.gexf', 'GEXF'],
+    ['#toolbar-export-standalone-svg-button', 'sap-im-config-graph-interactive.svg', 'Interactive SVG'],
   ]) {
     const downloadPromise = page.waitForEvent('download');
     await page.locator(button).click();

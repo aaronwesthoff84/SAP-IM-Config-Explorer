@@ -37,15 +37,21 @@ from sap_im_config_graph_explorer.models import (
 from sap_im_config_graph_explorer.simulator import CompensationRuleSimulator
 from sap_im_config_graph_explorer.portable_exports import (
     CSV_BUNDLE_FILENAME,
+    CYTOSCAPE_JSON_FILENAME,
+    GEXF_FILENAME,
     GRAPHML_FILENAME,
     MARKDOWN_FILENAME,
     NEO4J_BUNDLE_FILENAME,
+    STANDALONE_SVG_FILENAME,
     PortableGraphExportError,
     graph_document_from_payload,
     serialize_csv_bundle,
+    serialize_cytoscape_json,
+    serialize_gexf,
     serialize_graphml,
     serialize_markdown,
     serialize_neo4j_bundle,
+    serialize_standalone_svg,
 )
 from sap_im_config_graph_explorer.xml_loader import XmlLoadError
 from sap_im_config_graph_explorer.xml_to_html_converter import Transformer, XErr
@@ -700,6 +706,36 @@ async def export_graph_neo4j(payload: dict[str, object]) -> Response:
         content=serialize_neo4j_bundle(document),
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{NEO4J_BUNDLE_FILENAME}"'},
+    )
+
+
+@app.post("/api/export/cytoscape-json")
+async def export_cytoscape_json(payload: dict[str, object]) -> Response:
+    document = _portable_graph_document(payload)
+    return Response(
+        content=serialize_cytoscape_json(document),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{CYTOSCAPE_JSON_FILENAME}"'},
+    )
+
+
+@app.post("/api/export/gexf")
+async def export_gexf(payload: dict[str, object]) -> Response:
+    document = _portable_graph_document(payload)
+    return Response(
+        content=serialize_gexf(document),
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{GEXF_FILENAME}"'},
+    )
+
+
+@app.post("/api/export/standalone-svg")
+async def export_standalone_svg(payload: dict[str, object]) -> Response:
+    document = _portable_graph_document(payload)
+    return Response(
+        content=serialize_standalone_svg(document),
+        media_type="image/svg+xml",
+        headers={"Content-Disposition": f'attachment; filename="{STANDALONE_SVG_FILENAME}"'},
     )
 
 
