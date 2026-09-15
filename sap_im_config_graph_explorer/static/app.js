@@ -1949,6 +1949,41 @@ function cytoscapeStyles(graphTheme) {
           "line-opacity": 0.1,
         },
       },
+      {
+        selector: "node.sim-active-node",
+        style: {
+          "border-color": "#f59e0b",
+          "border-width": 5,
+          "background-color": "#fbbf24",
+          "color": "#0f172a",
+          "font-weight": "bold",
+          "z-index": 999,
+        },
+      },
+      {
+        selector: "node.sim-visited-node",
+        style: {
+          "border-color": "#10b981",
+          "border-width": 3,
+        },
+      },
+      {
+        selector: "edge.sim-active-edge",
+        style: {
+          "line-color": "#f59e0b",
+          "target-arrow-color": "#f59e0b",
+          width: 4,
+          "z-index": 998,
+        },
+      },
+      {
+        selector: "edge.sim-visited-edge",
+        style: {
+          "line-color": "#10b981",
+          "target-arrow-color": "#10b981",
+          width: 2.5,
+        },
+      },
   ];
 }
 
@@ -4492,5 +4527,391 @@ if (compareItemsList) {
     }
   });
 }
+
+// ==========================================
+// --- Interactive Compensation Rule Simulator ---
+// ==========================================
+const simulatorState = {
+  trace: null,
+  currentStepIndex: -1,
+  isPlaying: false,
+  timer: null,
+  speed: 800,
+};
+
+const simPresetSelect = document.getElementById("simulator-preset-select");
+const simForm = document.getElementById("simulator-form");
+const simEventType = document.getElementById("sim-event-type");
+const simAmount = document.getElementById("sim-amount");
+const simQuota = document.getElementById("sim-quota");
+const simSplit = document.getElementById("sim-split");
+const simParticipant = document.getElementById("sim-participant");
+const simPeriod = document.getElementById("sim-period");
+const simRunButton = document.getElementById("sim-run-button");
+const simBtnPrev = document.getElementById("sim-btn-prev");
+const simBtnPlay = document.getElementById("sim-btn-play");
+const simBtnNext = document.getElementById("sim-btn-next");
+const simBtnReset = document.getElementById("sim-btn-reset");
+const simSpeedSelect = document.getElementById("sim-speed-select");
+const simSummaryBanner = document.getElementById("simulator-summary-banner");
+const simMetricCredited = document.getElementById("sim-metric-credited");
+const simMetricAttainment = document.getElementById("sim-metric-attainment");
+const simMetricIncentive = document.getElementById("sim-metric-incentive");
+const simMetricDeposit = document.getElementById("sim-metric-deposit");
+const simStatusMessage = document.getElementById("simulator-status-message");
+const simStepsList = document.getElementById("simulator-steps-list");
+
+// Preset Handler
+if (simPresetSelect) {
+  simPresetSelect.addEventListener("change", (e) => {
+    const val = e.target.value;
+    if (val === "standard") {
+      if (simEventType) simEventType.value = "DirectSale";
+      if (simAmount) simAmount.value = 100000;
+      if (simQuota) simQuota.value = 100000;
+      if (simSplit) simSplit.value = 1.0;
+      if (simParticipant) simParticipant.value = "REP_001";
+    } else if (val === "overquota") {
+      if (simEventType) simEventType.value = "DirectSale";
+      if (simAmount) simAmount.value = 150000;
+      if (simQuota) simQuota.value = 100000;
+      if (simSplit) simSplit.value = 1.0;
+      if (simParticipant) simParticipant.value = "TOP_PERFORMER";
+    } else if (val === "split") {
+      if (simEventType) simEventType.value = "DirectSale";
+      if (simAmount) simAmount.value = 50000;
+      if (simQuota) simQuota.value = 100000;
+      if (simSplit) simSplit.value = 0.5;
+      if (simParticipant) simParticipant.value = "SPLIT_REP";
+    }
+  });
+}
+
+// Speed Control
+if (simSpeedSelect) {
+  simSpeedSelect.addEventListener("change", (e) => {
+    simulatorState.speed = parseInt(e.target.value, 10) || 800;
+    if (simulatorState.isPlaying) {
+      pauseSimulation();
+      playSimulation();
+    }
+  });
+}
+
+// Run Simulation Submit
+if (simForm) {
+  simForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await executeSimulation();
+  });
+}
+
+async function executeSimulation() {
+  if (!state.graph || !state.graph.nodes || state.graph.nodes.length === 0) {
+    if (simStatusMessage) {
+      simStatusMessage.textContent = "Please generate or load a configuration graph first before simulating rules.";
+      simStatusMessage.style.color = "#ef4444";
+    }
+    return;
+  }
+
+  const payload = {
+    event: {
+      eventType: simEventType?.value.trim() || "DirectSale",
+      amount: parseFloat(simAmount?.value) || 100000.0,
+      quota: parseFloat(simQuota?.value) || 100000.0,
+      creditSplit: parseFloat(simSplit?.value) !== undefined ? parseFloat(simSplit.value) : 1.0,
+      participant: simParticipant?.value.trim() || "REP_001",
+      period: simPeriod?.value.trim() || "2026-01",
+    },
+    graph: state.graph,
+  };
+
+  if (simRunButton) simRunButton.disabled = true;
+  if (simStatusMessage) {
+    simStatusMessage.textContent = "Simulating event propagation through calculation pipeline...";
+    simStatusMessage.style.color = "var(--text-muted)";
+  }
+
+  try {
+    const res = await fetch("/api/simulator/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Simulation failed (${res.status})` }));
+      throw new Error(err.error || err.detail || `Server error ${res.status}`);
+    }
+
+    const trace = await res.json();
+    simulatorState.trace = trace;
+    simulatorState.currentStepIndex = -1;
+    pauseSimulation();
+
+    renderSimulationResults(trace);
+
+    if (simStatusMessage) {
+      simStatusMessage.textContent = `Simulation complete: ${trace.steps.length} rule steps evaluated in ${trace.executionTimeMs.toFixed(1)}ms.`;
+      simStatusMessage.style.color = "#10b981";
+    }
+
+    // Automatically highlight first step
+    if (trace.steps && trace.steps.length > 0) {
+      stepTo(0);
+    }
+  } catch (err) {
+    console.error("Simulation error:", err);
+    if (simStatusMessage) {
+      simStatusMessage.textContent = `Error: ${err.message}`;
+      simStatusMessage.style.color = "#ef4444";
+    }
+  } finally {
+    if (simRunButton) simRunButton.disabled = false;
+  }
+}
+
+function renderSimulationResults(trace) {
+  if (!trace) return;
+
+  // Show Summary Banner
+  if (simSummaryBanner) {
+    simSummaryBanner.hidden = false;
+  }
+  if (simMetricCredited) {
+    simMetricCredited.textContent = `$${trace.totalCredited.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  if (simMetricIncentive) {
+    simMetricIncentive.textContent = `$${trace.totalIncentive.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  if (simMetricDeposit) {
+    simMetricDeposit.textContent = `$${trace.finalDeposit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  // Quota attainment from primary measurement step
+  const pmStep = trace.steps.find((s) => s.stage.toLowerCase().includes("primary measurement"));
+  const attainmentPct = pmStep?.intermediateValues?.attainmentPct ||
+    (trace.totalCredited > 0 && parseFloat(simQuota?.value) > 0
+      ? `${((trace.totalCredited / parseFloat(simQuota.value)) * 100).toFixed(1)}%`
+      : "100.0%");
+  if (simMetricAttainment) {
+    simMetricAttainment.textContent = attainmentPct;
+  }
+
+  // Enable player buttons
+  if (simBtnPlay) simBtnPlay.disabled = trace.steps.length === 0;
+  if (simBtnNext) simBtnNext.disabled = trace.steps.length <= 1;
+  if (simBtnPrev) simBtnPrev.disabled = true;
+  if (simBtnReset) simBtnReset.disabled = trace.steps.length === 0;
+
+  // Render Step Cards
+  if (!simStepsList) return;
+  simStepsList.innerHTML = "";
+
+  if (!trace.steps || trace.steps.length === 0) {
+    simStepsList.innerHTML = '<p class="empty-trace">No rules matching pipeline criteria were evaluated.</p>';
+    return;
+  }
+
+  trace.steps.forEach((step, idx) => {
+    const card = document.createElement("div");
+    card.className = "sim-step-card";
+    card.dataset.stepIndex = idx;
+    card.setAttribute("role", "article");
+    card.setAttribute("tabindex", "0");
+
+    const stageClass = getStageBadgeClass(step.stage);
+
+    card.innerHTML = `
+      <div class="sim-step-header">
+        <span class="sim-step-stage-badge ${stageClass}">Step ${step.stepIndex}: ${escapeHtml(step.stage)}</span>
+        <span class="sim-step-output">${formatStepOutput(step)}</span>
+      </div>
+      <div class="sim-step-title">${escapeHtml(step.ruleName)}</div>
+      <div class="sim-step-formula"><code>${escapeHtml(step.formula)}</code></div>
+      <div class="sim-step-explanation">${escapeHtml(step.explanation)}</div>
+    `;
+
+    card.addEventListener("click", () => {
+      pauseSimulation();
+      stepTo(idx);
+    });
+
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        pauseSimulation();
+        stepTo(idx);
+      }
+    });
+
+    simStepsList.appendChild(card);
+  });
+}
+
+function getStageBadgeClass(stage) {
+  const s = (stage || "").toLowerCase();
+  if (s.includes("credit")) return "sim-stage-crediting";
+  if (s.includes("primary")) return "sim-stage-primary-measurement";
+  if (s.includes("secondary")) return "sim-stage-secondary-measurement";
+  if (s.includes("incentive") || s.includes("calc")) return "sim-stage-incentive";
+  if (s.includes("deposit")) return "sim-stage-deposit";
+  return "sim-stage-crediting";
+}
+
+function formatStepOutput(step) {
+  const out = step.output;
+  if (step.stage.toLowerCase().includes("secondary")) {
+    return `${out.toFixed(2)}x`;
+  }
+  return `$${out.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Step Playback
+function stepTo(index) {
+  if (!simulatorState.trace || !simulatorState.trace.steps || simulatorState.trace.steps.length === 0) return;
+  const steps = simulatorState.trace.steps;
+  const targetIdx = Math.max(0, Math.min(steps.length - 1, index));
+  simulatorState.currentStepIndex = targetIdx;
+
+  // Update card active states
+  if (simStepsList) {
+    const cards = simStepsList.querySelectorAll(".sim-step-card");
+    cards.forEach((c, idx) => {
+      const isActive = idx === targetIdx;
+      c.classList.toggle("active", isActive);
+      if (isActive) {
+        c.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+  }
+
+  // Update button states
+  if (simBtnPrev) simBtnPrev.disabled = targetIdx === 0;
+  if (simBtnNext) simBtnNext.disabled = targetIdx === steps.length - 1;
+
+  // Animate on Graph
+  animateStepOnGraph(steps[targetIdx], targetIdx);
+}
+
+function animateStepOnGraph(step, stepIdx) {
+  if (!state.cy) return;
+  const cy = state.cy;
+
+  cy.batch(() => {
+    // Reset previous active node to visited
+    cy.nodes(".sim-active-node").removeClass("sim-active-node").addClass("sim-visited-node");
+    cy.edges(".sim-active-edge").removeClass("sim-active-edge").addClass("sim-visited-edge");
+
+    // Find target node by ID or label
+    let targetNode = cy.getElementById(step.nodeId);
+    if (!targetNode || targetNode.length === 0) {
+      targetNode = cy.nodes().filter((n) => n.data("label") === step.ruleName);
+    }
+
+    if (targetNode && targetNode.length > 0) {
+      targetNode.addClass("sim-active-node");
+
+      // Highlight outbound edges
+      if (step.outboundLinkIds && step.outboundLinkIds.length > 0) {
+        step.outboundLinkIds.forEach((linkId) => {
+          const edge = cy.getElementById(linkId);
+          if (edge && edge.length > 0) {
+            edge.addClass("sim-active-edge");
+          }
+        });
+      }
+    }
+  });
+
+  // Pan smoothly to target node
+  let targetNode = cy.getElementById(step.nodeId);
+  if (!targetNode || targetNode.length === 0) {
+    targetNode = cy.nodes().filter((n) => n.data("label") === step.ruleName);
+  }
+  if (targetNode && targetNode.length > 0) {
+    cy.animate({
+      center: { eles: targetNode },
+      zoom: Math.max(cy.zoom(), 0.9),
+      duration: 350,
+    });
+  }
+}
+
+function clearGraphSimulationHighlights() {
+  if (!state.cy) return;
+  state.cy.batch(() => {
+    state.cy.nodes().removeClass("sim-active-node sim-visited-node");
+    state.cy.edges().removeClass("sim-active-edge sim-visited-edge");
+  });
+}
+
+function playSimulation() {
+  if (!simulatorState.trace || !simulatorState.trace.steps || simulatorState.trace.steps.length === 0) return;
+  simulatorState.isPlaying = true;
+  if (simBtnPlay) {
+    simBtnPlay.textContent = "⏸ Pause";
+    simBtnPlay.classList.remove("primary");
+    simBtnPlay.classList.add("secondary");
+  }
+
+  simulatorState.timer = setInterval(() => {
+    const steps = simulatorState.trace.steps;
+    if (simulatorState.currentStepIndex >= steps.length - 1) {
+      // Loop back to beginning
+      stepTo(0);
+    } else {
+      stepTo(simulatorState.currentStepIndex + 1);
+    }
+  }, simulatorState.speed);
+}
+
+function pauseSimulation() {
+  simulatorState.isPlaying = false;
+  if (simulatorState.timer) {
+    clearInterval(simulatorState.timer);
+    simulatorState.timer = null;
+  }
+  if (simBtnPlay) {
+    simBtnPlay.textContent = "▶ Play";
+    simBtnPlay.classList.remove("secondary");
+    simBtnPlay.classList.add("primary");
+  }
+}
+
+// Button controls
+if (simBtnPlay) {
+  simBtnPlay.addEventListener("click", () => {
+    if (simulatorState.isPlaying) {
+      pauseSimulation();
+    } else {
+      playSimulation();
+    }
+  });
+}
+
+if (simBtnNext) {
+  simBtnNext.addEventListener("click", () => {
+    pauseSimulation();
+    stepTo(simulatorState.currentStepIndex + 1);
+  });
+}
+
+if (simBtnPrev) {
+  simBtnPrev.addEventListener("click", () => {
+    pauseSimulation();
+    stepTo(simulatorState.currentStepIndex - 1);
+  });
+}
+
+if (simBtnReset) {
+  simBtnReset.addEventListener("click", () => {
+    pauseSimulation();
+    clearGraphSimulationHighlights();
+    stepTo(0);
+  });
+}
+
 
 

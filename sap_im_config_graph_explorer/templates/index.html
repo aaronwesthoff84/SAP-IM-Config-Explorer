@@ -134,6 +134,7 @@
         <button id="tab-html-output-view" class="tab" type="button" role="tab" aria-selected="false" aria-controls="html-output-view" tabindex="-1" data-view="html-output-view">HTML Output</button>
         <button id="ai-docs-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="ai-docs-view" tabindex="-1" data-view="ai-docs-view">AI Docs</button>
         <button id="compare-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="compare-view" tabindex="-1" data-view="compare-view">Compare XML</button>
+        <button id="simulator-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="simulator-view" tabindex="-1" data-view="simulator-view">Rule Simulator</button>
       </div>
       <div id="graph-view" class="view active" role="tabpanel" aria-labelledby="tab-graph-view" tabindex="0">
         <div id="graph-toolbar" class="graph-toolbar" role="toolbar" aria-label="Graph visual controls">
@@ -313,6 +314,100 @@
             <button type="button" id="compare-clear-filters" class="secondary">Reset Filters</button>
           </div>
           <div id="compare-items-list" class="compare-items-list" role="feed" aria-label="Configuration comparison changes">
+          </div>
+        </div>
+      </div>
+      <div id="simulator-view" class="view" role="tabpanel" aria-labelledby="simulator-tab" tabindex="0">
+        <div class="simulator-layout">
+          <div class="simulator-controls-panel">
+            <div class="simulator-header-row">
+              <h3>Compensation Rule Simulator</h3>
+              <div class="simulator-preset-group">
+                <label for="simulator-preset-select">Preset Scenario:</label>
+                <select id="simulator-preset-select" aria-label="Select simulation scenario preset">
+                  <option value="standard">Standard Sale ($100k, 100% Quota)</option>
+                  <option value="overquota">Over-Quota Accelerator ($150k, 150% Quota)</option>
+                  <option value="split">Split Commission ($50k, 50% Split)</option>
+                  <option value="custom">Custom Parameters</option>
+                </select>
+              </div>
+            </div>
+
+            <form id="simulator-form" class="simulator-form">
+              <div class="simulator-form-grid">
+                <label>
+                  <span>Event Type</span>
+                  <input id="sim-event-type" type="text" value="DirectSale" required>
+                </label>
+                <label>
+                  <span>Transaction Amount ($)</span>
+                  <input id="sim-amount" type="number" step="1000" min="0" value="100000" required>
+                </label>
+                <label>
+                  <span>Target Quota ($)</span>
+                  <input id="sim-quota" type="number" step="1000" min="0" value="100000" required>
+                </label>
+                <label>
+                  <span>Credit Split (0.0 - 1.0)</span>
+                  <input id="sim-split" type="number" step="0.05" min="0.0" max="1.0" value="1.0" required>
+                </label>
+                <label>
+                  <span>Participant ID</span>
+                  <input id="sim-participant" type="text" value="REP_001">
+                </label>
+                <label>
+                  <span>Period</span>
+                  <input id="sim-period" type="text" value="2026-01">
+                </label>
+              </div>
+
+              <div class="simulator-actions-row">
+                <button type="submit" id="sim-run-button" class="primary">
+                  ⚡ Run Simulation
+                </button>
+                <div class="simulator-player-controls" id="simulator-player-controls">
+                  <button type="button" id="sim-btn-prev" class="secondary" title="Step Back (Previous Rule)" disabled>⏮ Prev</button>
+                  <button type="button" id="sim-btn-play" class="primary" title="Play / Pause Event Propagation" disabled>▶ Play</button>
+                  <button type="button" id="sim-btn-next" class="secondary" title="Step Next (Next Rule)" disabled>Next ⏭</button>
+                  <button type="button" id="sim-btn-reset" class="secondary" title="Reset Playback" disabled>↺ Reset</button>
+                  <label class="sim-speed-control">
+                    <span>Speed:</span>
+                    <select id="sim-speed-select" aria-label="Simulation playback speed">
+                      <option value="1500">0.5x (Slow)</option>
+                      <option value="800" selected>1.0x (Normal)</option>
+                      <option value="400">2.0x (Fast)</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </form>
+
+            <div id="simulator-summary-banner" class="simulator-summary-banner" hidden>
+              <div class="sim-metric-card">
+                <span class="sim-metric-label">Total Credited</span>
+                <span class="sim-metric-val" id="sim-metric-credited">$0.00</span>
+              </div>
+              <div class="sim-metric-card">
+                <span class="sim-metric-label">Quota Attainment</span>
+                <span class="sim-metric-val" id="sim-metric-attainment">0.0%</span>
+              </div>
+              <div class="sim-metric-card">
+                <span class="sim-metric-label">Total Incentive</span>
+                <span class="sim-metric-val" id="sim-metric-incentive">$0.00</span>
+              </div>
+              <div class="sim-metric-card highlight">
+                <span class="sim-metric-label">Final Deposit</span>
+                <span class="sim-metric-val" id="sim-metric-deposit">$0.00</span>
+              </div>
+            </div>
+            <div id="simulator-status-message" class="simulator-status-message" aria-live="polite"></div>
+          </div>
+
+          <div class="simulator-trace-container">
+            <h4>Calculation Pipeline Execution Trace</h4>
+            <div id="simulator-steps-list" class="simulator-steps-list" role="feed" aria-label="Simulation pipeline steps">
+              <p class="empty-trace">Configure parameters and click "Run Simulation" to trace compensation rules.</p>
+            </div>
           </div>
         </div>
       </div>
