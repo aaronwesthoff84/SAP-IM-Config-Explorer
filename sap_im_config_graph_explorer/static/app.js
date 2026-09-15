@@ -4080,6 +4080,73 @@ function renderComparisonItems() {
       `;
     }
 
+    let formulaDiffHtml = "";
+    if (item.category === "changed" && item.formulaDifferences && item.formulaDifferences.length > 0) {
+      const formulaRows = item.formulaDifferences.map((fd) => `
+        <div class="formula-diff-row">
+          <div class="formula-diff-row-header">
+            <span class="formula-name">${escapeHtml(fd.formulaName || "Formula")}</span>
+            <span class="formula-change-badge ${escapeHtml(fd.changeType)}">${escapeHtml((fd.changeType || "").replace(/_/g, " ").toUpperCase())}</span>
+          </div>
+          <div class="formula-diff-detail">${escapeHtml(fd.detail)}</div>
+          <div class="formula-diff-split">
+            <div class="formula-diff-pane baseline-pane">
+              <span class="pane-label">Baseline AST</span>
+              <code>${escapeHtml(fd.baselineExpression || "(none)")}</code>
+            </div>
+            <div class="formula-diff-pane candidate-pane">
+              <span class="pane-label">Candidate AST</span>
+              <code>${escapeHtml(fd.candidateExpression || "(none)")}</code>
+            </div>
+          </div>
+        </div>
+      `).join("");
+      formulaDiffHtml = `
+        <div class="formula-diff-container">
+          <div class="formula-diff-title">Formula AST Structural Differences:</div>
+          ${formulaRows}
+        </div>
+      `;
+    }
+
+    let blastRadiusHtml = "";
+    if (item.category === "changed" && item.blastRadius) {
+      const br = item.blastRadius;
+      const sev = (br.severity || "low").toLowerCase();
+      const nodeIds = (br.impactedNodes || []).map((n) => n.id);
+      const impactedSummary = [];
+      if (br.impactedPlansCount > 0) impactedSummary.push(`${br.impactedPlansCount} Plan(s)`);
+      if (br.impactedComponentsCount > 0) impactedSummary.push(`${br.impactedComponentsCount} Component(s)`);
+      if (br.impactedRulesCount > 0) impactedSummary.push(`${br.impactedRulesCount} Rule(s)`);
+      if (br.impactedDepositRulesCount > 0) impactedSummary.push(`${br.impactedDepositRulesCount} Deposit Rule(s)`);
+
+      const summaryStr = impactedSummary.length > 0 ? impactedSummary.join(", ") : "Local isolated impact";
+
+      blastRadiusHtml = `
+        <div class="blast-radius-box severity-${sev}">
+          <div class="blast-radius-header">
+            <div class="blast-radius-title">
+              <span class="blast-severity-badge severity-${sev}">${sev.toUpperCase()} SEVERITY</span>
+              <span class="blast-score">Downstream Blast Score: ${br.score}</span>
+            </div>
+            ${nodeIds.length > 0 ? `
+            <button type="button" class="show-blast-radius-btn secondary" data-node-ids='${JSON.stringify(nodeIds)}'>
+              Show Impacted Nodes in Graph (${nodeIds.length})
+            </button>
+            ` : ""}
+          </div>
+          <div class="blast-radius-impact-summary">
+            <strong>Impacted Scope:</strong> ${escapeHtml(summaryStr)}
+          </div>
+          ${nodeIds.length > 0 ? `
+          <div class="blast-radius-chips">
+            ${br.impactedNodes.map(n => `<span class="blast-chip ${escapeHtml((n.type || "").toLowerCase())}">${escapeHtml(n.type)}: ${escapeHtml(n.label)}</span>`).join("")}
+          </div>
+          ` : ""}
+        </div>
+      `;
+    }
+
     let summaryText = "";
     if (item.category === "changed") {
       summaryText = item.summary || "Configuration differences detected.";
@@ -4102,6 +4169,8 @@ function renderComparisonItems() {
         </div>
         <div class="compare-item-summary">${escapeHtml(summaryText)}</div>
         ${detailsHtml}
+        ${formulaDiffHtml}
+        ${blastRadiusHtml}
       </div>
     `;
   }).join("");
@@ -4158,4 +4227,45 @@ compareSummaryCards.forEach((card) => {
     }
   });
 });
+
+function highlightBlastRadiusNodes(nodeIds) {
+  if (!nodeIds || !nodeIds.length) return;
+  switchWorkspace("graph-view");
+  if (!state.cy) return;
+
+  state.cy.elements().unselect();
+  state.cy.elements().removeClass("blast-radius-impacted");
+
+  const selectors = nodeIds
+    .map((id) => `#${CSS.escape ? CSS.escape(id) : id}`)
+    .join(", ");
+
+  const targetNodes = state.cy.nodes(selectors);
+  if (targetNodes.length > 0) {
+    targetNodes.addClass("blast-radius-impacted");
+    targetNodes.select();
+    state.cy.animate({
+      fit: {
+        eles: targetNodes,
+        padding: 60,
+      },
+      duration: 600,
+    });
+  }
+}
+
+if (compareItemsList) {
+  compareItemsList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".show-blast-radius-btn");
+    if (btn && btn.dataset.nodeIds) {
+      try {
+        const ids = JSON.parse(btn.dataset.nodeIds);
+        highlightBlastRadiusNodes(ids);
+      } catch (err) {
+        console.warn("Failed to highlight blast radius nodes:", err);
+      }
+    }
+  });
+}
+
 
