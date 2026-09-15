@@ -21,11 +21,14 @@ from sap_im_config_graph_explorer.ai_provider import (
     generate_documentation,
     AIProviderError,
 )
+from sap_im_config_graph_explorer.clustering import GraphPartitioner
 from sap_im_config_graph_explorer.comparator import ConfigComparator
 from sap_im_config_graph_explorer.graph_builder import GraphBuilder, SnapshotInput
 from sap_im_config_graph_explorer.migration import MigrationRiskEngine
 from sap_im_config_graph_explorer.models import (
     ConversionResult,
+    GraphLink,
+    GraphNode,
     TOPOLOGY_MODES,
     SummaryRequest,
     SummaryResponse,
@@ -484,6 +487,10 @@ async def graph(
     p_files: list[UploadFile] | None = File(None),
     topology_mode: str = Form("core"),
     as_of_date: str | None = Form(None),
+    cluster_mode: str = Form("none"),
+    max_clusters: int = Form(50),
+    condense_metanodes: bool = Form(False),
+    as_compound_nodes: bool = Form(False),
 ) -> dict[str, object]:
     if topology_mode not in TOPOLOGY_MODES:
         raise HTTPException(
@@ -529,11 +536,101 @@ async def graph(
             doc.migrationRisk = MigrationRiskEngine().analyze(doc)
         if as_of_date and as_of_date.strip():
             doc.asOfDate = as_of_date.strip()
-        return doc.to_dict()
+
+        result_payload = doc.to_dict()
+
+        norm_cluster_mode = cluster_mode.lower().strip()
+        if norm_cluster_mode in {"plan_type", "louvain"}:
+            partitioner = GraphPartitioner()
+            clustering = partitioner.partition(
+                doc.nodes, doc.links, mode=norm_cluster_mode, max_clusters=max_clusters
+            )
+            result_payload["clustering"] = clustering.to_dict()
+            if condense_metanodes:
+                c_nodes, c_links = partitioner.condense_metagraph(
+                    doc.nodes, doc.links, clustering
+                )
+                result_payload["nodes"] = [n.to_dict() for n in c_nodes]
+                result_payload["links"] = [l.to_dict() for l in c_links]
+            else:
+                c_nodes, c_links = partitioner.enrich_graph_with_clusters(
+                    doc.nodes,
+                    doc.links,
+                    clustering,
+                    as_compound_nodes=as_compound_nodes,
+                )
+                result_payload["nodes"] = [n.to_dict() for n in c_nodes]
+                result_payload["links"] = [l.to_dict() for l in c_links]
+
+        return result_payload
     except XmlLoadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Graph generation failed: {exc}") from exc
+
+
+@app.post("/api/clustering/partition")
+async def partition_graph_api(
+    payload: dict[str, Any] = Body(...),
+    mode: str = Query("louvain"),
+    max_clusters: int = Query(50),
+    condense: bool = Query(False),
+    as_compound_nodes: bool = Query(False),
+) -> dict[str, Any]:
+    raw_nodes = payload.get("nodes", [])
+    raw_links = payload.get("links", [])
+    nodes: list[GraphNode] = []
+    for n in raw_nodes:
+        nodes.append(
+            GraphNode(
+                id=n["id"],
+                label=n.get("label", n["id"]),
+                type=n.get("type", "Rule"),
+                sourceFile=n.get("sourceFile", ""),
+                xmlPath=n.get("xmlPath", ""),
+                rawXml=n.get("rawXml", ""),
+                canonicalKey=n.get("canonicalKey", ""),
+                snapshotId=n.get("snapshotId", "configuration"),
+                metadata=n.get("metadata", {}),
+            )
+        )
+
+    links: list[GraphLink] = []
+    for l in raw_links:
+        links.append(
+            GraphLink(
+                id=l.get("id", ""),
+                source=l["source"],
+                target=l["target"],
+                relationship=l.get("relationship", "uses_rule"),
+                confidence=l.get("confidence", "high"),
+                metadata=l.get("metadata", {}),
+            )
+        )
+
+    partitioner = GraphPartitioner()
+    clustering = partitioner.partition(
+        nodes, links, mode=mode, max_clusters=max_clusters
+    )
+
+    if condense:
+        c_nodes, c_links = partitioner.condense_metagraph(nodes, links, clustering)
+        return {
+            "ok": True,
+            "clustering": clustering.to_dict(),
+            "nodes": [n.to_dict() for n in c_nodes],
+            "links": [l.to_dict() for l in c_links],
+        }
+    else:
+        c_nodes, c_links = partitioner.enrich_graph_with_clusters(
+            nodes, links, clustering, as_compound_nodes=as_compound_nodes
+        )
+        return {
+            "ok": True,
+            "clustering": clustering.to_dict(),
+            "nodes": [n.to_dict() for n in c_nodes],
+            "links": [l.to_dict() for l in c_links],
+        }
 
 
 @app.post("/api/import/graph-json")
