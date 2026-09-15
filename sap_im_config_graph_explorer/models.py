@@ -396,6 +396,66 @@ class DifferenceDetail:
 
 
 @dataclass
+class FormulaDifferenceDetail:
+    formulaName: str
+    changeType: str  # e.g. "operator_modified", "reference_modified", "constant_modified", "condition_modified", "structure_modified"
+    baselineExpression: str
+    candidateExpression: str
+    detail: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "formulaName": self.formulaName,
+            "changeType": self.changeType,
+            "baselineExpression": self.baselineExpression,
+            "candidateExpression": self.candidateExpression,
+            "detail": self.detail,
+        }
+
+
+@dataclass
+class BlastRadiusImpactedNode:
+    id: str
+    type: str
+    label: str
+    canonicalKey: str = ""
+    pipelineStage: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "id": self.id,
+            "type": self.type,
+            "label": self.label,
+            "canonicalKey": self.canonicalKey,
+        }
+        if self.pipelineStage:
+            data["pipelineStage"] = self.pipelineStage
+        return data
+
+
+@dataclass
+class BlastRadiusReport:
+    severity: str  # "critical", "high", "medium", "low"
+    score: float
+    impactedNodes: list[BlastRadiusImpactedNode] = field(default_factory=list)
+    impactedPlansCount: int = 0
+    impactedComponentsCount: int = 0
+    impactedRulesCount: int = 0
+    impactedDepositRulesCount: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "severity": self.severity,
+            "score": self.score,
+            "impactedNodes": [node.to_dict() for node in self.impactedNodes],
+            "impactedPlansCount": self.impactedPlansCount,
+            "impactedComponentsCount": self.impactedComponentsCount,
+            "impactedRulesCount": self.impactedRulesCount,
+            "impactedDepositRulesCount": self.impactedDepositRulesCount,
+        }
+
+
+@dataclass
 class ChangedObjectRecord:
     type: str
     label: str
@@ -405,9 +465,11 @@ class ChangedObjectRecord:
     sourceFile: str = ""
     candidateSourceFile: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    formulaDifferences: list[FormulaDifferenceDetail] = field(default_factory=list)
+    blastRadius: BlastRadiusReport | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "type": self.type,
             "label": self.label,
             "canonicalKey": self.canonicalKey,
@@ -417,6 +479,11 @@ class ChangedObjectRecord:
             "candidateSourceFile": self.candidateSourceFile,
             "metadata": self.metadata,
         }
+        if self.formulaDifferences:
+            data["formulaDifferences"] = [diff.to_dict() for diff in self.formulaDifferences]
+        if self.blastRadius is not None:
+            data["blastRadius"] = self.blastRadius.to_dict()
+        return data
 
 
 @dataclass

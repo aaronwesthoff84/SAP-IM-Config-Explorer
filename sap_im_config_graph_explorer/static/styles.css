@@ -1320,6 +1320,269 @@ html[data-theme="dark"] .ai-unconfigured-panel {
   border: 1px solid #bdbdbd;
 }
 
+/* Formula AST Structural Diff */
+.formula-diff-container {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.formula-diff-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.formula-diff-row {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.formula-diff-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.formula-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.formula-change-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.formula-change-badge.operator_modified {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ffe082;
+}
+
+.formula-change-badge.reference_modified {
+  background: #e3f2fd;
+  color: #0d47a1;
+  border: 1px solid #90caf9;
+}
+
+.formula-change-badge.constant_modified {
+  background: #ede7f6;
+  color: #4a148c;
+  border: 1px solid #d1c4e9;
+}
+
+.formula-change-badge.condition_modified {
+  background: #fce4ec;
+  color: #880e4f;
+  border: 1px solid #f8bbd0;
+}
+
+.formula-change-badge.structure_modified {
+  background: #efebe9;
+  color: #3e2723;
+  border: 1px solid #d7ccc8;
+}
+
+.formula-diff-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.formula-diff-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.formula-diff-pane {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formula-diff-pane.baseline-pane {
+  border-left: 3px solid #d32f2f;
+}
+
+.formula-diff-pane.candidate-pane {
+  border-left: 3px solid #2e7d32;
+}
+
+.formula-diff-pane .pane-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.formula-diff-pane code {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+/* Downstream Blast Radius UI */
+.blast-radius-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.blast-radius-box.severity-critical {
+  border-color: #d32f2f;
+  background: rgba(211, 47, 47, 0.04);
+}
+
+.blast-radius-box.severity-high {
+  border-color: #f57c00;
+  background: rgba(245, 124, 0, 0.04);
+}
+
+.blast-radius-box.severity-medium {
+  border-color: #fbc02d;
+  background: rgba(251, 192, 45, 0.04);
+}
+
+.blast-radius-box.severity-low {
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+
+.blast-radius-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.blast-radius-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.blast-severity-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.blast-severity-badge.severity-critical {
+  background: #d32f2f;
+  color: #ffffff;
+}
+
+.blast-severity-badge.severity-high {
+  background: #f57c00;
+  color: #ffffff;
+}
+
+.blast-severity-badge.severity-medium {
+  background: #fbc02d;
+  color: #212121;
+}
+
+.blast-severity-badge.severity-low {
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.blast-score {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.show-blast-radius-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.show-blast-radius-btn:hover {
+  background: var(--primary, #1976d2);
+  color: #ffffff;
+  border-color: var(--primary, #1976d2);
+}
+
+.blast-radius-impact-summary {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.blast-radius-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.blast-chip {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.blast-chip.plan {
+  border-color: #81c784;
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.blast-chip.plancomponent {
+  border-color: #90caf9;
+  color: #1565c0;
+}
+
+.blast-chip.rule {
+  border-color: #ffb74d;
+  color: #e65100;
+}
+
+/* Cytoscape blast radius highlight */
+.blast-radius-impacted {
+  border-color: #f57c00 !important;
+  border-width: 4px !important;
+  background-color: rgba(245, 124, 0, 0.3) !important;
+  box-shadow: 0 0 15px rgba(245, 124, 0, 0.8) !important;
+}
+
+
 .temporal-badge.undated {
   background: #f3e5f5;
   color: #6a1b9a;

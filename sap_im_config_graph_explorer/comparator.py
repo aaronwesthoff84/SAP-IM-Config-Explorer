@@ -16,6 +16,10 @@ from sap_im_config_graph_explorer.models import (
     ObjectRecord,
 )
 from sap_im_config_graph_explorer.object_extractors.common import normalize_identity
+from sap_im_config_graph_explorer.rule_delta import (
+    DownstreamImpactAnalyzer,
+    FormulaAstComparator,
+)
 from sap_im_config_graph_explorer.xml_loader import XmlDocument, XmlLoadError, load_xml_file, load_xml_text
 
 
@@ -38,6 +42,8 @@ class ConfigComparator:
 
     def __init__(self, topology_mode: str = "full") -> None:
         self.topology_mode = topology_mode
+        self.formula_comparator = FormulaAstComparator()
+        self.impact_analyzer = DownstreamImpactAnalyzer()
 
     def compare_files(
         self,
@@ -154,8 +160,20 @@ class ConfigComparator:
                     c_refs=c_refs.get(c_node.id, []),
                 )
 
-                if diffs:
-                    summary = "; ".join(d.description for d in diffs)
+                formula_diffs = []
+                if b_node.type in ("Formula", "Rule") or c_node.type in ("Formula", "Rule"):
+                    formula_diffs = self.formula_comparator.diff_nodes(b_node, c_node)
+
+                if diffs or formula_diffs:
+                    descriptions = [d.description for d in diffs]
+                    for fd in formula_diffs:
+                        descriptions.append(f"{fd.formulaName}: {fd.detail}")
+                    summary = "; ".join(descriptions)
+
+                    blast_radius = self.impact_analyzer.analyze_blast_radius(
+                        c_node, candidate_graph, baseline_graph
+                    )
+
                     changed.append(
                         ChangedObjectRecord(
                             type=c_node.type,
@@ -166,6 +184,8 @@ class ConfigComparator:
                             sourceFile=b_node.sourceFile,
                             candidateSourceFile=c_node.sourceFile,
                             metadata=c_node.metadata,
+                            formulaDifferences=formula_diffs,
+                            blastRadius=blast_radius,
                         )
                     )
                 else:
