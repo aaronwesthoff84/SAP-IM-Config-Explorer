@@ -66,9 +66,15 @@ CSV_BUNDLE_FILENAME = "sap-im-config-graph-csv.zip"
 MARKDOWN_FILENAME = "sap-im-config-graph.md"
 GRAPHML_FILENAME = "sap-im-config-graph.graphml"
 NEO4J_BUNDLE_FILENAME = "sap-im-config-graph-neo4j.zip"
+CYTOSCAPE_JSON_FILENAME = "sap-im-config-graph-cytoscape.json"
+GEXF_FILENAME = "sap-im-config-graph.gexf"
+STANDALONE_SVG_FILENAME = "sap-im-config-graph-interactive.svg"
 
 _ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 _GRAPHML_NAMESPACE = "http://graphml.graphdrawing.org/xmlns"
+_GEXF_NAMESPACE = "http://www.gexf.net/1.2draft"
+_GEXF_VIZ_NAMESPACE = "http://www.gexf.net/1.2draft/viz"
+_GEXF_XSI_NAMESPACE = "http://www.w3.org/2001/XMLSchema-instance"
 _CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
@@ -849,6 +855,539 @@ Follow these steps to import the graph into your local Neo4j instance:
             entry.external_attr = 0o100644 << 16
             archive.writestr(entry, content.encode("utf-8"), compresslevel=9)
     return output.getvalue()
+
+
+_TYPE_RGB: dict[str, tuple[int, int, int]] = {
+    "FixedValue": (129, 199, 132),
+    "Formula": (46, 125, 50),
+    "LookupTable": (129, 199, 132),
+    "Quota": (255, 160, 0),
+    "RateTable": (46, 125, 50),
+    "Territory": (129, 199, 132),
+    "Variable": (255, 160, 0),
+    "Rule": (46, 125, 50),
+    "Plan": (79, 70, 229),
+    "PlanComponent": (14, 165, 233),
+    "EventType": (255, 160, 0),
+    "CreditType": (46, 125, 50),
+    "EarningCode": (129, 199, 132),
+    "EarningGroup": (46, 125, 50),
+    "ClusterMetanode": (79, 70, 229),
+}
+
+
+def _color_for_type_rgb(node_type: str) -> tuple[int, int, int]:
+    return _TYPE_RGB.get(node_type, (99, 102, 241))
+
+
+def _color_for_type_hex(node_type: str) -> str:
+    r, g, b = _color_for_type_rgb(node_type)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def serialize_cytoscape_json(document: GraphDocument) -> bytes:
+    """Return a deterministic Cytoscape.js elements JSON document without raw XML content."""
+    validate_graph_document(document)
+
+    sorted_nodes = _sorted_nodes(document)
+    sorted_links = _sorted_links(document)
+    cols = max(1, math.ceil(math.sqrt(len(sorted_nodes)))) if sorted_nodes else 1
+
+    nodes_payload = []
+    for idx, node in enumerate(sorted_nodes):
+        data: dict[str, Any] = {
+            "id": node.id,
+            "label": node.label,
+            "type": node.type,
+            "canonicalKey": node.canonicalKey,
+            "snapshotId": node.snapshotId,
+            "sourceFile": node.sourceFile,
+            "xmlPath": node.xmlPath,
+            "displayColor": _color_for_type_hex(node.type),
+        }
+        if node.metadata:
+            for k, v in sorted(node.metadata.items()):
+                if k != "rawXml" and isinstance(v, (str, int, float, bool)):
+                    data[k] = v
+        x = float((idx % cols) * 180)
+        y = float((idx // cols) * 100)
+        nodes_payload.append({
+            "data": data,
+            "position": {"x": x, "y": y},
+            "classes": f"type-{node.type} snapshot-{node.snapshotId}",
+        })
+
+    edges_payload = []
+    for link in sorted_links:
+        data = {
+            "id": link.id,
+            "source": link.source,
+            "target": link.target,
+            "relationship": link.relationship,
+            "confidence": link.confidence,
+        }
+        if link.metadata:
+            for k, v in sorted(link.metadata.items()):
+                if isinstance(v, (str, int, float, bool)):
+                    data[k] = v
+        edges_payload.append({
+            "data": data,
+            "classes": f"rel-{link.relationship} conf-{link.confidence}",
+        })
+
+    payload = {
+        "format_version": "1.0",
+        "generated_by": "SAP IM Config Explorer",
+        "schemaVersion": document.schemaVersion,
+        "topologyMode": document.topologyMode,
+        "elements": {
+            "nodes": nodes_payload,
+            "edges": edges_payload,
+        },
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+
+
+def serialize_gexf(document: GraphDocument) -> bytes:
+    """Return a deterministic Gephi GEXF 1.2 XML document without raw XML content."""
+    validate_graph_document(document)
+
+    ET.register_namespace("", _GEXF_NAMESPACE)
+    ET.register_namespace("viz", _GEXF_VIZ_NAMESPACE)
+    ET.register_namespace("xsi", _GEXF_XSI_NAMESPACE)
+
+    q_gexf = lambda name: f"{{{_GEXF_NAMESPACE}}}{name}"
+    q_viz = lambda name: f"{{{_GEXF_VIZ_NAMESPACE}}}{name}"
+    q_xsi = lambda name: f"{{{_GEXF_XSI_NAMESPACE}}}{name}"
+
+    root = ET.Element(
+        q_gexf("gexf"),
+        {
+            q_xsi("schemaLocation"): f"{_GEXF_NAMESPACE} http://www.gexf.net/1.2draft/gexf.xsd",
+            "version": "1.2",
+        },
+    )
+
+    meta = ET.SubElement(root, q_gexf("meta"), {"lastmodifieddate": "2026-09-15"})
+    creator = ET.SubElement(meta, q_gexf("creator"))
+    creator.text = "SAP IM Config Explorer"
+    desc = ET.SubElement(meta, q_gexf("description"))
+    desc.text = "SAP Incentive Management configuration topology"
+
+    graph = ET.SubElement(root, q_gexf("graph"), {"defaultedgetype": "directed", "mode": "static"})
+
+    # Node attributes schema
+    node_attrs = ET.SubElement(graph, q_gexf("attributes"), {"class": "node"})
+    ET.SubElement(node_attrs, q_gexf("attribute"), {"id": "0", "title": "canonicalKey", "type": "string"})
+    ET.SubElement(node_attrs, q_gexf("attribute"), {"id": "1", "title": "snapshotId", "type": "string"})
+    ET.SubElement(node_attrs, q_gexf("attribute"), {"id": "2", "title": "type", "type": "string"})
+    ET.SubElement(node_attrs, q_gexf("attribute"), {"id": "3", "title": "sourceFile", "type": "string"})
+    ET.SubElement(node_attrs, q_gexf("attribute"), {"id": "4", "title": "xmlPath", "type": "string"})
+
+    # Edge attributes schema
+    edge_attrs = ET.SubElement(graph, q_gexf("attributes"), {"class": "edge"})
+    ET.SubElement(edge_attrs, q_gexf("attribute"), {"id": "0", "title": "relationship", "type": "string"})
+    ET.SubElement(edge_attrs, q_gexf("attribute"), {"id": "1", "title": "confidence", "type": "string"})
+
+    sorted_nodes = _sorted_nodes(document)
+    sorted_links = _sorted_links(document)
+    cols = max(1, math.ceil(math.sqrt(len(sorted_nodes)))) if sorted_nodes else 1
+
+    nodes_el = ET.SubElement(graph, q_gexf("nodes"))
+    for idx, node in enumerate(sorted_nodes):
+        node_el = ET.SubElement(nodes_el, q_gexf("node"), {"id": node.id, "label": node.label})
+        attvalues = ET.SubElement(node_el, q_gexf("attvalues"))
+        for attr_id, val in (
+            ("0", node.canonicalKey),
+            ("1", node.snapshotId),
+            ("2", node.type),
+            ("3", node.sourceFile),
+            ("4", node.xmlPath),
+        ):
+            ET.SubElement(attvalues, q_gexf("attvalue"), {"for": attr_id, "value": val or ""})
+
+        r, g, b = _color_for_type_rgb(node.type)
+        ET.SubElement(node_el, q_viz("color"), {"r": str(r), "g": str(g), "b": str(b)})
+        ET.SubElement(node_el, q_viz("size"), {"value": "20.0"})
+        pos_x = float((idx % cols) * 180)
+        pos_y = float((idx // cols) * 100)
+        ET.SubElement(node_el, q_viz("position"), {"x": str(pos_x), "y": str(pos_y), "z": "0.0"})
+
+    edges_el = ET.SubElement(graph, q_gexf("edges"))
+    for link in sorted_links:
+        edge_el = ET.SubElement(
+            edges_el,
+            q_gexf("edge"),
+            {"id": link.id, "source": link.source, "target": link.target},
+        )
+        attvalues = ET.SubElement(edge_el, q_gexf("attvalues"))
+        ET.SubElement(attvalues, q_gexf("attvalue"), {"for": "0", "value": link.relationship or ""})
+        ET.SubElement(attvalues, q_gexf("attvalue"), {"for": "1", "value": link.confidence or ""})
+
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True) + b"\n"
+
+
+def serialize_standalone_svg(
+    document: GraphDocument,
+    layout_positions: dict[str, tuple[float, float]] | None = None,
+) -> bytes:
+    """Return a standalone, self-contained interactive SVG vector diagram with embedded CSS and JS."""
+    validate_graph_document(document)
+
+    sorted_nodes = _sorted_nodes(document)
+    sorted_links = _sorted_links(document)
+    node_count = len(sorted_nodes)
+
+    cols = max(1, math.ceil(math.sqrt(node_count))) if node_count else 1
+    spacing_x = 240.0
+    spacing_y = 130.0
+    margin_x = 60.0
+    margin_y = 60.0
+    card_w = 170.0
+    card_h = 56.0
+
+    positions: dict[str, tuple[float, float]] = {}
+    for idx, node in enumerate(sorted_nodes):
+        if layout_positions and node.id in layout_positions:
+            positions[node.id] = layout_positions[node.id]
+        else:
+            gx = margin_x + float((idx % cols) * spacing_x)
+            gy = margin_y + float((idx // cols) * spacing_y)
+            positions[node.id] = (gx, gy)
+
+    max_x = max((x + card_w for x, _ in positions.values()), default=800.0) + margin_x
+    max_y = max((y + card_h for _, y in positions.values()), default=600.0) + margin_y
+    view_width = max(800.0, max_x)
+    view_height = max(600.0, max_y)
+
+    SVG_NS = "http://www.w3.org/2000/svg"
+    ET.register_namespace("", SVG_NS)
+    q_svg = lambda name: f"{{{SVG_NS}}}{name}"
+
+    root = ET.Element(
+        q_svg("svg"),
+        {
+            "width": f"{int(view_width)}",
+            "height": f"{int(view_height)}",
+            "viewBox": f"0 0 {int(view_width)} {int(view_height)}",
+            "version": "1.1",
+        },
+    )
+
+    # Defs: Markers & Filters
+    defs = ET.SubElement(root, q_svg("defs"))
+    marker = ET.SubElement(
+        defs,
+        q_svg("marker"),
+        {
+            "id": "arrow-default",
+            "viewBox": "0 0 10 10",
+            "refX": "10",
+            "refY": "5",
+            "markerWidth": "6",
+            "markerHeight": "6",
+            "orient": "auto-start-reverse",
+        },
+    )
+    ET.SubElement(marker, q_svg("path"), {"d": "M 0 0 L 10 5 L 0 10 z", "fill": "#64748b"})
+
+    marker_active = ET.SubElement(
+        defs,
+        q_svg("marker"),
+        {
+            "id": "arrow-active",
+            "viewBox": "0 0 10 10",
+            "refX": "10",
+            "refY": "5",
+            "markerWidth": "6",
+            "markerHeight": "6",
+            "orient": "auto-start-reverse",
+        },
+    )
+    ET.SubElement(marker_active, q_svg("path"), {"d": "M 0 0 L 10 5 L 0 10 z", "fill": "#f59e0b"})
+
+    # Embedded CSS Style
+    style = ET.SubElement(root, q_svg("style"))
+    style.text = """
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --edge: #64748b;
+      --highlight: #f59e0b;
+      --accent: #38bdf8;
+    }
+    svg { background: #0f172a; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; }
+    .edge { stroke: #64748b; stroke-width: 1.5; fill: none; transition: stroke 0.2s, stroke-width 0.2s; }
+    .edge.highlighted { stroke: #f59e0b; stroke-width: 3.5; marker-end: url(#arrow-active); }
+    .edge.dimmed { opacity: 0.12; }
+    .node-group { cursor: pointer; transition: transform 0.2s ease; }
+    .node-group:focus { outline: none; }
+    .node-card { fill: #1e293b; stroke-width: 2; transition: stroke 0.2s, stroke-width 0.2s; }
+    .node-group:hover .node-card { stroke: #38bdf8; stroke-width: 3; }
+    .node-group.active .node-card { stroke: #f59e0b; stroke-width: 3.5; }
+    .node-group.dimmed { opacity: 0.15; }
+    .node-label { fill: #f8fafc; font-size: 11px; font-weight: 600; text-anchor: middle; pointer-events: none; }
+    .type-pill { rx: 4; ry: 4; pointer-events: none; }
+    .type-text { fill: #ffffff; font-size: 9px; font-weight: 700; text-anchor: middle; pointer-events: none; text-transform: uppercase; letter-spacing: 0.5px; }
+    .tooltip-bg { fill: #020617; stroke: #475569; stroke-width: 1; rx: 6; ry: 6; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6)); }
+    .tooltip-title { fill: #f8fafc; font-size: 11px; font-weight: 700; }
+    .tooltip-sub { fill: #94a3b8; font-size: 10px; }
+    """
+
+    # Interactive Viewport container for pan & zoom
+    viewport = ET.SubElement(root, q_svg("g"), {"id": "viewport"})
+
+    # Edges layer
+    edges_layer = ET.SubElement(viewport, q_svg("g"), {"id": "edges-layer"})
+    for link in sorted_links:
+        src_pos = positions.get(link.source)
+        tgt_pos = positions.get(link.target)
+        if not src_pos or not tgt_pos:
+            continue
+
+        sx, sy = src_pos[0] + card_w / 2.0, src_pos[1] + card_h / 2.0
+        tx, ty = tgt_pos[0] + card_w / 2.0, tgt_pos[1] + card_h / 2.0
+
+        # Adjust target end to card boundary
+        dx = tx - sx
+        dy = ty - sy
+        dist = math.hypot(dx, dy)
+        if dist > 1.0:
+            target_offset_x = tx - (dx / dist) * (card_w / 2.0)
+            target_offset_y = ty - (dy / dist) * (card_h / 2.0)
+        else:
+            target_offset_x, target_offset_y = tx, ty
+
+        # Smooth quadratic curve
+        mid_x = (sx + target_offset_x) / 2.0
+        mid_y = (sy + target_offset_y) / 2.0
+        # subtle curve offset perpendicular to line
+        perp_x = -(dy / dist) * 15.0 if dist > 1.0 else 0.0
+        perp_y = (dx / dist) * 15.0 if dist > 1.0 else 0.0
+        ctrl_x = mid_x + perp_x
+        ctrl_y = mid_y + perp_y
+
+        d_str = f"M {sx:.1f} {sy:.1f} Q {ctrl_x:.1f} {ctrl_y:.1f} {target_offset_x:.1f} {target_offset_y:.1f}"
+        ET.SubElement(
+            edges_layer,
+            q_svg("path"),
+            {
+                "id": f"edge-{link.id}",
+                "class": "edge",
+                "d": d_str,
+                "marker-end": "url(#arrow-default)",
+                "data-source": link.source,
+                "data-target": link.target,
+                "data-rel": link.relationship or "",
+            },
+        )
+
+    # Nodes layer
+    nodes_layer = ET.SubElement(viewport, q_svg("g"), {"id": "nodes-layer"})
+    for node in sorted_nodes:
+        pos = positions[node.id]
+        nx, ny = pos[0], pos[1]
+        border_color = _color_for_type_hex(node.type)
+
+        node_g = ET.SubElement(
+            nodes_layer,
+            q_svg("g"),
+            {
+                "id": f"node-{node.id}",
+                "class": "node-group",
+                "data-id": node.id,
+                "data-label": node.label,
+                "data-type": node.type,
+                "data-key": node.canonicalKey or "",
+                "data-file": node.sourceFile or "",
+                "tabindex": "0",
+            },
+        )
+
+        # Card rect
+        ET.SubElement(
+            node_g,
+            q_svg("rect"),
+            {
+                "class": "node-card",
+                "x": f"{nx:.1f}",
+                "y": f"{ny:.1f}",
+                "width": f"{card_w:.1f}",
+                "height": f"{card_h:.1f}",
+                "rx": "8",
+                "ry": "8",
+                "stroke": border_color,
+            },
+        )
+
+        # Type pill
+        pill_w = max(60.0, len(node.type) * 7.0 + 12.0)
+        ET.SubElement(
+            node_g,
+            q_svg("rect"),
+            {
+                "class": "type-pill",
+                "x": f"{nx + 10.0:.1f}",
+                "y": f"{ny + 8.0:.1f}",
+                "width": f"{pill_w:.1f}",
+                "height": "16.0",
+                "fill": border_color,
+            },
+        )
+        type_txt = ET.SubElement(
+            node_g,
+            q_svg("text"),
+            {
+                "class": "type-text",
+                "x": f"{nx + 10.0 + pill_w / 2.0:.1f}",
+                "y": f"{ny + 19.5:.1f}",
+            },
+        )
+        type_txt.text = node.type
+
+        # Label text (truncated if too long)
+        display_label = node.label if len(node.label) <= 20 else node.label[:18] + "..."
+        lbl_txt = ET.SubElement(
+            node_g,
+            q_svg("text"),
+            {
+                "class": "node-label",
+                "x": f"{nx + card_w / 2.0:.1f}",
+                "y": f"{ny + 42.0:.1f}",
+            },
+        )
+        lbl_txt.text = display_label
+
+    # Tooltip overlay
+    tooltip_g = ET.SubElement(root, q_svg("g"), {"id": "svg-tooltip", "opacity": "0", "pointer-events": "none"})
+    ET.SubElement(tooltip_g, q_svg("rect"), {"class": "tooltip-bg", "width": "220", "height": "56", "x": "0", "y": "0"})
+    t_title = ET.SubElement(tooltip_g, q_svg("text"), {"class": "tooltip-title", "x": "12", "y": "22"})
+    t_title.text = "Node Details"
+    t_sub = ET.SubElement(tooltip_g, q_svg("text"), {"class": "tooltip-sub", "x": "12", "y": "40"})
+    t_sub.text = ""
+
+    # Embedded Vanilla JS Script for Pan/Zoom, Hover Tooltip, and Selection
+    script = ET.SubElement(root, q_svg("script"), {"type": "text/javascript"})
+    script.text = """
+    (function() {
+      const svg = document.querySelector('svg');
+      const viewport = document.getElementById('viewport');
+      const tooltip = document.getElementById('svg-tooltip');
+      const tooltipTitle = tooltip.querySelector('.tooltip-title');
+      const tooltipSub = tooltip.querySelector('.tooltip-sub');
+      const nodeGroups = Array.from(document.querySelectorAll('.node-group'));
+      const edges = Array.from(document.querySelectorAll('.edge'));
+
+      let panX = 0, panY = 0, zoom = 1.0;
+      let isPanning = false, startX = 0, startY = 0;
+      let selectedNodeId = null;
+
+      function updateTransform() {
+        viewport.setAttribute('transform', `translate(${panX}, ${panY}) scale(${zoom})`);
+      }
+
+      svg.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.node-group')) return;
+        isPanning = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+          panX = e.clientX - startX;
+          panY = e.clientY - startY;
+          updateTransform();
+        }
+      });
+
+      window.addEventListener('mouseup', () => { isPanning = false; });
+
+      svg.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        const newZoom = Math.min(Math.max(0.2, zoom * factor), 4.0);
+        const rect = svg.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        panX = mouseX - (mouseX - panX) * (newZoom / zoom);
+        panY = mouseY - (mouseY - panY) * (newZoom / zoom);
+        zoom = newZoom;
+        updateTransform();
+      }, { passive: false });
+
+      // Node selection & highlight
+      nodeGroups.forEach((ng) => {
+        const id = ng.dataset.id;
+        ng.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (selectedNodeId === id) {
+            // Deselect
+            selectedNodeId = null;
+            nodeGroups.forEach(n => n.classList.remove('active', 'dimmed'));
+            edges.forEach(ed => ed.classList.remove('highlighted', 'dimmed'));
+          } else {
+            selectedNodeId = id;
+            const connectedNodeIds = new Set([id]);
+            edges.forEach((ed) => {
+              const src = ed.dataset.source;
+              const tgt = ed.dataset.target;
+              if (src === id || tgt === id) {
+                ed.classList.add('highlighted');
+                ed.classList.remove('dimmed');
+                connectedNodeIds.add(src);
+                connectedNodeIds.add(tgt);
+              } else {
+                ed.classList.remove('highlighted');
+                ed.classList.add('dimmed');
+              }
+            });
+            nodeGroups.forEach((n) => {
+              const nid = n.dataset.id;
+              if (connectedNodeIds.has(nid)) {
+                n.classList.remove('dimmed');
+                n.classList.toggle('active', nid === id);
+              } else {
+                n.classList.remove('active');
+                n.classList.add('dimmed');
+              }
+            });
+          }
+        });
+
+        ng.addEventListener('mouseenter', (e) => {
+          const rect = svg.getBoundingClientRect();
+          const label = ng.dataset.label;
+          const type = ng.dataset.type;
+          const key = ng.dataset.key;
+          tooltipTitle.textContent = label;
+          tooltipSub.textContent = `${type} • ${key}`;
+          const mx = e.clientX - rect.left + 15;
+          const my = e.clientY - rect.top + 15;
+          tooltip.setAttribute('transform', `translate(${mx}, ${my})`);
+          tooltip.setAttribute('opacity', '1');
+        });
+
+        ng.addEventListener('mouseleave', () => {
+          tooltip.setAttribute('opacity', '0');
+        });
+      });
+
+      svg.addEventListener('click', () => {
+        selectedNodeId = null;
+        nodeGroups.forEach(n => n.classList.remove('active', 'dimmed'));
+        edges.forEach(ed => ed.classList.remove('highlighted', 'dimmed'));
+      });
+    })();
+    """
+
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True) + b"\n"
+
 
 
 def _nodes_csv(document: GraphDocument) -> str:

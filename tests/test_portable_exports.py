@@ -13,11 +13,17 @@ from sap_im_config_graph_explorer.portable_exports import (
     CSV_FINDING_COLUMNS,
     CSV_LINK_COLUMNS,
     CSV_NODE_COLUMNS,
+    CYTOSCAPE_JSON_FILENAME,
+    GEXF_FILENAME,
+    STANDALONE_SVG_FILENAME,
     graph_document_from_payload,
     serialize_csv_bundle,
+    serialize_cytoscape_json,
+    serialize_gexf,
     serialize_graphml,
     serialize_markdown,
     serialize_neo4j_bundle,
+    serialize_standalone_svg,
 )
 
 
@@ -394,4 +400,127 @@ def test_portable_export_preserves_and_records_as_of_date():
     response = client.post("/api/export/graph-markdown", json=payload)
     assert response.status_code == 200
     assert "| As-of date | 2026-06-15 |" in response.text
+
+
+def test_cytoscape_json_export_is_deterministic_and_valid():
+    document = _document()
+    first = serialize_cytoscape_json(document)
+    second = serialize_cytoscape_json(document)
+
+    # Determinism
+    assert first == second
+
+    # No rawXml leakage
+    assert b"rawXml" not in first
+
+    # Valid JSON schema structure
+    data = json.loads(first.decode("utf-8"))
+    assert data["format_version"] == "1.0"
+    assert data["generated_by"] == "SAP IM Config Explorer"
+    assert "elements" in data
+    assert "nodes" in data["elements"]
+    assert "edges" in data["elements"]
+    assert len(data["elements"]["nodes"]) == len(document.nodes)
+    assert len(data["elements"]["edges"]) == len(document.links)
+
+    first_node = data["elements"]["nodes"][0]
+    assert "data" in first_node
+    assert "position" in first_node
+    assert "classes" in first_node
+    assert "id" in first_node["data"]
+    assert "label" in first_node["data"]
+    assert "displayColor" in first_node["data"]
+
+
+def test_gexf_export_is_deterministic_and_valid():
+    document = _document()
+    first = serialize_gexf(document)
+    second = serialize_gexf(document)
+
+    # Determinism
+    assert first == second
+
+    # No rawXml leakage
+    assert b"rawXml" not in first
+
+    # Valid XML
+    root = ET.fromstring(first)
+    assert root.tag == "{http://www.gexf.net/1.2draft}gexf"
+    assert root.attrib["version"] == "1.2"
+
+    graph = root.find("{http://www.gexf.net/1.2draft}graph")
+    assert graph is not None
+    assert graph.attrib["defaultedgetype"] == "directed"
+
+    nodes_el = graph.find("{http://www.gexf.net/1.2draft}nodes")
+    edges_el = graph.find("{http://www.gexf.net/1.2draft}edges")
+    assert nodes_el is not None
+    assert edges_el is not None
+    assert len(nodes_el) == len(document.nodes)
+    assert len(edges_el) == len(document.links)
+
+    first_node = nodes_el[0]
+    assert "id" in first_node.attrib
+    assert "label" in first_node.attrib
+    viz_color = first_node.find("{http://www.gexf.net/1.2draft/viz}color")
+    assert viz_color is not None
+    assert "r" in viz_color.attrib
+
+
+def test_standalone_svg_export_is_deterministic_and_valid():
+    document = _document()
+    first = serialize_standalone_svg(document)
+    second = serialize_standalone_svg(document)
+
+    # Determinism
+    assert first == second
+
+    # No rawXml leakage
+    assert b"rawXml" not in first
+
+    # Valid XML
+    root = ET.fromstring(first)
+    assert root.tag == "{http://www.w3.org/2000/svg}svg"
+    assert "viewBox" in root.attrib
+
+    # Check embedded style and script
+    style = root.find("{http://www.w3.org/2000/svg}style")
+    script = root.find("{http://www.w3.org/2000/svg}script")
+    assert style is not None
+    assert script is not None
+    assert "viewport" in script.text
+
+    # Viewport contains edges and nodes
+    viewport = root.find("{http://www.w3.org/2000/svg}g[@id='viewport']")
+    assert viewport is not None
+
+
+def test_extended_export_routes_return_correct_mime_and_disposition():
+    client = TestClient(app)
+    payload = _fixture_payload()
+
+    # Cytoscape JSON
+    cy_res = client.post("/api/export/cytoscape-json", json=payload)
+    assert cy_res.status_code == 200
+    assert cy_res.headers["content-type"].startswith("application/json")
+    assert CYTOSCAPE_JSON_FILENAME in cy_res.headers["content-disposition"]
+    assert b"elements" in cy_res.content
+    assert b"rawXml" not in cy_res.content
+
+    # GEXF
+    gexf_res = client.post("/api/export/gexf", json=payload)
+    assert gexf_res.status_code == 200
+    assert gexf_res.headers["content-type"].startswith("application/xml")
+    assert GEXF_FILENAME in gexf_res.headers["content-disposition"]
+    assert b"gexf" in gexf_res.content
+    assert b"rawXml" not in gexf_res.content
+
+    # Standalone SVG
+    svg_res = client.post("/api/export/standalone-svg", json=payload)
+    assert svg_res.status_code == 200
+    assert svg_res.headers["content-type"].startswith("image/svg+xml")
+    assert STANDALONE_SVG_FILENAME in svg_res.headers["content-disposition"]
+    assert b"<svg" in svg_res.content
+    assert b"rawXml" not in svg_res.content
+
 

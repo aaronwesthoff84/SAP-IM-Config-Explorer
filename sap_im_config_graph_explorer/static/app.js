@@ -409,6 +409,12 @@ document.getElementById("export-markdown-button").addEventListener("click", () =
 document.getElementById("export-graphml-button").addEventListener("click", () => exportGraph("graphml"));
 graphJsonInput.addEventListener("change", requestGraphImport);
 document.getElementById("export-neo4j-button").addEventListener("click", () => exportGraph("neo4j"));
+document.getElementById("export-cytoscape-button")?.addEventListener("click", () => exportGraph("cytoscape"));
+document.getElementById("export-gexf-button")?.addEventListener("click", () => exportGraph("gexf"));
+document.getElementById("export-standalone-svg-button")?.addEventListener("click", () => exportGraph("standalone-svg"));
+document.getElementById("toolbar-export-cytoscape-button")?.addEventListener("click", () => exportGraph("cytoscape"));
+document.getElementById("toolbar-export-gexf-button")?.addEventListener("click", () => exportGraph("gexf"));
+document.getElementById("toolbar-export-standalone-svg-button")?.addEventListener("click", () => exportGraph("standalone-svg"));
 if (sidebarExportPngButton) sidebarExportPngButton.addEventListener("click", exportGraphAsPng);
 if (sidebarExportSvgButton) sidebarExportSvgButton.addEventListener("click", exportGraphAsSvg);
 if (layoutSelect) {
@@ -3131,6 +3137,21 @@ const graphExportFormats = {
     endpoint: "/api/export/graph-neo4j",
     filename: "sap-im-config-graph-neo4j.zip",
     label: "Neo4j",
+  },
+  cytoscape: {
+    endpoint: "/api/export/cytoscape-json",
+    filename: "sap-im-config-graph-cytoscape.json",
+    label: "Cytoscape JSON",
+  },
+  gexf: {
+    endpoint: "/api/export/gexf",
+    filename: "sap-im-config-graph.gexf",
+    label: "GEXF",
+  },
+  "standalone-svg": {
+    endpoint: "/api/export/standalone-svg",
+    filename: "sap-im-config-graph-interactive.svg",
+    label: "Interactive SVG",
   },
 };
 
