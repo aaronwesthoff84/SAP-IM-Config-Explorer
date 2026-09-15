@@ -764,3 +764,79 @@ class ClusteringResult:
             "executionTimeMs": round(self.executionTimeMs, 2),
         }
 
+
+@dataclass
+class SimulationEvent:
+    eventType: str = "DirectSale"
+    amount: float = 100000.0
+    participant: str = "REP_001"
+    period: str = "2026-01"
+    quota: float = 100000.0
+    creditSplit: float = 1.0
+    customAttributes: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "eventType": self.eventType,
+            "amount": self.amount,
+            "participant": self.participant,
+            "period": self.period,
+            "quota": self.quota,
+            "creditSplit": self.creditSplit,
+            "customAttributes": self.customAttributes,
+        }
+
+
+@dataclass
+class SimulationStep:
+    stepIndex: int
+    stage: str
+    nodeId: str
+    ruleName: str
+    formula: str
+    inputs: dict[str, Any] = field(default_factory=dict)
+    output: float = 0.0
+    intermediateValues: dict[str, Any] = field(default_factory=dict)
+    outboundLinkIds: list[str] = field(default_factory=list)
+    explanation: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stepIndex": self.stepIndex,
+            "stage": self.stage,
+            "nodeId": self.nodeId,
+            "ruleName": self.ruleName,
+            "formula": self.formula,
+            "inputs": self.inputs,
+            "output": round(self.output, 4),
+            "intermediateValues": self.intermediateValues,
+            "outboundLinkIds": self.outboundLinkIds,
+            "explanation": self.explanation,
+        }
+
+
+@dataclass
+class SimulationTrace:
+    ok: bool
+    status: str
+    steps: list[SimulationStep] = field(default_factory=list)
+    finalDeposit: float = 0.0
+    totalCredited: float = 0.0
+    totalIncentive: float = 0.0
+    eventsEvaluated: int = 1
+    executionTimeMs: float = 0.0
+    error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "status": self.status,
+            "steps": [s.to_dict() for s in self.steps],
+            "finalDeposit": round(self.finalDeposit, 2),
+            "totalCredited": round(self.totalCredited, 2),
+            "totalIncentive": round(self.totalIncentive, 2),
+            "eventsEvaluated": self.eventsEvaluated,
+            "executionTimeMs": round(self.executionTimeMs, 2),
+            "error": self.error,
+        }
+

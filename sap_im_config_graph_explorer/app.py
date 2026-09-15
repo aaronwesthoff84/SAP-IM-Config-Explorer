@@ -29,10 +29,12 @@ from sap_im_config_graph_explorer.models import (
     ConversionResult,
     GraphLink,
     GraphNode,
+    SimulationEvent,
     TOPOLOGY_MODES,
     SummaryRequest,
     SummaryResponse,
 )
+from sap_im_config_graph_explorer.simulator import CompensationRuleSimulator
 from sap_im_config_graph_explorer.portable_exports import (
     CSV_BUNDLE_FILENAME,
     GRAPHML_FILENAME,
@@ -715,6 +717,69 @@ async def get_pipeline_flow(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Pipeline flow derivation failed: {exc}") from exc
+
+
+@app.post("/api/simulator/run")
+async def run_simulator_api(
+    payload: dict[str, Any] = Body(...),
+    plan_id: str | None = Query(None),
+    max_steps: int = Query(1000),
+) -> dict[str, Any]:
+    try:
+        raw_event = payload.get("event", {})
+        event = SimulationEvent(
+            eventType=raw_event.get("eventType", "DirectSale"),
+            amount=float(raw_event.get("amount", 100000.0)),
+            participant=raw_event.get("participant", "REP_001"),
+            period=raw_event.get("period", "2026-01"),
+            quota=float(raw_event.get("quota", 100000.0)),
+            creditSplit=float(raw_event.get("creditSplit", 1.0)),
+            customAttributes=raw_event.get("customAttributes", {}),
+        )
+
+        graph_payload = payload.get("graph", payload)
+        if isinstance(graph_payload, dict) and "schemaVersion" in graph_payload and "findings" in graph_payload:
+            doc = graph_document_from_payload(graph_payload)
+            simulator = CompensationRuleSimulator.from_graph_document(doc)
+        else:
+            raw_nodes = graph_payload.get("nodes", []) if isinstance(graph_payload, dict) else []
+            raw_links = graph_payload.get("links", []) if isinstance(graph_payload, dict) else []
+            nodes: list[GraphNode] = []
+            for n in raw_nodes:
+                nodes.append(
+                    GraphNode(
+                        id=n["id"],
+                        label=n.get("label", n["id"]),
+                        type=n.get("type", "Rule"),
+                        sourceFile=n.get("sourceFile", ""),
+                        xmlPath=n.get("xmlPath", ""),
+                        rawXml=n.get("rawXml", ""),
+                        canonicalKey=n.get("canonicalKey", ""),
+                        snapshotId=n.get("snapshotId", "configuration"),
+                        metadata=n.get("metadata", {}),
+                    )
+                )
+            links: list[GraphLink] = []
+            for l in raw_links:
+                links.append(
+                    GraphLink(
+                        id=l.get("id", ""),
+                        source=l["source"],
+                        target=l["target"],
+                        relationship=l.get("relationship", "uses_rule"),
+                        confidence=l.get("confidence", "high"),
+                        metadata=l.get("metadata", {}),
+                    )
+                )
+            simulator = CompensationRuleSimulator(nodes=nodes, links=links)
+
+        trace = simulator.simulate(event=event, plan_id=plan_id, max_steps=max_steps)
+        return trace.to_dict()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Simulator execution failed: {exc}") from exc
+
 
 
 @app.get("/api/ai/config")
