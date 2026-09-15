@@ -85,6 +85,13 @@ const state = {
   pipelineFlow: null,
   selectedPipelinePlan: "",
   selectedPipelineOrderStatus: "",
+  clustering: {
+    mode: "none",
+    selectedCluster: "",
+    isCondensed: false,
+    result: null,
+  },
+  baseGraph: null,
 };
 
 window.state = state;
@@ -208,6 +215,7 @@ window.computeTemporalStatus = computeTemporalStatus;
 function filterGraphElements(graph, filters) {
   const term = (filters.search || "").trim().toLowerCase();
   const effectiveDate = (filters.effectiveDate || "").trim();
+  const clusterId = (filters.clusterId || "").trim();
   const nodes = graph.nodes.filter((node) => {
     const matchesSearch = !term || node.label.toLowerCase().includes(term);
     const matchesType = !filters.type || node.type === filters.type;
@@ -217,7 +225,13 @@ function filterGraphElements(graph, filters) {
       const temporal = computeTemporalStatus(node, effectiveDate);
       matchesEffectiveDate = (temporal.status === "active" || temporal.status === "undated");
     }
-    return matchesSearch && matchesType && matchesSourceFile && matchesEffectiveDate;
+    let matchesCluster = true;
+    if (clusterId) {
+      const nCid = (node.metadata && node.metadata.clusterId) || node.clusterId;
+      const isParent = Boolean(node.metadata && node.metadata.isCompoundParent && node.metadata.clusterId === clusterId);
+      matchesCluster = (nCid === clusterId || isParent);
+    }
+    return matchesSearch && matchesType && matchesSourceFile && matchesEffectiveDate && matchesCluster;
   });
   const nodeIds = new Set(nodes.map((node) => node.id));
   const links = graph.links.filter(
@@ -419,6 +433,131 @@ effectiveDateFilter.addEventListener("input", () => {
   if (state.selectedNode) showNodeDetails(state.selectedNode);
 });
 clearFiltersButton.addEventListener("click", clearAllFilters);
+
+const clusterModeSelect = document.getElementById("cluster-mode-select");
+const clusterFilterLabel = document.getElementById("cluster-filter-label");
+const clusterFilter = document.getElementById("cluster-filter");
+const condenseMetanodesBtn = document.getElementById("condense-metanodes-btn");
+const clusteringMetricsBanner = document.getElementById("clustering-metrics-banner");
+const clusteringMetricsText = document.getElementById("clustering-metrics-text");
+const clusteringMetricsStats = document.getElementById("clustering-metrics-stats");
+
+async function applyClustering(mode, condense = false) {
+  if (!state.baseGraph || !state.baseGraph.nodes || state.baseGraph.nodes.length === 0) {
+    state.baseGraph = {
+      nodes: [...(state.graph?.nodes || [])],
+      links: [...(state.graph?.links || [])],
+    };
+  }
+
+  const normalizedMode = (mode || "none").toLowerCase().trim();
+  state.clustering.mode = normalizedMode;
+  state.clustering.isCondensed = condense;
+
+  if (normalizedMode === "none") {
+    if (clusterFilterLabel) clusterFilterLabel.hidden = true;
+    if (clusterFilter) {
+      clusterFilter.hidden = true;
+      clusterFilter.innerHTML = '<option value="">All Clusters</option>';
+      clusterFilter.value = "";
+    }
+    if (condenseMetanodesBtn) {
+      condenseMetanodesBtn.hidden = true;
+      condenseMetanodesBtn.classList.remove("active");
+      condenseMetanodesBtn.textContent = "Condense Metanodes";
+    }
+    if (clusteringMetricsBanner) clusteringMetricsBanner.hidden = true;
+    state.clustering.selectedCluster = "";
+    state.clustering.result = null;
+
+    if (state.baseGraph) {
+      state.graph.nodes = [...state.baseGraph.nodes];
+      state.graph.links = [...state.baseGraph.links];
+    }
+    renderGraph();
+    setStatus("Clustering cleared.");
+    return;
+  }
+
+  setStatus(`Calculating ${normalizedMode === "plan_type" ? "Plan-Type Hierarchy" : "Louvain Modularity"} clusters...`);
+
+  try {
+    const res = await fetch(`/api/clustering/partition?mode=${normalizedMode}&condense=${condense}&as_compound_nodes=true`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodes: state.baseGraph.nodes,
+        links: state.baseGraph.links,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Clustering partition failed");
+    }
+
+    const data = await res.json();
+    state.clustering.result = data.clustering;
+    state.graph.nodes = data.nodes;
+    state.graph.links = data.links;
+
+    // Populate cluster filter dropdown
+    if (clusterFilter) {
+      clusterFilter.innerHTML = `<option value="">All Clusters (${data.clustering.clusterCount})</option>`;
+      data.clustering.clusters.forEach((c) => {
+        const opt = document.createElement("option");
+        opt.value = c.clusterId;
+        opt.textContent = `${c.label}`;
+        clusterFilter.appendChild(opt);
+      });
+      clusterFilter.hidden = false;
+      if (clusterFilterLabel) clusterFilterLabel.hidden = false;
+    }
+
+    if (condenseMetanodesBtn) {
+      condenseMetanodesBtn.hidden = false;
+      condenseMetanodesBtn.classList.toggle("active", condense);
+      condenseMetanodesBtn.textContent = condense ? "Expand Clusters" : "Condense Metanodes";
+    }
+
+    if (clusteringMetricsBanner && clusteringMetricsText) {
+      clusteringMetricsBanner.hidden = false;
+      const modeName = normalizedMode === "plan_type" ? "Plan-Type Hierarchy" : "Louvain Modularity";
+      clusteringMetricsText.innerHTML = `<strong>${escapeHtml(modeName)}</strong>: ${data.clustering.clusterCount} clusters | Modularity (Q): <strong>${data.clustering.modularity}</strong>`;
+      if (clusteringMetricsStats) {
+        clusteringMetricsStats.innerHTML = `<span class="clustering-badge">${data.clustering.executionTimeMs}ms</span>`;
+      }
+    }
+
+    renderGraph();
+    setStatus(`Applied ${normalizedMode} clustering (${data.clustering.clusterCount} clusters, Q=${data.clustering.modularity}).`);
+  } catch (err) {
+    console.error("Clustering error:", err);
+    setStatus(`Clustering failed: ${err.message}`);
+  }
+}
+
+window.applyClustering = applyClustering;
+
+if (clusterModeSelect) {
+  clusterModeSelect.addEventListener("change", (e) => {
+    applyClustering(e.target.value, state.clustering.isCondensed);
+  });
+}
+
+if (clusterFilter) {
+  clusterFilter.addEventListener("change", (e) => {
+    state.clustering.selectedCluster = e.target.value;
+    renderGraph();
+  });
+}
+
+if (condenseMetanodesBtn) {
+  condenseMetanodesBtn.addEventListener("click", () => {
+    state.clustering.isCondensed = !state.clustering.isCondensed;
+    applyClustering(clusterModeSelect ? clusterModeSelect.value : "louvain", state.clustering.isCondensed);
+  });
+}
 
 if (pipelinePlanFilter) {
   pipelinePlanFilter.addEventListener("change", () => {
@@ -907,6 +1046,34 @@ async function importGraphJson() {
 
 function loadGraphWorkspace(payload) {
   state.graph = payload;
+  state.baseGraph = {
+    nodes: [...(payload.nodes || [])],
+    links: [...(payload.links || [])],
+  };
+  state.clustering = {
+    mode: "none",
+    selectedCluster: "",
+    isCondensed: false,
+    result: payload.clustering || null,
+  };
+  const clusterModeSelect = document.getElementById("cluster-mode-select");
+  if (clusterModeSelect) clusterModeSelect.value = "none";
+  const clusterFilter = document.getElementById("cluster-filter");
+  const clusterFilterLabel = document.getElementById("cluster-filter-label");
+  if (clusterFilter) {
+    clusterFilter.hidden = true;
+    clusterFilter.value = "";
+  }
+  if (clusterFilterLabel) clusterFilterLabel.hidden = true;
+  const condenseMetanodesBtn = document.getElementById("condense-metanodes-btn");
+  if (condenseMetanodesBtn) {
+    condenseMetanodesBtn.hidden = true;
+    condenseMetanodesBtn.classList.remove("active");
+    condenseMetanodesBtn.textContent = "Condense Metanodes";
+  }
+  const clusteringMetricsBanner = document.getElementById("clustering-metrics-banner");
+  if (clusteringMetricsBanner) clusteringMetricsBanner.hidden = true;
+
   state.waivers = loadWaivers();
   if (payload.waivers && Array.isArray(payload.waivers)) {
     payload.waivers.forEach((w) => {
@@ -1595,19 +1762,32 @@ function renderGraph() {
     relationship: relationshipFilter.value,
     confidence: confidenceFilter.value,
     effectiveDate: effectiveDateFilter.value,
+    clusterId: state.clustering?.selectedCluster || "",
   });
   renderFilterSummary(nodes.length, links.length);
   renderAccessibleGraphTree(nodes, links);
   const elements = [
     ...nodes.map((node, index) => {
       const saved = state.nodePositions[node.id];
+      const isCompoundParent = Boolean(node.metadata && node.metadata.isCompoundParent);
+      const data = {
+        ...node,
+        displayColor: node.type === "ClusterMetanode" ? "#4f46e5" : colorForType(node.type),
+      };
+      if (node.metadata && node.metadata.parent) {
+        data.parent = node.metadata.parent;
+      }
       return {
-        data: { ...node, displayColor: colorForType(node.type) },
-        position: saved ? { ...saved } : initialGraphPosition(index, nodes.length),
+        data,
+        position: isCompoundParent ? undefined : (saved ? { ...saved } : initialGraphPosition(index, nodes.length)),
       };
     }),
     ...links.map((link, index) => ({
-      data: { ...link, id: link.id || `edge-${index}` },
+      data: {
+        ...link,
+        id: link.id || `edge-${index}`,
+        bridgeLabel: link.metadata?.bridgeEdgeCount ? `${link.metadata.bridgeEdgeCount} links` : "",
+      },
     })),
   ];
 
@@ -1663,6 +1843,39 @@ function renderGraph() {
 function cytoscapeStyles(graphTheme) {
   return [
       {
+        selector: ":parent",
+        style: {
+          "background-color": graphTheme.border,
+          "background-opacity": 0.12,
+          "border-color": graphTheme.border,
+          "border-width": 2,
+          "border-style": "dashed",
+          label: "data(label)",
+          "text-valign": "top",
+          "text-halign": "center",
+          "font-size": 12,
+          "font-weight": "bold",
+          padding: 20,
+        },
+      },
+      {
+        selector: "node[type = 'ClusterMetanode']",
+        style: {
+          "background-color": "#4f46e5",
+          "border-color": "#3730a3",
+          "border-width": 3,
+          color: "#ffffff",
+          shape: "round-rectangle",
+          width: 140,
+          height: 56,
+          label: "data(label)",
+          "font-weight": "bold",
+          "font-size": 11,
+          "text-wrap": "wrap",
+          "text-max-width": 120,
+        },
+      },
+      {
         selector: "node",
         style: {
           "background-color": "data(displayColor)",
@@ -1680,6 +1893,17 @@ function cytoscapeStyles(graphTheme) {
           "text-valign": "center",
           "text-wrap": "wrap",
           width: 112,
+        },
+      },
+      {
+        selector: "edge[relationship = 'cluster_bridge']",
+        style: {
+          "line-style": "dashed",
+          "line-color": "#6366f1",
+          "target-arrow-color": "#6366f1",
+          width: 3,
+          label: "data(bridgeLabel)",
+          "font-size": 10,
         },
       },
       {
@@ -3229,6 +3453,7 @@ function colorForType(type) {
     BusinessUnit: "#81c784",
     ProcessingUnit: "#ffa000",
     Calendar: "#2e7d32",
+    ClusterMetanode: "#4f46e5",
   }[type] || "#81c784";
 }
 

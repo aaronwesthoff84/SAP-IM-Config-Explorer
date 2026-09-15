@@ -152,9 +152,26 @@
             <button type="button" id="toggle-accessible-tree" class="secondary" aria-expanded="false" aria-controls="accessible-graph-tree" title="Toggle accessible graph tree alternative">Accessible Tree</button>
           </div>
           <div class="graph-toolbar-group">
+            <label for="cluster-mode-select">Clustering:</label>
+            <select id="cluster-mode-select" aria-label="Graph clustering mode">
+              <option value="none" selected>None</option>
+              <option value="plan_type">Plan-Type Hierarchy</option>
+              <option value="louvain">Louvain Modularity</option>
+            </select>
+            <label for="cluster-filter" id="cluster-filter-label" hidden>Cluster:</label>
+            <select id="cluster-filter" aria-label="Filter by cluster" hidden>
+              <option value="">All Clusters</option>
+            </select>
+            <button type="button" id="condense-metanodes-btn" class="secondary" title="Condense clusters into metanodes" hidden>Condense Metanodes</button>
+          </div>
+          <div class="graph-toolbar-group">
             <button type="button" id="export-png-button" class="secondary" title="Export visible graph as PNG image">Export PNG</button>
             <button type="button" id="export-svg-button" class="secondary" title="Export visible graph as SVG vector">Export SVG</button>
           </div>
+        </div>
+        <div id="clustering-metrics-banner" class="clustering-metrics-banner" hidden>
+          <span id="clustering-metrics-text"></span>
+          <span id="clustering-metrics-stats"></span>
         </div>
         <div id="accessible-graph-tree" class="accessible-graph-tree" role="region" aria-label="Accessible graph navigation" hidden>
           <div class="accessible-tree-header">

@@ -138,7 +138,9 @@ class GraphNode:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.type not in NODE_TYPES:
+        if self.type not in NODE_TYPES and not (
+            self.type == "ClusterMetanode" and self.metadata.get("isMetanode")
+        ):
             raise ValueError(f"Unsupported graph node type: {self.type}")
 
     def to_dict(self) -> dict[str, Any]:
@@ -165,7 +167,9 @@ class GraphLink:
     id: str = ""
 
     def __post_init__(self) -> None:
-        if self.relationship not in RELATIONSHIP_TYPES:
+        if self.relationship not in RELATIONSHIP_TYPES and not (
+            self.relationship == "cluster_bridge" and self.metadata.get("isBridge")
+        ):
             raise ValueError(f"Unsupported graph relationship: {self.relationship}")
         if self.confidence not in CONFIDENCE_LEVELS:
             raise ValueError(f"Unsupported confidence level: {self.confidence}")
@@ -659,5 +663,104 @@ class PipelineFlowResult:
             "transitions": [trans.to_dict() for trans in self.transitions],
             "summary": self.summary,
             "error": self.error,
+        }
+
+
+@dataclass
+class ClusterMetanode:
+    id: str
+    label: str
+    clusterId: str
+    memberNodeIds: list[str] = field(default_factory=list)
+    memberNodeTypes: dict[str, int] = field(default_factory=dict)
+    planType: str | None = None
+    internalEdgeCount: int = 0
+    externalEdgeCount: int = 0
+    metadata: dict[str, Any] = field(default_factory=dict)
+    type: str = "ClusterMetanode"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "type": self.type,
+            "canonicalKey": f"cluster:{self.clusterId}",
+            "clusterId": self.clusterId,
+            "memberNodeIds": self.memberNodeIds,
+            "memberNodeTypes": self.memberNodeTypes,
+            "planType": self.planType,
+            "internalEdgeCount": self.internalEdgeCount,
+            "externalEdgeCount": self.externalEdgeCount,
+            "metadata": {
+                **self.metadata,
+                "isMetanode": True,
+                "internalNodeCount": len(self.memberNodeIds),
+                "clusterId": self.clusterId,
+                "planType": self.planType,
+                "memberNodeIds": self.memberNodeIds,
+            },
+        }
+
+    def to_graph_node(self) -> GraphNode:
+        return GraphNode(
+            id=self.id,
+            label=self.label,
+            type=self.type,
+            sourceFile="cluster_partition",
+            xmlPath="",
+            rawXml="",
+            canonicalKey=f"cluster:{self.clusterId}",
+            metadata={
+                **self.metadata,
+                "isMetanode": True,
+                "internalNodeCount": len(self.memberNodeIds),
+                "clusterId": self.clusterId,
+                "planType": self.planType,
+                "memberNodeIds": self.memberNodeIds,
+            },
+        )
+
+
+@dataclass
+class ClusterSummary:
+    clusterId: str
+    label: str
+    nodeCount: int
+    nodeTypes: dict[str, int] = field(default_factory=dict)
+    internalEdgeCount: int = 0
+    externalEdgeCount: int = 0
+    planName: str | None = None
+    modularityContribution: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "clusterId": self.clusterId,
+            "label": self.label,
+            "nodeCount": self.nodeCount,
+            "nodeTypes": self.nodeTypes,
+            "internalEdgeCount": self.internalEdgeCount,
+            "externalEdgeCount": self.externalEdgeCount,
+            "planName": self.planName,
+            "modularityContribution": round(self.modularityContribution, 4),
+        }
+
+
+@dataclass
+class ClusteringResult:
+    mode: str
+    clusterCount: int
+    modularity: float
+    clusters: list[ClusterSummary] = field(default_factory=list)
+    nodeClusters: dict[str, str] = field(default_factory=dict)
+    executionTimeMs: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "clusterCount": self.clusterCount,
+            "modularity": round(self.modularity, 4),
+            "clusters": [c.to_dict() for c in self.clusters],
+            "nodeClusters": self.nodeClusters,
+            "executionTimeMs": round(self.executionTimeMs, 2),
         }
 
