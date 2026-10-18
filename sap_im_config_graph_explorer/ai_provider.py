@@ -42,8 +42,8 @@ def check_ai_configuration() -> tuple[bool, str]:
                 else:
                     return False, f"Remote AI endpoints are rejected by default: {endpoint} (only loopback is supported)."
             return True, ""
-        except Exception as exc:
-            return False, f"Failed to validate AI endpoint: {exc}"
+        except Exception:
+            return False, "Failed to validate AI endpoint configuration."
 
     ai_provider = os.getenv("AI_PROVIDER", "").lower()
     if ai_provider == "openai":
