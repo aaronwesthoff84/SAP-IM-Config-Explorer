@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse
 from unittest import mock
 import pytest
 from fastapi.testclient import TestClient
@@ -275,8 +276,9 @@ async def test_ai_summary_gemini_success():
         assert data["provider"] == "gemini"
         assert data["summary"] == "Gemini generated summary for Eligibility."
         args, kwargs = mock_post.call_args
-        assert "generativelanguage.googleapis.com" in args[0]
-        assert "key=gemini-test-key" in args[0]
+        parsed_url = urlparse(args[0])
+        assert parsed_url.hostname == "generativelanguage.googleapis.com"
+        assert "key=gemini-test-key" in parsed_url.query
 
 
 def test_ai_unsupported_provider():
