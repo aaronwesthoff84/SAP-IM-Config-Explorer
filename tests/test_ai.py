@@ -117,6 +117,23 @@ def test_api_ai_config_endpoint():
     assert res.json()["model"] == "mock"
 
 
+def test_api_ai_config_hides_endpoint_validation_exception():
+    os.environ["SAP_IM_AI_ENDPOINT"] = "http://local-ai.test:11434/v1"
+    os.environ["SAP_IM_AI_MODEL"] = "llama3"
+
+    with patch(
+        "sap_im_config_graph_explorer.ai_provider.socket.getaddrinfo",
+        side_effect=OSError("private resolver diagnostic"),
+    ) as resolve:
+        res = TestClient(app).get("/api/ai/config")
+
+    resolve.assert_called_once_with("local-ai.test", None)
+    assert res.status_code == 200
+    config = res.json()
+    assert config["enabled"] is False
+    assert config["message"] == "Failed to validate AI endpoint configuration."
+
+
 def test_api_ai_endpoints_with_mock():
     client = TestClient(app)
     os.environ["SAP_IM_AI_ENDPOINT"] = "http://localhost:11434/v1"
