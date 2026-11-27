@@ -1429,7 +1429,7 @@ function getLayoutConfig(name) {
         animate: false,
         componentSpacing: 48,
         fit: true,
-        idealEdgeLength: 88,
+        idealEdgeLength: 112,
         nodeOverlap: 16,
         padding: 24,
         randomize: false,
