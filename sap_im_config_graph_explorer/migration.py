@@ -26,7 +26,7 @@ class MigrationRiskWeights:
     missing_relationship: float = 5.0
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> MigrationRiskWeights:
+    def from_dict(cls, data: dict[str, Any]) -> "MigrationRiskWeights":
         if not isinstance(data, dict):
             raise MigrationRiskConfigError(
                 "Migration risk weights configuration must be a dictionary."
@@ -65,7 +65,7 @@ class MigrationRiskWeights:
         )
 
     @classmethod
-    def from_env(cls) -> MigrationRiskWeights:
+    def from_env(cls) -> "MigrationRiskWeights":
         env_val = os.getenv("MIGRATION_RISK_WEIGHTS")
         if not env_val or not env_val.strip():
             return cls()
