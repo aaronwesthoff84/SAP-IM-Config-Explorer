@@ -15,6 +15,7 @@ test.describe("Accessibility: Keyboard, Screen-Reader, and Non-Color Baseline (#
     const htmlTab = page.locator('#tab-html-output-view');
     const aiTab = page.locator('#ai-docs-tab');
     const compareTab = page.locator('#compare-tab');
+    const simulatorTab = page.locator('#simulator-tab');
 
     // Initial state: Graph is active, tabindex="0", aria-selected="true"
     await expect(graphTab).toHaveAttribute("role", "tab");
@@ -51,8 +52,11 @@ test.describe("Accessibility: Keyboard, Screen-Reader, and Non-Color Baseline (#
     await expect(htmlTab).toBeFocused();
     await expect(htmlTab).toHaveAttribute("aria-selected", "true");
 
-    // End key moves to last enabled tab (Compare XML)
+    // End moves to Rule Simulator, and ArrowLeft moves back to Compare XML.
     await page.keyboard.press("End");
+    await expect(simulatorTab).toBeFocused();
+    await expect(simulatorTab).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowLeft");
     await expect(compareTab).toBeFocused();
     await expect(compareTab).toHaveAttribute("aria-selected", "true");
 
